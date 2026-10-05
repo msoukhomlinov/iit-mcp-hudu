@@ -1,0 +1,40 @@
+# Its own compose project. It joins the external app_net network, which must already exist
+# (`docker network create app_net`), so a client on that network can reach it at
+# http://iit-mcp-hudu:8787/mcp.
+services:
+  iit-mcp-hudu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Pinned tag, set by scripts/deploy.sh to the git short SHA of the deployed commit. The built
+    # image is always tagged with a commit, never :latest, so a rebuild cannot touch the previous
+    # tag and it stays resolvable for rollback (README, "Rolling back"). The :latest fallback only
+    # keeps ad-hoc `docker compose ps`/`logs` working when no tag is exported.
+    image: iit-mcp-hudu-iit-mcp-hudu:${HUDU_IMAGE_TAG:-latest}
+    # Never pull: this image is only ever built locally from this checkout — no registry holds it.
+    # This also keeps rollback (a different tag + up) from replacing the known local image with a
+    # remote one or failing on registry access.
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      - app_net
+    # No ports: the listener is reachable only from inside app_net. Publishing it to the host would
+    # expose a shared-secret endpoint onto the tenant's Hudu with TLS terminating nowhere.
+    deploy:
+      resources:
+        limits:
+          # Peak RSS is during the index walk, which holds the raw article HTML before truncation —
+          # not the 64MB indexed-text budget. 1g leaves headroom so a cold build cannot OOM-loop.
+          memory: 1g
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
+
+networks:
+  app_net:
+    name: app_net
+    external: true
