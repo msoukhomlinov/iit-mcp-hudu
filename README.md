@@ -36,21 +36,12 @@ request; `asset_layouts` is not searchable (the SDK declares no vendor text filt
 Needs Node 24+, a Hudu API key and your Hudu origin. `stdio` is the default transport, so no
 `MCP_TRANSPORT` is needed. Mutation tools stay off unless you set `HUDU_READ_ONLY=false`.
 
-**From a clone:**
-
-```
-git clone https://github.com/msoukhomlinov/iit-mcp-hudu.git
-cd iit-mcp-hudu
-npm install
-npm run build
-```
-
-Then register `dist/main.js` with your client, e.g. Claude Code:
+**From npm** (recommended):
 
 ```
 claude mcp add hudu \
   --env HUDU_API_KEY=your-key --env HUDU_BASE_URL=https://your.hudu.host \
-  -- node /absolute/path/to/iit-mcp-hudu/dist/main.js
+  -- npx -y iit-mcp-hudu
 ```
 
 or in `.mcp.json` / Claude Desktop config:
@@ -59,23 +50,18 @@ or in `.mcp.json` / Claude Desktop config:
 {
   "mcpServers": {
     "hudu": {
-      "command": "node",
-      "args": ["/absolute/path/to/iit-mcp-hudu/dist/main.js"],
+      "command": "npx",
+      "args": ["-y", "iit-mcp-hudu"],
       "env": { "HUDU_API_KEY": "your-key", "HUDU_BASE_URL": "https://your.hudu.host" }
     }
   }
 }
 ```
 
-**From npm:**
+`npx` fetches the package on first run and caches it; use `iit-mcp-hudu@<version>` to pin one.
 
-```
-claude mcp add hudu \
-  --env HUDU_API_KEY=your-key --env HUDU_BASE_URL=https://your.hudu.host \
-  -- npx -y iit-mcp-hudu
-```
-
-or `"command": "npx", "args": ["-y", "iit-mcp-hudu"]` in the JSON config above.
+**From a clone** (for development): see [Development](#development). Point your client at
+`node /absolute/path/to/iit-mcp-hudu/dist/main.js` after `npm run build`.
 
 ## Configuration
 
@@ -179,7 +165,10 @@ default is `"index"`. Pass `tier:"index"` explicitly for a complete first answer
 ## Development
 
 ```
+git clone https://github.com/msoukhomlinov/iit-mcp-hudu.git
+cd iit-mcp-hudu
 npm install
+npm run build
 npm test
 npm run dev
 ```
