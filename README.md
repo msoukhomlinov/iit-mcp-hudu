@@ -162,6 +162,24 @@ background, so a caller's later search is body-aware without the first one await
 walk (some clients enforce a 60s call timeout). Under `stdio` the one long-lived index stays warm and the
 default is `"index"`. Pass `tier:"index"` explicitly for a complete first answer.
 
+## SDK behaviour (0.12.0)
+
+Three SDK behaviours changed in the 0.12.0 line and shape a deployment:
+
+- **Redirects are refused, not followed.** Every Hudu request is sent with `redirect: 'manual'`;
+  a 3xx answer (any except 304) is a `REDIRECT_BLOCKED` error carrying the `location`, and the SDK
+  never follows it. If a reverse proxy in front of the Hudu origin answers 301/302 (scheme upgrade,
+  trailing slash, host rename), dial the final origin instead — the fix is topology, not config.
+- **Reads have a closed input contract.** `hudu_read` now refuses unknown input fields at the
+  schema layer with a typed `CONFIG_ERROR` naming the accepted fields, before any request;
+  `hudu_describe_operation` serves the same contract as `input_contract`. The batch read
+  `operations.fetchMany` (up to 20 single records across mixed resources in one call) is part of
+  the `hudu_read` surface; this server serves it through `hudu_read` rather than a dedicated
+  `hudu_fetch_many` tool, with the secret-read policy applied to its items.
+- **Error envelopes carry the status in a field.** The error `message` is the vendor's short
+  detail (or a fixed default), never the status or the dialed host; those travel in their own
+  fields, and a long upstream body is still replaced by the response shape, not served.
+
 ## Development
 
 ```
@@ -175,7 +193,7 @@ npm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.9.2`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.12.0`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `npm ci`.
 
 ## Deployment

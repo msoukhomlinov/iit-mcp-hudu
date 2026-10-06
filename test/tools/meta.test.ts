@@ -51,7 +51,9 @@ describe('meta discovery and credential tool surface', () => {
     expect(row.reachable).toBe(false);
     expect(row.reason).toContain('HUDU_WRITE_POLICY=deny');
     // SDK callable rows plus four bounded wrappers, narrowed by deployment policy.
-    expect(result.structuredContent.reachable_operations).toBe(87);
+    // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read; the batch's credential
+    // items are refused per item by the fetchMany policy, not per row).
+    expect(result.structuredContent.reachable_operations).toBe(88);
     expect(result.structuredContent.unreachable_operations).toBe(140);
     await session.close();
   });
@@ -63,7 +65,8 @@ describe('meta discovery and credential tool surface', () => {
     expect(row.reachable).toBe(true);
     // `all` opens the write surface but not the credential one: the reachable
     // asset_passwords/password_folders rows stay refused under the secret-read default.
-    expect(result.structuredContent.reachable_operations).toBe(164);
+    // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
+    expect(result.structuredContent.reachable_operations).toBe(165);
     expect(result.structuredContent.unreachable_operations).toBe(63);
     await session.close();
   });
@@ -72,7 +75,8 @@ describe('meta discovery and credential tool surface', () => {
     // The remaining credential-resource rows become reachable, with SDK masking retained.
     const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all', HUDU_SECRET_READS: 'allow' });
     const result = await session.call('hudu_list_operations', { effect: 'destructive', limit: 100 });
-    expect(result.structuredContent.reachable_operations).toBe(179);
+    // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
+    expect(result.structuredContent.reachable_operations).toBe(180);
     expect(result.structuredContent.unreachable_operations).toBe(48);
     await session.close();
   });
@@ -97,7 +101,10 @@ describe('meta discovery and credential tool surface', () => {
         policy === 'allow_list' ? { HUDU_WRITE_POLICY: policy, HUDU_WRITE_ALLOW: ['articles.update'] } : { HUDU_WRITE_POLICY: policy },
       );
       const names = (await session.list()).map((t) => t.name);
-      expect([...names].sort(), policy).toEqual([...CORE_TOOLS, ...LIST_TOOLS].sort());
+      // `hudu_fetch_many` (SDK CORE since 0.12.0) is intentionally served through hudu_read, not
+      // as a dedicated tool — see test/tools/register.test.ts for the pinned decision.
+      const expected = [...CORE_TOOLS.filter((t) => t !== 'hudu_fetch_many'), ...LIST_TOOLS];
+      expect([...names].sort(), policy).toEqual(expected.sort());
       expect(names, policy).toHaveLength(21);
       await session.close();
     }

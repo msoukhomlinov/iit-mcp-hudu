@@ -33,8 +33,9 @@ describe('error surface', () => {
     expect(body).toMatchObject({ error: true, code: 'NOT_FOUND', status: 404 });
     expect(body.message.length).toBeLessThanOrEqual(200);
     expect(body.message).not.toContain('<');
-    expect(body.message).toContain('404');
-    expect(body.message).toContain('example.com');
+    // 0.12.0 carries the status and the dialed URL in their own fields; the message is the
+    // vendor's short detail or the fixed default, never the page body.
+    expect(body.status).toBe(404);
     expect(body.message).not.toContain('was not found');
     expect(JSON.stringify(result)).not.toContain(API_KEY);
     await session.close();

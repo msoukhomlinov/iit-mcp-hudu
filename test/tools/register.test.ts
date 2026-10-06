@@ -30,7 +30,10 @@ describe('tool contract', () => {
     const names = (await session.list()).map((t) => t.name);
     // Set equality, not a count: a swapped name would pass a length check. LIST_TOOLS is derived
     // from the module that registers them, so a rename fails here rather than silently shipping.
-    const expected = [...CORE_TOOLS, ...LIST_TOOLS];
+    // The SDK's CORE profile has carried `hudu_fetch_many` since 0.12.0; this server serves the
+    // batch read through `hudu_read` (`operations.fetchMany`, secret-read policy applied) instead
+    // of a dedicated tool — an explicit surface decision, pinned here so its reversal is visible.
+    const expected = [...CORE_TOOLS.filter((t) => t !== 'hudu_fetch_many'), ...LIST_TOOLS];
     expect([...names].sort()).toEqual([...expected].sort());
     expect(names).toHaveLength(21);
     await session.close();
