@@ -189,21 +189,33 @@ Three SDK behaviours changed in the 0.12.0 line and shape a deployment:
   envelope also carries the SDK's `category`, `retryable`, `operation`, `suggestedAction`,
   `fieldErrors` and `details` where the error has them, `notSent` on a locally issued 429
   cooldown refusal, and `location` on a `REDIRECT_BLOCKED` refusal; the status field is
-  `httpStatus`.
+  `httpStatus`. A 401/403-class credential refusal collapses to the fixed `UNAUTHORIZED`
+  envelope on every tool — the vendor's own message never crosses the boundary, and the
+  credential-shaped keys are redacted out of the payload the same way as the success path.
+  Two honest corners: `details` may carry the SDK's own 256-char vendor body snippet, labelled
+  untrusted like the rest of the envelope, and the `location` of a `REDIRECT_BLOCKED` refusal
+  is the vendor's own target, served so the deployment can report or verify it.
 
 Every client the server builds — the parent, the fail-closed placeholders and each
 (origin, credential) scope — opts into four 0.12.0 behaviours:
 
 - `profile: 'agent'`: the conservative agent preset for every option this server leaves unset
-  (20 s whole-call deadline, 1 retry, 240/min rate limit, concurrency 3, bounded resolution
-  scans). The rate-limit bucket is per client, i.e. per scope.
+  (1 retry, 240/min rate limit, concurrency 3, bounded resolution scans). The rate-limit bucket
+  is per client, i.e. per scope. The 30 s whole-call deadline is pinned explicitly at the SDK
+  default — the preset's 20 s would shorten a cold `tier:'index'` body-index walk that the
+  0.9.2 deployment tolerated, and the 429 now arms the cooldown gate instead of retrying
+  blindly. Env-var overrides for the preset knobs are a recorded follow-up, not a foot-gun.
 - `cache: 'recommended'`: the per-entity read-through TTL preset (1 h structural / 5 min
   mutable / 1 min base). Caches are per client, so per scope. A write through the write or
   delete client does not clear the read client's cache (separate instances), so a read after a
   mutation is TTL-bounded stale, never unbounded.
-- `blockPrivateHosts: true`: the literal-IP SSRF floor, fail-closed at client construction. It
-  complements the `HUDU_ALLOWED_BASE_HOSTS` hostname matcher (which alone can express wildcard
-  suffixes) and holds even in bring-your-own-origin mode, where that matcher is wide.
+- `blockPrivateHosts` on the per-scope clients: the literal-IP SSRF floor for CALLER-named
+  origins, fail-closed at client construction. It complements the `HUDU_ALLOWED_BASE_HOSTS`
+  hostname matcher (which alone can express wildcard suffixes) and holds even in
+  bring-your-own-origin mode, where that matcher is wide. The operator's own base — the
+  `HUDU_BASE_URL` under `stdio`, the default origin under `http` — is trusted at the process /
+  env boundary and is never floor-checked, so an on-prem install whose Hudu sits on a literal
+  private IP is unaffected by the upgrade.
 - `cooldown: { enabled: true }`: the 429 cooldown gate; a call refused locally by the gate
   answers with `notSent: true` in the error envelope, so a model does not read a local refusal
   as a vendor rejection of a sent call.
