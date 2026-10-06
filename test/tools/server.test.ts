@@ -17,7 +17,7 @@ describe('error surface', () => {
     const result = await session.call('hudu_get_group', { identifier: 999 });
     expect(result.isError).toBe(true);
     // A model corrects itself off the code; a bare "request failed" makes it retry blindly.
-    expect(JSON.parse(result.content[0].text)).toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ code: 'NOT_FOUND', httpStatus: 404 });
     expect(JSON.stringify(result)).not.toContain(API_KEY);
     await session.close();
   });
@@ -30,12 +30,12 @@ describe('error surface', () => {
     const result = await session.call('hudu_get_api_info', {});
     expect(result.isError).toBe(true);
     const body = JSON.parse(result.content[0].text);
-    expect(body).toMatchObject({ error: true, code: 'NOT_FOUND', status: 404 });
+    expect(body).toMatchObject({ error: true, code: 'NOT_FOUND', httpStatus: 404 });
     expect(body.message.length).toBeLessThanOrEqual(200);
     expect(body.message).not.toContain('<');
     // 0.12.0 carries the status and the dialed URL in their own fields; the message is the
     // vendor's short detail or the fixed default, never the page body.
-    expect(body.status).toBe(404);
+    expect(body.httpStatus).toBe(404);
     expect(body.message).not.toContain('was not found');
     expect(JSON.stringify(result)).not.toContain(API_KEY);
     await session.close();
@@ -47,7 +47,7 @@ describe('error surface', () => {
     const result = await session.call('hudu_get_api_info', {});
     expect(result.isError).toBe(true);
     const body = JSON.parse(result.content[0].text);
-    expect(body).toMatchObject({ error: true, code: 'SERVER_ERROR', status: 500 });
+    expect(body).toMatchObject({ error: true, code: 'SERVER_ERROR', httpStatus: 500 });
     expect(body.message.length).toBeLessThanOrEqual(200);
     expect(body.message).not.toContain('<');
     expect(body.message).toContain('500');

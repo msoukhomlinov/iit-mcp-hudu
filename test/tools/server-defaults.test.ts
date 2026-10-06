@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connectForRequest } from '../helpers/mcp-session.js';
+import { connect, connectForRequest } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -135,6 +135,28 @@ describe('http HUDU_ALLOWED_BASE_HOSTS', () => {
   it('still serves tools/list for a keyless request naming a disallowed origin', async () => {
     const s = await connectForRequest(undefined, info, [], allow, 'https://other.invalid');
     expect((await s.list()).length).toBeGreaterThan(0);
+    expect(s.urls).toEqual([]);
+    await s.close();
+  });
+});
+
+describe('literal-IP base hosts', () => {
+  it('a stdio operator base of a literal private IP is trusted at the process boundary', async () => {
+    // The floor applies to caller-named origins only: the operator's own HUDU_BASE_URL under
+    // stdio is trusted at the process boundary, and an on-prem Hudu on a private IP must not
+    // fail to boot because of the upgrade.
+    const session = await connect(() => Response.json({ version: '2.45.1' }), { HUDU_BASE_URL: 'https://10.0.0.5' });
+    const result = await session.call('hudu_get_api_info', {});
+    expect(result.isError).toBeUndefined();
+    expect(session.urls[0]).toMatch(/^https:\/\/10\.0\.0\.5\//);
+    await session.close();
+  });
+
+  it('a caller-named literal private IP fails closed before any dial, even when the hostname allow-list permits it', async () => {
+    const s = await connectForRequest('caller-key', info, [], { HUDU_BASE_URL: DEFAULT_BASE, HUDU_API_KEY: 'default-key', HUDU_ALLOWED_BASE_HOSTS: ['10.0.0.5'] }, 'https://10.0.0.5');
+    const r = await s.call('hudu_get_api_info', {});
+    expect(r.isError).toBe(true);
+    expect(JSON.stringify(r)).toContain('x-hudu-base-url invalid');
     expect(s.urls).toEqual([]);
     await s.close();
   });
