@@ -218,4 +218,37 @@ describe('0.12.0 preset knobs: the env overrides', () => {
     expect(session.urls).toHaveLength(2);
     await session.close();
   });
+
+  it('HUDU_TIMEOUT_MS wins over the profile deadline: an env 150 ms aborts a stalling vendor', async () => {
+    // A wiring regression pin: removing `timeoutMs: config.HUDU_TIMEOUT_MS` from the options
+    // literal would leave every other test green — the deadline would silently fall back to the
+    // agent profile's 20 s. A vendor that never answers must be aborted by the ENV deadline.
+    const session = await connect(undefined, { HUDU_TIMEOUT_MS: 150 });
+    // The harness stub never honours the deadline's signal, so replace it with a vendor that
+    // answers after 3 s — or rejects with the deadline's signal, whichever comes first.
+    const dials: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      async (url: unknown, init?: RequestInit) => {
+        dials.push(String(url));
+        return new Promise<Response>((resolve, reject) => {
+          const t = setTimeout(() => resolve(Response.json({ version: 'late' })), 3000);
+          (init?.signal as AbortSignal | undefined)?.addEventListener('abort', () => {
+            clearTimeout(t);
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          });
+        });
+      },
+    );
+    const started = Date.now();
+    const r = await session.call('hudu_get_api_info', {});
+    const elapsed = Date.now() - started;
+    expect(r.isError).toBe(true);
+    // The env deadline fired — not the 3 s stub and not the profile's 20 s.
+    expect(elapsed).toBeLessThan(1500);
+    expect(dials).toHaveLength(1);
+    const env = JSON.parse(r.content[0].text);
+    expect(env.category).toBe('timeout');
+    await session.close();
+  });
 });

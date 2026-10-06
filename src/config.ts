@@ -208,8 +208,9 @@ const schema = z
     /**
      * The 429 cooldown gate (SDK 0.12.0).
      *
-     * `on` (the default) arms a local deadline after a vendor 429: calls the gate then
-     * refuses locally, and the error envelope marks them `notSent: true` so a local
+     * `on` (the default) arms a local deadline after a vendor 429 whose retries are SPENT (the
+     * agent profile's 1 retry, so the first such call makes two wire attempts): calls the gate
+     * then refuses locally, and the error envelope marks them `notSent: true` so a local
      * refusal stays distinguishable from a vendor rejection of a sent call. `off`
      * retries a 429 per the profile's retry budget instead of arming a local deadline.
      */
