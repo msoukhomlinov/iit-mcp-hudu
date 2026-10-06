@@ -52,7 +52,7 @@ describe('hudu_search resource policy', () => {
       snippetChars: 0,
     });
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     await session.close();
   });
 
@@ -130,7 +130,7 @@ describe('hudu_search resource policy', () => {
 describe('hudu_search credential refusal', () => {
   const hudu401 = () =>
     new Response(JSON.stringify({ error: 'Bad credentials' }), { status: 401, headers: { 'content-type': 'application/json' } });
-  const ENVELOPE = { error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' };
+  const ENVELOPE = { error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' };
 
   it('answers a key Hudu refuses at the default tier with the clean UNAUTHORIZED 401', async () => {
     // Step 2 of the issue: the engine isolates per-resource failures, so a refused key used to

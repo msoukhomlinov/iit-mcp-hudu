@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ForbiddenError, HuduConfigError, NotFoundError, PolicyDeniedError, ServerError, UnauthorizedError } from 'node-hudu';
+import { ForbiddenError, HuduConfigError, NotFoundError, PolicyDeniedError, RateLimitError, RedirectBlockedError, ServerError, UnauthorizedError, UnprocessableEntityError } from 'node-hudu';
 import { contextErrorContent, createResultBuilders, errorContent, ok, resolveErrorContent, searchErrorContent, unauthorizedContent } from '../../src/tools/results.js';
 
 describe('untrusted result boundary', () => {
@@ -23,14 +23,14 @@ describe('search credential-refusal envelope', () => {
   it('exposes the exact UNAUTHORIZED 401 envelope as the single refusal shape', () => {
     const result = unauthorizedContent();
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
   });
 
   it('answers a thrown UnauthorizedError with the clean UNAUTHORIZED 401 every other tool returns', () => {
     const err = new UnauthorizedError('Bad credentials', 'https://hudu.invalid/articles');
     const result = searchErrorContent(err);
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     // The envelope is fixed, not echoed: vendor text never crosses the boundary.
     expect(JSON.stringify(result)).not.toContain('hudu.invalid');
   });
@@ -38,7 +38,7 @@ describe('search credential-refusal envelope', () => {
   it('answers a ForbiddenError refusal the same way', () => {
     const err = new ForbiddenError('Bad credentials', 'https://hudu.invalid/assets');
     const result = searchErrorContent(err);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
   });
 
   it('keeps every non-auth error in its real envelope so the model can correct itself', () => {
@@ -46,7 +46,7 @@ describe('search credential-refusal envelope', () => {
     expect(result.isError).toBe(true);
     const body = JSON.parse(result.content[0]!.text);
     expect(body.code).toBe('CONFIG_ERROR');
-    expect(body.status).toBeUndefined();
+    expect(body.httpStatus).toBeUndefined();
   });
 });
 
@@ -55,7 +55,7 @@ describe('resolve/context credential-refusal envelope', () => {
     const err = new UnauthorizedError('Bad credentials', 'https://hudu.invalid/companies');
     const result = resolveErrorContent(err);
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     // The envelope is fixed, not echoed: vendor text never crosses the boundary.
     expect(JSON.stringify(result)).not.toContain('hudu.invalid');
   });
@@ -64,7 +64,7 @@ describe('resolve/context credential-refusal envelope', () => {
     const err = new UnauthorizedError('Bad credentials', 'https://hudu.invalid/asset_passwords');
     const result = contextErrorContent(err);
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     expect(JSON.stringify(result)).not.toContain('hudu.invalid');
   });
 
@@ -75,7 +75,7 @@ describe('resolve/context credential-refusal envelope', () => {
     const scopeRefusal = Object.assign(new Error('Bad credentials'), { code: 'UNAUTHORIZED', status: 401 });
     for (const result of [resolveErrorContent(scopeRefusal), contextErrorContent(scopeRefusal)]) {
       expect(result.isError).toBe(true);
-      expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+      expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     }
   });
 
@@ -85,7 +85,7 @@ describe('resolve/context credential-refusal envelope', () => {
       expect(result.isError).toBe(true);
       const body = JSON.parse(result.content[0]!.text);
       expect(body.code).toBe('CONFIG_ERROR');
-      expect(body.status).toBeUndefined();
+      expect(body.httpStatus).toBeUndefined();
     }
   });
 });
@@ -113,7 +113,7 @@ describe('upstream body bound in the error envelope', () => {
     expect(result.isError).toBe(true);
     const body = JSON.parse(result.content[0]!.text);
     expect(body.code).toBe('NOT_FOUND');
-    expect(body.status).toBe(404);
+    expect(body.httpStatus).toBe(404);
     expect(body.message.length).toBeLessThanOrEqual(200);
     expect(body.message).not.toContain('<');
     expect(body.message).toContain('404');
@@ -128,7 +128,7 @@ describe('upstream body bound in the error envelope', () => {
     const err = new ServerError(detail, 500, 'https://example.com/assets', { message: detail });
     const body = JSON.parse(errorContent(err).content[0]!.text);
     expect(body.code).toBe('SERVER_ERROR');
-    expect(body.status).toBe(500);
+    expect(body.httpStatus).toBe(500);
     expect(body.message.length).toBeLessThanOrEqual(200);
     expect(body.message).not.toContain('<');
     expect(body.message).toContain('500');
@@ -142,16 +142,82 @@ describe('upstream body bound in the error envelope', () => {
   });
 
   it('keeps the fixed envelopes byte-for-byte where no upstream body is involved', () => {
+    // The fixed fields are the SDK's own vocabulary (category / retryable / suggestedAction
+    // included): a change in any of them is a contract change, pinned here on purpose.
     const notFound = JSON.parse(errorContent(new NotFoundError('Not Found', 'https://hudu.invalid/articles/9', '')).content[0]!.text);
-    expect(notFound).toEqual({ error: true, code: 'NOT_FOUND', status: 404, message: 'Not Found' });
+    expect(notFound).toEqual({
+      error: true, code: 'NOT_FOUND', category: 'not_found', retryable: false, httpStatus: 404,
+      message: 'Not Found', suggestedAction: 'Verify the id, or resolve the record by name first.',
+    });
     const policy = JSON.parse(errorContent(new PolicyDeniedError('Operation denied by client policy', { reason: 'mode' })).content[0]!.text);
-    expect(policy).toEqual({ error: true, code: 'POLICY_DENIED', message: 'Operation denied by client policy' });
+    expect(policy).toEqual({
+      error: true, code: 'POLICY_DENIED', category: 'policy', retryable: false,
+      message: 'Operation denied by client policy',
+      suggestedAction: 'Bound the operation with explicit ids, or run it with { dryRun: true } first.',
+    });
     const config = JSON.parse(errorContent(new HuduConfigError('searchKnowledge limit must be at most 25')).content[0]!.text);
-    expect(config).toEqual({ error: true, code: 'CONFIG_ERROR', message: 'searchKnowledge limit must be at most 25' });
+    expect(config).toEqual({
+      error: true, code: 'CONFIG_ERROR', category: 'validation', retryable: false,
+      message: 'searchKnowledge limit must be at most 25',
+      suggestedAction: 'Fix the client configuration; the message names the invalid option.',
+    });
   });
 
   it('hard-truncates long text that names neither a status nor a host', () => {
     const body = JSON.parse(errorContent(new Error(`no shape ${'x'.repeat(300)}`)).content[0]!.text);
     expect(body.message.length).toBe(200);
+  });
+});
+
+describe('0.12.0 error contract fields', () => {
+  it('carries the SDK contract fields: category, retryable, httpStatus, operation, suggestedAction, fieldErrors', () => {
+    const err = new UnprocessableEntityError('validation failed', 'https://example.com/articles', { message: 'validation failed' }, { operation: 'articles.update', suggestedAction: 'Fix the named fields and retry.', fieldErrors: [{ field: 'name', message: 'required' }] });
+    const body = JSON.parse(errorContent(err).content[0]!.text);
+    expect(body).toMatchObject({
+      error: true,
+      code: 'UNPROCESSABLE_ENTITY',
+      category: 'validation',
+      retryable: false,
+      httpStatus: 422,
+      operation: 'articles.update',
+      suggestedAction: 'Fix the named fields and retry.',
+      fieldErrors: [{ field: 'name', message: 'required' }],
+      message: 'validation failed',
+    });
+  });
+
+  it('flags a locally issued cooldown refusal with notSent, so the host does not read it as a vendor rejection', () => {
+    const err = new RateLimitError('cooldown active', undefined, undefined, 30, { notSent: true, operation: 'articles.get', status: 429 });
+    const body = JSON.parse(errorContent(err).content[0]!.text);
+    expect(body).toMatchObject({ error: true, code: 'RATE_LIMIT', httpStatus: 429, notSent: true, operation: 'articles.get' });
+    // No request went out on this call: no url, no body.
+    expect(body).not.toHaveProperty('url');
+  });
+
+  it('serves the refused redirect target on REDIRECT_BLOCKED, in the policy-refusal shape', () => {
+    const err = new RedirectBlockedError('redirect refused', 302, 'https://hudu.invalid/articles/9', { location: 'https://elsewhere.invalid/articles/9' });
+    const body = JSON.parse(errorContent(err).content[0]!.text);
+    expect(body).toMatchObject({
+      error: true,
+      code: 'REDIRECT_BLOCKED',
+      category: 'policy',
+      retryable: false,
+      httpStatus: 302,
+      location: 'https://elsewhere.invalid/articles/9',
+    });
+  });
+
+  it('keeps the deployment policy refusal\'s own operation in the envelope', () => {
+    const err = new PolicyDeniedError('Operation denied by client policy', { operation: 'articles.delete', reason: 'mode' });
+    const body = JSON.parse(errorContent(err).content[0]!.text);
+    expect(body).toMatchObject({ error: true, code: 'POLICY_DENIED', category: 'policy', retryable: false, operation: 'articles.delete' });
+    expect(body.suggestedAction).toBeTypeOf('string');
+  });
+
+  it('falls back to the older `status` shape when `httpStatus` is absent', () => {
+    const stale = Object.assign(new Error('upstream down'), { code: 'SERVER_ERROR', status: 503 });
+    const body = JSON.parse(errorContent(stale).content[0]!.text);
+    expect(body.httpStatus).toBe(503);
+    expect(body.message).toBe('upstream down');
   });
 });
