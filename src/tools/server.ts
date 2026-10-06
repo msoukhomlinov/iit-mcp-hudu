@@ -283,30 +283,36 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
     logger: log,
     // 0.12.0 adoption: the opt-ins every client this factory builds gets (the parent, the
     // fail-closed placeholders and the per-scope clients), in one literal so a later option added
-    // here cannot drift between them.
+    // here cannot drift between them. Precedence: explicit env > profile > SDK default.
     // `profile: 'agent'` fills the options left unset with the agent preset (20 s whole-call
-    // deadline, 1 retry, 240/min rate limit, concurrency 3, bounded resolution scans). This
-    // server sets none of those options itself, so EXPLICIT > PROFILE > DEFAULTS degenerates to a
-    // pure gain; the rate-limit bucket is per client, i.e. per (origin, credential) scope. The
-    // deadline is the one option pinned EXPLICITLY above the preset: the preset's 20 s would
-    // shorten a cold `tier:'index'` body-index walk that the 0.9.2 deployment tolerated at the
-    // SDK's 30 s, and a cold-scope search must not start timing out because of an upgrade.
-    // `cache: 'recommended'` is the per-entity read-through TTL preset (1 h structural / 5 min
-    // mutable / 1 min base). Caches are per client, hence per scope — a write through the write
-    // or delete client does NOT clear the read client's cache (separate instances), so a read
-    // after a mutation is TTL-bounded stale, never unbounded.
-    // `cooldown` is the 429 cooldown gate; a locally refused call answers with
-    // RateLimitError.notSent, which the error envelope surfaces so a local refusal stays
-    // distinguishable from a vendor rejection.
+    // deadline, 1 retry, 240/min rate limit, concurrency 3, bounded resolution scans). It stays
+    // a deployment-wide constant (no env override), so every option this server sets explicitly
+    // wins over it; the rate-limit bucket is per client, i.e. per (origin, credential) scope.
+    // `timeoutMs` is env-tunable via HUDU_TIMEOUT_MS (default 30000). It is ALWAYS passed
+    // explicitly, so it stays above the profile's 20 s deadline regardless of preset: the
+    // preset's 20 s would shorten a cold `tier:'index'` body-index walk that the 0.9.2 deployment
+    // tolerated at the SDK's 30 s, and a cold-scope search must not start timing out because of
+    // an upgrade.
+    // `cache` is env-tunable via HUDU_CACHE_PRESET (default 'recommended'): the per-entity
+    // read-through TTL preset (1 h structural / 5 min mutable / 1 min base). Caches are per
+    // client, hence per scope — a write through the write or delete client does NOT clear the
+    // read client's cache (separate instances), so a read after a mutation is TTL-bounded stale,
+    // never unbounded. 'off' omits the preset: repeated reads re-dial Hudu.
+    // `cooldown` is env-tunable via HUDU_COOLDOWN (default 'on'): the 429 cooldown gate; a
+    // locally refused call answers with RateLimitError.notSent, which the error envelope
+    // surfaces so a local refusal stays distinguishable from a vendor rejection. 'off' retries
+    // a 429 per the profile instead of arming a local deadline.
     // The literal-IP SSRF floor is NOT here: it applies to the per-scope clients only (below) —
     // the caller-named origins are the untrusted surface. The operator's own base (the
     // HUDU_BASE_URL under stdio, the default origin under http) is trusted at the process / env
     // boundary, and flooring it would break an on-prem install whose Hudu sits on a literal
-    // private IP.
+    // private IP. No env override: it is a security property, not a deployment preference.
     profile: 'agent',
-    cache: 'recommended',
-    timeoutMs: 30_000,
-    cooldown: { enabled: true },
+    // Omitted entirely when 'off', so the SDK's own default (no read-through cache) stays the
+    // default rather than being shadowed by a local copy of its value.
+    ...(config.HUDU_CACHE_PRESET === 'recommended' ? { cache: 'recommended' } : {}),
+    timeoutMs: config.HUDU_TIMEOUT_MS,
+    ...(config.HUDU_COOLDOWN === 'on' ? { cooldown: { enabled: true } } : {}),
     // Omitted entirely when unset, so the SDK's own default stays the default rather than being
     // shadowed by a local copy of its value.
     ...(config.HUDU_SEARCH_MAX_INDEX_PAGES === undefined

@@ -171,6 +171,16 @@ background, so a caller's later search is body-aware without the first one await
 walk (some clients enforce a 60s call timeout). Under `stdio` the one long-lived index stays warm and the
 default is `"index"`. Pass `tier:"index"` explicitly for a complete first answer.
 
+Three 0.12.0 preset knobs are env-tunable, each defaulting to the adopted behaviour.
+`HUDU_CACHE_PRESET` (`recommended` | `off`) selects the read-through cache preset: `off`
+disables it, so repeated reads re-dial Hudu instead of being served from the cache.
+`HUDU_COOLDOWN` (`on` | `off`) is the 429 cooldown gate: `off` means a 429 retries per the
+agent profile instead of arming a local deadline whose refusals answer with `notSent: true`.
+`HUDU_TIMEOUT_MS` (positive integer milliseconds) is the whole-call deadline, default `30000`;
+it is always sent to the SDK explicitly, so it stays above the profile's 20 s.
+`blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for
+caller-named origins — a security property, not a deployment preference.
+
 ## SDK behaviour (0.12.0)
 
 Three SDK behaviours changed in the 0.12.0 line and shape a deployment:
@@ -203,27 +213,38 @@ Every client the server builds — the parent, the fail-closed placeholders and 
 
 - `profile: 'agent'`: the conservative agent preset for every option this server leaves unset
   (1 retry, 240/min rate limit, concurrency 3, bounded resolution scans). The rate-limit bucket
-  is per client, i.e. per scope. The 30 s whole-call deadline is pinned explicitly at the SDK
-  default — the preset's 20 s would shorten a cold `tier:'index'` body-index walk that the
-  0.9.2 deployment tolerated, and the 429 now arms the cooldown gate instead of retrying
-  blindly. Env-var overrides for the preset knobs are a recorded follow-up, not a foot-gun.
-- `cache: 'recommended'`: the per-entity read-through TTL preset (1 h structural / 5 min
-  mutable / 1 min base). Caches are per client, so per scope. A write through the write or
-  delete client does not clear the read client's cache (separate instances), so a read after a
-  mutation is TTL-bounded stale, never unbounded.
+  is per client, i.e. per scope. The preset stays a deployment-wide constant with no env
+  override; the one deadline it would otherwise govern is pinned explicitly instead
+  (`HUDU_TIMEOUT_MS`, below), and the 429 now arms the cooldown gate instead of retrying
+  blindly.
+- `cache: 'recommended'` — env-tunable as `HUDU_CACHE_PRESET` (default `recommended`): the
+  per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min base). Caches are
+  per client, so per scope. A write through the write or delete client does not clear the read
+  client's cache (separate instances), so a read after a mutation is TTL-bounded stale, never
+  unbounded. `off` disables the read-through cache: repeated reads re-dial Hudu.
 - `blockPrivateHosts` on the per-scope clients: the literal-IP SSRF floor for CALLER-named
   origins, fail-closed at client construction. It complements the `HUDU_ALLOWED_BASE_HOSTS`
   hostname matcher (which alone can express wildcard suffixes) and holds even in
   bring-your-own-origin mode, where that matcher is wide. The operator's own base — the
   `HUDU_BASE_URL` under `stdio`, the default origin under `http` — is trusted at the process /
   env boundary and is never floor-checked, so an on-prem install whose Hudu sits on a literal
-  private IP is unaffected by the upgrade.
-- `cooldown: { enabled: true }`: the 429 cooldown gate; a call refused locally by the gate
-  answers with `notSent: true` in the error envelope, so a model does not read a local refusal
-  as a vendor rejection of a sent call.
+  private IP is unaffected by the upgrade. Deliberately no env override: it is a security
+  property, not a deployment preference.
+- `cooldown: { enabled: true }` — env-tunable as `HUDU_COOLDOWN` (default `on`): the 429
+  cooldown gate; a call refused locally by the gate answers with `notSent: true` in the error
+  envelope, so a model does not read a local refusal as a vendor rejection of a sent call.
+  `off` retries a 429 per the profile instead of arming a local deadline.
 
-These are deployment-wide, not per-caller: env-var overrides are a recorded follow-up, not a
-foot-gun, until a deployment actually needs a non-default TTL or profile.
+The whole-call deadline is `HUDU_TIMEOUT_MS` (positive integer milliseconds, default `30000`):
+it is always passed to the SDK explicitly, so it stays above the agent profile's 20 s
+regardless of preset — the preset's 20 s would shorten a cold `tier:'index'` body-index walk
+that the 0.9.2 deployment tolerated at the SDK's 30 s, and a cold-scope search must not start
+timing out because of an upgrade.
+
+These are deployment-wide, not per-caller: `HUDU_CACHE_PRESET`, `HUDU_COOLDOWN` and
+`HUDU_TIMEOUT_MS` are env-tunable with the defaults above, while `profile` and
+`blockPrivateHosts` stay constants.
+
 
 ## Development
 

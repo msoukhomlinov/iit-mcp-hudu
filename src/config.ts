@@ -197,6 +197,31 @@ const schema = z
     HUDU_SECRET_READS: z.enum(SECRET_READ_POLICIES).default('deny'),
     PORT: z.coerce.number().int().positive().max(65535).default(8787),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    /**
+     * The read-through cache preset every client this server builds gets (SDK 0.12.0).
+     *
+     * `recommended` (the default) is the per-entity TTL preset (1 h structural / 5 min
+     * mutable / 1 min base). `off` disables the read-through cache, so a repeated read
+     * re-dials Hudu instead of being served from the cache.
+     */
+    HUDU_CACHE_PRESET: z.enum(['recommended', 'off']).default('recommended'),
+    /**
+     * The 429 cooldown gate (SDK 0.12.0).
+     *
+     * `on` (the default) arms a local deadline after a vendor 429: calls the gate then
+     * refuses locally, and the error envelope marks them `notSent: true` so a local
+     * refusal stays distinguishable from a vendor rejection of a sent call. `off`
+     * retries a 429 per the profile's retry budget instead of arming a local deadline.
+     */
+    HUDU_COOLDOWN: z.enum(['on', 'off']).default('on'),
+    /**
+     * The whole-call deadline in milliseconds (SDK 0.12.0). Positive integer.
+     *
+     * Defaults to 30000 and is always passed to the SDK explicitly, so it wins over the
+     * agent profile's 20 s deadline regardless of preset; the default keeps the tolerance
+     * a cold `tier:'index'` body-index walk had before the 0.12.0 adoption.
+     */
+    HUDU_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   })
   .superRefine((c, ctx) => {
     // `stdio` has exactly one origin and one credential (the environment's), so it requires both.

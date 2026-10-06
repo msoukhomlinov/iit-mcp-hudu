@@ -30,6 +30,11 @@ export const config: Config = {
   HUDU_WRITE_POLICY: 'all',
   HUDU_WRITE_ALLOW: [],
   HUDU_SECRET_READS: 'deny',
+  // The 0.12.0 preset knobs at their defaults (see src/config.ts); per-session tests
+  // override them.
+  HUDU_CACHE_PRESET: 'recommended',
+  HUDU_COOLDOWN: 'on',
+  HUDU_TIMEOUT_MS: 30000,
 };
 
 export type Json = Record<string, any>;
