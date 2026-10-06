@@ -1,6 +1,6 @@
 {
   "name": "iit-mcp-hudu",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for Hudu IT documentation, built on the node-hudu SDK",
   "license": "MIT",
   "author": "Max Soukhomlinov",
