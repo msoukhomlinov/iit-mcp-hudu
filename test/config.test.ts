@@ -271,9 +271,9 @@ it('defaults to read-only and accepts only explicit true/false strings', () => {
 });
 
 describe('preset knob config (0.12.0 adoption)', () => {
-  it('defaults: the recommended cache preset, the cooldown gate on, a 30 s deadline', () => {
+  it('defaults: the cache on, the cooldown gate on, a 30 s deadline', () => {
     const c = loadConfig(valid);
-    expect(c.HUDU_CACHE_PRESET).toBe('recommended');
+    expect(c.HUDU_CACHE_PRESET).toBe('on');
     expect(c.HUDU_COOLDOWN).toBe('on');
     expect(c.HUDU_TIMEOUT_MS).toBe(30000);
   });
@@ -285,8 +285,11 @@ describe('preset knob config (0.12.0 adoption)', () => {
     expect(c.HUDU_TIMEOUT_MS).toBe(15000);
   });
 
-  it('rejects an unknown cache preset or cooldown value, naming the variable', () => {
+  it('rejects an unknown cache or cooldown value, naming the variable', () => {
     expect(() => loadConfig({ ...valid, HUDU_CACHE_PRESET: 'never' })).toThrow(/HUDU_CACHE_PRESET/);
+    // The old preset-name value is no longer a cache toggle: a stale .env fails boot loudly
+    // rather than silently disabling (or silently enabling) the cache.
+    expect(() => loadConfig({ ...valid, HUDU_CACHE_PRESET: 'recommended' })).toThrow(/HUDU_CACHE_PRESET/);
     expect(() => loadConfig({ ...valid, HUDU_COOLDOWN: 'maybe' })).toThrow(/HUDU_COOLDOWN/);
   });
 

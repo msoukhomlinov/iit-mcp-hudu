@@ -183,8 +183,9 @@ walk (some clients enforce a 60s call timeout). Under `stdio` the one long-lived
 default is `"index"`. Pass `tier:"index"` explicitly for a complete first answer.
 
 Three 0.12.0 preset knobs are env-tunable, each defaulting to the adopted behaviour.
-`HUDU_CACHE_PRESET` (`recommended` | `off`) selects the read-through cache preset: `off`
-disables it, so repeated reads re-dial Hudu instead of being served from the cache.
+`HUDU_CACHE_PRESET` (`on` | `off`) toggles the read-through cache: the default `on` selects
+the SDK's `recommended` per-entity TTL preset, and `off` disables it, so repeated reads
+re-dial Hudu instead of being served from the cache.
 `HUDU_COOLDOWN` (`on` | `off`) is the 429 cooldown gate: `off` means a 429 retries per the
 agent profile instead of arming a local deadline whose refusals answer with `notSent: true`.
 `HUDU_TIMEOUT_MS` (positive integer milliseconds) is the whole-call deadline, default `30000`;
@@ -229,7 +230,7 @@ Every client the server builds — the parent, the fail-closed placeholders and 
   override; the one deadline it would otherwise govern is pinned explicitly instead
   (`HUDU_TIMEOUT_MS`, below), and the 429 now arms the cooldown gate instead of retrying
   blindly.
-- `cache: 'recommended'` — env-tunable as `HUDU_CACHE_PRESET` (default `recommended`): the
+- `cache: 'recommended'` — env-toggled as `HUDU_CACHE_PRESET` (default `on`): the
   per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min base). Caches are
   per client, so per scope. A write through the write or delete client does not clear the read
   client's cache (separate instances), so a read after a mutation is TTL-bounded stale, never

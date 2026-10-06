@@ -32,7 +32,7 @@ export const config: Config = {
   HUDU_SECRET_READS: 'deny',
   // The 0.12.0 preset knobs at their defaults (see src/config.ts); per-session tests
   // override them.
-  HUDU_CACHE_PRESET: 'recommended',
+  HUDU_CACHE_PRESET: 'on',
   HUDU_COOLDOWN: 'on',
   HUDU_TIMEOUT_MS: 30000,
 };

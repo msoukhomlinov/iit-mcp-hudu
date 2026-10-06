@@ -200,11 +200,12 @@ const schema = z
     /**
      * The read-through cache preset every client this server builds gets (SDK 0.12.0).
      *
-     * `recommended` (the default) is the per-entity TTL preset (1 h structural / 5 min
-     * mutable / 1 min base). `off` disables the read-through cache, so a repeated read
-     * re-dials Hudu instead of being served from the cache.
+     * The operator-facing toggle for the read-through cache. `on` (the default) selects the
+     * SDK's `recommended` per-entity TTL preset (1 h structural / 5 min mutable / 1 min base);
+     * `off` disables the read-through cache, so a repeated read re-dials Hudu instead of
+     * being served from the cache.
      */
-    HUDU_CACHE_PRESET: z.enum(['recommended', 'off']).default('recommended'),
+    HUDU_CACHE_PRESET: z.enum(['on', 'off']).default('on'),
     /**
      * The 429 cooldown gate (SDK 0.12.0).
      *

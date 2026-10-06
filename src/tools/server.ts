@@ -293,8 +293,9 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
     // preset's 20 s would shorten a cold `tier:'index'` body-index walk that the 0.9.2 deployment
     // tolerated at the SDK's 30 s, and a cold-scope search must not start timing out because of
     // an upgrade.
-    // `cache` is env-tunable via HUDU_CACHE_PRESET (default 'recommended'): the per-entity
-    // read-through TTL preset (1 h structural / 5 min mutable / 1 min base). Caches are per
+    // `cache` is env-toggled via HUDU_CACHE_PRESET (default 'on'): 'on' selects the SDK's
+    // `recommended` per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min
+    // base). Caches are per
     // client, hence per scope — a write through the write or delete client does NOT clear the
     // read client's cache (separate instances), so a read after a mutation is TTL-bounded stale,
     // never unbounded. 'off' omits the preset: repeated reads re-dial Hudu.
@@ -310,7 +311,7 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
     profile: 'agent',
     // Omitted entirely when 'off', so the SDK's own default (no read-through cache) stays the
     // default rather than being shadowed by a local copy of its value.
-    ...(config.HUDU_CACHE_PRESET === 'recommended' ? { cache: 'recommended' } : {}),
+    ...(config.HUDU_CACHE_PRESET === 'on' ? { cache: 'recommended' } : {}),
     timeoutMs: config.HUDU_TIMEOUT_MS,
     ...(config.HUDU_COOLDOWN === 'on' ? { cooldown: { enabled: true } } : {}),
     // Omitted entirely when unset, so the SDK's own default stays the default rather than being

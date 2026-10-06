@@ -178,7 +178,7 @@ describe('0.12.0 preset knobs: the env overrides', () => {
     await session.close();
   });
 
-  it('the default recommended preset serves the second identical read from the cache', async () => {
+  it('the default (on) cache serves the second identical read from the cache', async () => {
     const session = await connect(article, {});
     for (let i = 0; i < 2; i++) {
       const r = await session.call('hudu_read', read);
