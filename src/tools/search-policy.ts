@@ -198,6 +198,13 @@ export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string
  * own `UNAUTHORIZED / Bad credentials` for it — the same leak the tool itself closes.
  * Validate the requested resource list against the deployment's effective set BEFORE any request,
  * and resolve an omitted list to the deployment's searchable set rather than the SDK's full eight.
+ *
+ * The fan-out default is the deployment's PERMITTED set, not its raw searchable set: the searchable
+ * set includes the two credential resources, and without the secret-read gate here an omitted
+ * `resources` under `HUDU_SECRET_READS=deny` would resolve the same records the curated credential
+ * tools refuse (the `operations.resolveAny` key is not itself a secret operation, so the
+ * dispatcher's generic assert passes it). Explicit credential resources are refused per resource,
+ * the same `POLICY_DENIED` a direct read issues.
  */
 export function applyResolvePolicyToInvoke(ctx: ToolContext, input: Record<string, unknown>): Record<string, unknown> {
   const { searchableResources } = ctx;
@@ -207,19 +214,70 @@ export function applyResolvePolicyToInvoke(ctx: ToolContext, input: Record<strin
   // with a valid object and resolving against resources the caller never named.
   if (raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw))) return input;
   const opts = (raw ?? {}) as Record<string, unknown>;
-  // Only `undefined` selects the deployment default. Any other non-array value is left untouched
-  // so the SDK's own inputSchema validation refuses it before any request — never silently
-  // replaced with a valid set, which would change which resources are resolved.
-  const resources = opts.resources === undefined ? searchableResources : opts.resources;
+  // Only `undefined` selects the deployment default, and the default is the permitted set: under
+  // deny the credential resources drop out of the fan-out instead of being resolved. Any other
+  // non-array value is left untouched so the SDK's own inputSchema validation refuses it before
+  // any request — never silently replaced with a valid set, which would change which resources
+  // are resolved.
+  const resources = opts.resources === undefined ? effectiveAcrossResources(ctx) : opts.resources;
   if (Array.isArray(resources)) {
-    const excluded = resources.filter((r): r is string => typeof r === 'string' && !searchableResources.includes(r));
-    if (excluded.length) {
-      throw configError(
-        `hudu_read / hudu_write / hudu_delete: operations.resolveAny resources ${JSON.stringify(excluded)} are excluded by HUDU_SEARCH_RESOURCES; this deployment may resolve: ${searchableResources.join(', ')}. Use hudu_resolve_any, which applies the same policy.`,
-      );
+    for (const resource of resources) {
+      if (typeof resource !== 'string') continue; // SDK schema rejects malformed entries.
+      assertSecretReadPermitted(`${resource}.resolve`, ctx.config, ctx.log);
+      if (!searchableResources.includes(resource)) {
+        throw configError(
+          `hudu_read / hudu_write / hudu_delete: operations.resolveAny resource ${resource} is excluded by HUDU_SEARCH_RESOURCES; this deployment may resolve: ${searchableResources.join(', ')}. Use hudu_resolve_any, which applies the same policy.`,
+        );
+      }
     }
   }
   return { ...input, opts: { ...opts, resources } };
+}
+
+/**
+ * The backing operation the `hudu_read` batch read dispatches: `operations.fetchMany`.
+ *
+ * The escape hatch that reaches per-resource single reads directly, by ITEM instead of by
+ * operation key. Each item of the batch executes as the single read it names, so the batch must
+ * honour the same deployment authorities the single read does — otherwise the policy is
+ * bypassable by naming the resource in an item where the operation key would have been refused.
+ */
+export const FETCH_MANY_OPERATION = 'operations.fetchMany';
+
+/**
+ * The deployment authority applied to a raw `hudu_read / hudu_write / hudu_delete` of
+ * `operations.fetchMany`.
+ *
+ * The secret-read policy is keyed by OPERATION: `operations.fetchMany` is not itself a secret
+ * operation, so the dispatcher's generic assert passes it — and every item then executes as the
+ * single read it names. Without this, `hudu_read` of
+ * `operations.fetchMany` with an `asset_passwords` item returns a credential read under
+ * `HUDU_SECRET_READS=deny`, exactly the deny this module exists to keep (the record's
+ * `dependsOn` includes `asset_passwords.get` and `password_folders.get`).
+ *
+ * The check runs BEFORE any request, per item, and issues the same `POLICY_DENIED` refusal a
+ * direct `asset_passwords.get` issues. The bag is never logged: an item names the very record
+ * being read.
+ *
+ * Deliberately NOT search-scoped: a fetchMany item is a single-record READ, and `hudu_read` of the
+ * same resource is not scoped to `HUDU_SEARCH_RESOURCES` — that policy governs SEARCH fan-outs,
+ * and 15 of the batch's 22 resources are not searchable at all. Scoping the batch to the search
+ * set would refuse reads the single-read path permits.
+ *
+ * Item-shape validation stays SDK-owned: a malformed `items` (missing, not an array, a non-object
+ * item, a resource outside the 22-resource enum) is left untouched so the record's closed input
+ * contract refuses it before any request.
+ */
+export function applyFetchManyPolicyToInvoke(ctx: ToolContext, input: Record<string, unknown>): Record<string, unknown> {
+  const { items } = input;
+  if (!Array.isArray(items)) return input;
+  for (const item of items) {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue; // SDK schema rejects malformed items.
+    const resource = (item as { resource?: unknown }).resource;
+    if (typeof resource !== 'string') continue;
+    assertSecretReadPermitted(`${resource}.get`, ctx.config, ctx.log);
+  }
+  return input;
 }
 
 /** Cross-resource expansion must enforce both resource scope and credential-read authority. */

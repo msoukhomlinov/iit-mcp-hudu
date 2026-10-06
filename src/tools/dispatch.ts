@@ -8,7 +8,7 @@ import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
 import { contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent } from './results.js';
 import { INVOKE_OUTPUT } from './schemas.js';
-import { SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
+import { FETCH_MANY_OPERATION, applyFetchManyPolicyToInvoke, SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
 
 export function registerDispatchTools(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
@@ -49,7 +49,9 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
 
           // The search resource policy is a READ-edge authority like the write policy: `effect dispatcher`
           // reaches the search and resolve helpers directly, so each must honour the same resource
-          // scope as its tool rather than bypassing the narrowed schema.
+          // scope as its tool rather than bypassing the narrowed schema. `operations.fetchMany` is
+          // the same kind of read edge, through items: its key is not a secret operation, so the
+          // assert above passes it, and only the item-level check closes the credential-read gap.
           const bag =
             operation === SEARCH_KNOWLEDGE_OPERATION
               ? applySearchPolicyToInvoke(ctx, input ?? {})
@@ -57,7 +59,9 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
                 ? applyResolvePolicyToInvoke(ctx, input ?? {})
                 : operation === SEARCH_ACROSS_OPERATION
                   ? applyAcrossPolicyToInvoke(ctx, input ?? {})
-                  : (input ?? {});
+                  : operation === FETCH_MANY_OPERATION
+                    ? applyFetchManyPolicyToInvoke(ctx, input ?? {})
+                    : (input ?? {});
 
           // ONE implementation decides whether this call is allowed: the SDK dispatcher. It resolves
           // the exact registry key, refuses the projection's refusal class, validates the bag against
