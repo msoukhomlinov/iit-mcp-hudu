@@ -36,6 +36,10 @@ describe('tool contract', () => {
     const expected = [...CORE_TOOLS.filter((t) => t !== 'hudu_fetch_many'), ...LIST_TOOLS];
     expect([...names].sort()).toEqual([...expected].sort());
     expect(names).toHaveLength(21);
+    // The surface decision pinned negatively too: if the SDK ever renames or demotes
+    // hudu_fetch_many out of CORE_TOOLS the filter above silently no-ops — this pin keeps the
+    // decision (served through hudu_read, not as a dedicated tool) visible either way.
+    expect(names).not.toContain('hudu_fetch_many');
     await session.close();
   });
 

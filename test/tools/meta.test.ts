@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Config } from '../../src/config.js';
 import { getCapability } from 'node-hudu/capabilities';
-import { describeOperation, CORE_TOOLS, SEARCH_RESOURCES } from 'node-hudu/mcp';
+import { CATALOG, describeOperation, CORE_TOOLS, SEARCH_RESOURCES } from 'node-hudu/mcp';
 import { LIST_TOOLS } from '../../src/tools/lists.js';
 import { connect } from '../helpers/mcp-session.js';
 
@@ -52,7 +52,9 @@ describe('meta discovery and credential tool surface', () => {
     expect(row.reason).toContain('HUDU_WRITE_POLICY=deny');
     // SDK callable rows plus four bounded wrappers, narrowed by deployment policy.
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read; the batch's credential
-    // items are refused per item by the fetchMany policy, not per row).
+    // items are refused per item by the fetchMany policy, not per row). The +1 is anchored to
+    // the row by identity below, so a different row changing could not keep this delta honest.
+    expect(CATALOG.some((row) => row.op === 'operations.fetchMany')).toBe(true);
     expect(result.structuredContent.reachable_operations).toBe(88);
     expect(result.structuredContent.unreachable_operations).toBe(140);
     await session.close();

@@ -189,6 +189,32 @@ describe('hudu_read fetchMany policy', () => {
     await session.close();
   });
 
+  it('leaves an out-of-enum item resource to the SDK closed contract, before any request', async () => {
+    // The wrapper passes it through on purpose (validation is SDK-owned); the 22-resource item
+    // enum refuses it with zero wire.
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all' });
+    const refused = await session.call('hudu_read', {
+      operation: 'operations.fetchMany',
+      input: { items: [{ resource: 'cards', id: 1 }] },
+    });
+    expect(refused.isError).toBe(true);
+    expect(JSON.parse(refused.content[0].text).code).toBe('CONFIG_ERROR');
+    expect(session.urls).toEqual([]);
+    await session.close();
+  });
+
+  it('leaves an item without a resource to the SDK closed contract, before any request', async () => {
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all' });
+    const refused = await session.call('hudu_read', {
+      operation: 'operations.fetchMany',
+      input: { items: [{ id: 1 }] },
+    });
+    expect(refused.isError).toBe(true);
+    expect(JSON.parse(refused.content[0].text).code).toBe('CONFIG_ERROR');
+    expect(session.urls).toEqual([]);
+    await session.close();
+  });
+
 });
 
 describe('hudu_read search policy', () => {
