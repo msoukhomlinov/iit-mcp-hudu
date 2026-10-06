@@ -28,7 +28,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
         description: spec.description,
         inputSchema: z.strictObject({
           operation: z.enum(operations).describe('Canonical operation key (see hudu_list_operations). Exact registry key, never a tool name.'),
-          input: z.record(z.string(), z.unknown()).optional().describe('The operation arguments as one object; validated against the registry record before any request. Since node-hudu 0.12.0 the field contract is closed: an unknown field is a typed CONFIG_ERROR naming the accepted fields, which hudu_describe_operation serves as input_contract.'),
+          input: z.record(z.string(), z.unknown()).optional().describe('The operation arguments as one object; validated against the registry record before any request. The field contract is closed: an unknown top-level field is a typed CONFIG_ERROR naming the accepted fields, which hudu_describe_operation serves as input_contract.'),
           ...(mode === 'read' ? {} : { dry_run: z.boolean().optional().describe('Writes only: omit (or pass true) for the SDK dry-run path (simulated: true, impact and diff, no request issued); pass false to execute. A read called with dry_run: true is refused.'),
           confirm: z.string().optional().describe('For a destructive or approval-gated operation: must equal the operation key exactly, or the call is refused.') }),
         }),

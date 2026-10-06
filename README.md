@@ -24,7 +24,7 @@ request; `asset_layouts` is not searchable (the SDK declares no vendor text filt
 `hudu_list_asset_layouts` follows the same reachability as the existing ungated
 `hudu_get_asset_layout` tool.
 
-These tools run on the node-hudu 0.12.0 line; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed read input contract, the error envelope, and the client opt-ins.
+These tools run on the node-hudu 0.12.0 line; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins.
 
 ## Transports
 
