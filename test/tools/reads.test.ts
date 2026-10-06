@@ -43,7 +43,7 @@ describe('hudu_resolve_any resource policy', () => {
   it('answers a resolve credential refusal with the clean UNAUTHORIZED 401, like the search and read tools', async () => {
     // The live defect: Hudu answers the excluded/unauthorized resource with 401 "Bad credentials".
     // resolveAny does not isolate per-resource failures — the auth error is THROWN, so the fixed
-    // envelope (code, status, stable message) is the only text that may cross the boundary.
+    // envelope (code, httpStatus, stable message) is the only text that may cross the boundary.
     // that refusal is UNAUTHORIZED, not UNAVAILABLE.
     const session = await connect(
       () => new Response(JSON.stringify({ error: 'Bad credentials' }), { status: 401, headers: { 'content-type': 'application/json' } }),
@@ -51,7 +51,7 @@ describe('hudu_resolve_any resource policy', () => {
     );
     const result = await session.call('hudu_resolve_any', { identifier: { id: 1 }, opts: { resources: ['asset_passwords'] } });
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     await session.close();
   });
 });
@@ -126,7 +126,7 @@ describe('context read failures', () => {
     try {
       const result = await session.call(tool, { ...args, opts: { expand: true } });
       expect(result.isError).toBe(true);
-      expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+      expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     } finally {
       await session.close();
     }
@@ -154,7 +154,7 @@ describe('context read failures', () => {
     try {
       const result = await session.call(tool, args);
       expect(result.isError).toBe(true);
-      expect(JSON.parse(result.content[0].text)).toMatchObject({ status: 422 });
+      expect(JSON.parse(result.content[0].text)).toMatchObject({ httpStatus: 422 });
       expect(JSON.parse(result.content[0].text).code).not.toBe('UNAVAILABLE');
     } finally {
       await session.close();
@@ -175,7 +175,7 @@ describe('context read failures', () => {
       const result = await session.call('hudu_get_company_context', { id: 22, opts: { limit: 25, expand } });
       expect(session.urls.some((url) => new URL(url).pathname.endsWith('/asset_passwords'))).toBe(true);
       expect(result.isError).toBe(true);
-      expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+      expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     } finally {
       await session.close();
     }

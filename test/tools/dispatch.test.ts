@@ -245,7 +245,7 @@ describe('hudu_read search policy', () => {
       input: { query: 'reset', opts: { scope: ['asset_passwords'], tier: 'vendor', limit: 1, snippetChars: 0 } },
     });
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     await session.close();
   });
 
@@ -439,7 +439,7 @@ describe('hudu_read resolve policy', () => {
     });
     expect(result.isError).toBe(true);
     // The envelope is fixed, not echoed: the vendor 401 body never crosses the boundary.
-    expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     await session.close();
   });
 
@@ -482,7 +482,7 @@ describe('hudu_read context failures', () => {
     try {
       const result = await session.call('hudu_read', { operation, input });
       expect(result.isError).toBe(true);
-      expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+      expect(JSON.parse(result.content[0].text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     } finally {
       await session.close();
     }
@@ -596,7 +596,7 @@ it('answers an isolated cross-search refused on every resource with UNAUTHORIZED
     const result = await session.call('hudu_read', { operation: 'operations.searchAcrossResources',
       input: { query: 'server', opts: { resources: ['assets'], isolateErrors: true } } });
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', status: 401, message: 'Bad credentials' });
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
   } finally { await session.close(); }
 });
 
