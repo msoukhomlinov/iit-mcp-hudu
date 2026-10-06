@@ -132,7 +132,11 @@ records. It is `deny` by default and refuses every operation on the `asset_passw
 request is issued — so a deployment cannot hand a secret to a model by omission. The batch read
 `operations.fetchMany` (reachable through `hudu_read`) is refused the same way, per item: its
 operation key is not itself a credential read, so each item's resource is checked before any
-request, and a mixed batch is refused whole rather than partially dialed. It is scoped to the
+request, and a mixed batch is refused whole rather than partially dialed. The
+cross-resource resolve `operations.resolveAny` (also reachable through `hudu_read`) is gated the
+same way: under deny an explicitly named credential resource is refused, and an omitted resource
+list resolves to the permitted set, which excludes the credential resources from the fan-out. It
+is scoped to the
 whole resource rather than to the `expand` flag, because `asset_passwords.get` returns the secret
 without `expand`. It is independent of `HUDU_WRITE_POLICY`: `all` does not imply open secrets, and
 `allow` does not open writes. `hudu_search` is unaffected — it already redacts hits on those two
