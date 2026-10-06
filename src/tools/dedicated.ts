@@ -12,6 +12,12 @@
  * the catalog row and the describe payload with the tool that actually exists here, so discovery
  * recommends the ungated path.
  *
+ * The same correction serves the 0.12.0 batch read: the SDK publishes `operations.fetchMany` as
+ * `tool: null` with a "curated out" reason while the SDK's own CORE profile registers
+ * `hudu_fetch_many`, and this server registers that tool — so discovery names it rather than
+ * routing the batch through the approval-gated escape hatch. The batch tool is never
+ * search-gated: its resource key is `operations`, which the search scope never narrows.
+ *
  * Two truths the overlay must not break:
  *
  * - **A resource the deployment excluded is not advertised.** Under `HUDU_SEARCH_RESOURCES`, the
@@ -37,8 +43,9 @@ type CatalogPage = ReturnType<typeof catalogPage>;
 type Described = ReturnType<typeof describeOperation>;
 
 /**
- * The four dedicated ungated read tools, each with the operation it is backed by, the list reads it
- * covers, and the arguments it accepts.
+ * The dedicated ungated read tools (the four bounded list reads plus the 0.12.0 batch read), each
+ * with the operation it is backed by, the registry reads it covers, and the arguments it
+ * accepts.
  *
  * `backingOperation` mirrors the tool's own `_meta.backingOperation`; `covers` names every registry
  * operation the same bounded, ungated read serves **with an argument surface the tool honors**; and
@@ -108,6 +115,11 @@ export const DEDICATED_READ_TOOLS = {
     covers: ['asset_layouts.list'],
     toolArguments: ['page', 'name', 'slug', 'active', 'updated_at'],
   },
+  hudu_fetch_many: {
+    backingOperation: 'operations.fetchMany',
+    covers: ['operations.fetchMany'],
+    toolArguments: ['items'],
+  },
 } as const;
 
 export type DedicatedReadTool = keyof typeof DEDICATED_READ_TOOLS;
@@ -122,7 +134,9 @@ export const DEDICATED_READ_TOOL_BY_OPERATION = Object.fromEntries(
  *
  * Mirrors `assertListReadPermitted` in `lists.ts`: `companies`, `articles` and `assets` are
  * searchable and can be excluded; `asset_layouts` is not searchable and its tool is reached through
- * the same reachability as the existing `hudu_get_asset_layout`, so it is never gated.
+ * the same reachability as the existing `hudu_get_asset_layout`, so it is never gated; the batch
+ * read's resource key is `operations`, which the search scope never names, so `hudu_fetch_many`
+ * is advertised in every deployment.
  */
 const SEARCH_GATED_RESOURCES = new Set(['companies', 'articles', 'assets']);
 
@@ -135,7 +149,8 @@ function dedicatedToolFor(operation: string): DedicatedReadTool | undefined {
  * Whether this deployment can actually call `tool`.
  *
  * A gated resource the deployment excluded is refused before any request, so discovery must not
- * advertise the tool for it. `asset_layouts` has no searchable gate and is always callable.
+ * advertise the tool for it. `asset_layouts` has no searchable gate and is always callable, and
+ * `operations` (the batch read) is not a search scope either.
  */
 export function dedicatedToolAdvertised(tool: DedicatedReadTool, searchableResources: readonly string[]): boolean {
   const backingOperation = DEDICATED_READ_TOOLS[tool].backingOperation;

@@ -217,7 +217,8 @@ describe('HTTP end-to-end', () => {
     const { keys, urls } = stubHudu();
     const res = await realHandler()(rpc('tools/list', {}));
     expect(res.status).toBe(200);
-    expect((await message(res)).result.tools).toHaveLength(19);
+    // The read-only surface keeps hudu_fetch_many (it is a read).
+    expect((await message(res)).result.tools).toHaveLength(20);
     expect(keys).toEqual([]);
     expect(urls).toEqual([]);
   });

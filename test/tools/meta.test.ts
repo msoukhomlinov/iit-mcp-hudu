@@ -96,6 +96,19 @@ describe('meta discovery and credential tool surface', () => {
     await allowed.close();
   });
 
+  it('steers operations.fetchMany to the dedicated hudu_fetch_many tool', async () => {
+    const session = await connect();
+    const result = await session.call('hudu_describe_operation', { operation: 'operations.fetchMany' });
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent.exposed_tool).toBe('hudu_fetch_many');
+    expect(result.structuredContent.why_not).toBeNull();
+    expect(result.structuredContent.reachable).toBe(true);
+    // The describe presents the tool's own argument set, not the operation's.
+    expect(Object.keys(result.structuredContent.input_schema).sort()).toEqual(['items']);
+    expect(result.content[0].text).toContain('use hudu_fetch_many');
+    await session.close();
+  });
+
   it('never changes tools/list, in any mode', async () => {
     for (const policy of ['deny', 'allow_list', 'all'] as const) {
       const session = await connect(
@@ -103,11 +116,11 @@ describe('meta discovery and credential tool surface', () => {
         policy === 'allow_list' ? { HUDU_WRITE_POLICY: policy, HUDU_WRITE_ALLOW: ['articles.update'] } : { HUDU_WRITE_POLICY: policy },
       );
       const names = (await session.list()).map((t) => t.name);
-      // `hudu_fetch_many` (SDK CORE since 0.12.0) is intentionally served through hudu_read, not
-      // as a dedicated tool — see test/tools/register.test.ts for the pinned decision.
-      const expected = [...CORE_TOOLS.filter((t) => t !== 'hudu_fetch_many'), ...LIST_TOOLS];
+      // The full SDK CORE profile is registered — `hudu_fetch_many` included (0.12.0); it is a
+      // read, so no write policy changes the surface.
+      const expected = [...CORE_TOOLS, ...LIST_TOOLS];
       expect([...names].sort(), policy).toEqual(expected.sort());
-      expect(names, policy).toHaveLength(21);
+      expect(names, policy).toHaveLength(22);
       await session.close();
     }
   });
