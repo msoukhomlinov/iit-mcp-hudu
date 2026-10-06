@@ -119,6 +119,78 @@ describe('hudu_read write policy', () => {
 
 });
 
+describe('hudu_read fetchMany policy', () => {
+  it('refuses a credential-resource item before any request, with POLICY_DENIED', async () => {
+    // The bypass the 0.12.0 upgrade would otherwise open: operations.fetchMany is not itself a
+    // secret operation, so only the item-level check closes the gap.
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all' });
+    const refused = await session.call('hudu_read', {
+      operation: 'operations.fetchMany',
+      input: { items: [{ resource: 'asset_passwords', id: 1 }] },
+    });
+    expect(refused.isError).toBe(true);
+    const body = JSON.parse(refused.content[0].text);
+    expect(body.code).toBe('POLICY_DENIED');
+    expect(body.message).toContain('asset_passwords.get');
+    expect(session.urls).toEqual([]);
+    const refusals = session.logs.filter((l) => l.msg === 'credential read refused by secret-read policy');
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatchObject({ operation: 'asset_passwords.get', policy: 'deny' });
+    // The refusal line must never carry the input bag: an item names the record being read.
+    await session.close();
+  });
+
+  it('refuses a credential item anywhere in a mixed batch, still before any request', async () => {
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all' });
+    const refused = await session.call('hudu_read', {
+      operation: 'operations.fetchMany',
+      input: { items: [{ resource: 'articles', id: 1 }, { resource: 'password_folders', id: 2 }] },
+    });
+    expect(refused.isError).toBe(true);
+    expect(JSON.parse(refused.content[0].text).code).toBe('POLICY_DENIED');
+    // Not merely "the first item was fine": the whole batch is refused and nothing is dialed.
+    expect(session.urls).toEqual([]);
+    await session.close();
+  });
+
+  it('answers a credential batch under HUDU_SECRET_READS=allow, issuing both reads', async () => {
+    const session = await connect(() => Response.json({ id: 1, name: 'record' }), { HUDU_SECRET_READS: 'allow' });
+    const result = await session.call('hudu_read', {
+      operation: 'operations.fetchMany',
+      input: { items: [{ resource: 'asset_passwords', id: 1 }, { resource: 'password_folders', id: 2 }] },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(session.urls).toHaveLength(2);
+    await session.close();
+  });
+
+  it('does not search-scope the batch: a single-record read the single-read path permits is permitted', async () => {
+    // companies is not in the narrowed search set, but hudu_read companies.get is not search-scoped —
+    // the batch must not be more restrictive than the single read it collapses.
+    const session = await connect(() => Response.json({ id: 1, name: 'record' }), { HUDU_SEARCH_RESOURCES: ['articles'] });
+    const result = await session.call('hudu_read', {
+      operation: 'operations.fetchMany',
+      input: { items: [{ resource: 'companies', id: 1 }] },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(session.urls).toHaveLength(1);
+    await session.close();
+  });
+
+  it('leaves a malformed items container to the SDK closed contract, before any request', async () => {
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all' });
+    const refused = await session.call('hudu_read', {
+      operation: 'operations.fetchMany',
+      input: { items: 'not-an-array' },
+    });
+    expect(refused.isError).toBe(true);
+    expect(JSON.parse(refused.content[0].text).code).toBe('CONFIG_ERROR');
+    expect(session.urls).toEqual([]);
+    await session.close();
+  });
+
+});
+
 describe('hudu_read search policy', () => {
   it('refuses a scope the deployment excluded, before any request', async () => {
     // The narrowed hudu_search schema must not be bypassable through the raw operation.

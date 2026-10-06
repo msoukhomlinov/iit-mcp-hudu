@@ -222,6 +222,52 @@ export function applyResolvePolicyToInvoke(ctx: ToolContext, input: Record<strin
   return { ...input, opts: { ...opts, resources } };
 }
 
+/**
+ * The backing operation the `hudu_read` batch read dispatches: `operations.fetchMany`.
+ *
+ * The escape hatch that reaches per-resource single reads directly, by ITEM instead of by
+ * operation key. Each item of the batch executes as the single read it names, so the batch must
+ * honour the same deployment authorities the single read does — otherwise the policy is
+ * bypassable by naming the resource in an item where the operation key would have been refused.
+ */
+export const FETCH_MANY_OPERATION = 'operations.fetchMany';
+
+/**
+ * The deployment authority applied to a raw `hudu_read / hudu_write / hudu_delete` of
+ * `operations.fetchMany`.
+ *
+ * The secret-read policy is keyed by OPERATION: `operations.fetchMany` is not itself a secret
+ * operation, so the dispatcher's generic assert passes it — and every item then executes as the
+ * single read it names. Without this, `hudu_read` of
+ * `operations.fetchMany` with an `asset_passwords` item returns a credential read under
+ * `HUDU_SECRET_READS=deny`, exactly the deny this module exists to keep (the record's
+ * `dependsOn` includes `asset_passwords.get` and `password_folders.get`).
+ *
+ * The check runs BEFORE any request, per item, and issues the same `POLICY_DENIED` refusal a
+ * direct `asset_passwords.get` issues. The bag is never logged: an item names the very record
+ * being read.
+ *
+ * Deliberately NOT search-scoped: a fetchMany item is a single-record READ, and `hudu_read` of the
+ * same resource is not scoped to `HUDU_SEARCH_RESOURCES` — that policy governs SEARCH fan-outs,
+ * and 15 of the batch's 22 resources are not searchable at all. Scoping the batch to the search
+ * set would refuse reads the single-read path permits.
+ *
+ * Item-shape validation stays SDK-owned: a malformed `items` (missing, not an array, a non-object
+ * item, a resource outside the 22-resource enum) is left untouched so the record's closed input
+ * contract refuses it before any request.
+ */
+export function applyFetchManyPolicyToInvoke(ctx: ToolContext, input: Record<string, unknown>): Record<string, unknown> {
+  const { items } = input;
+  if (!Array.isArray(items)) return input;
+  for (const item of items) {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue; // SDK schema rejects malformed items.
+    const resource = (item as { resource?: unknown }).resource;
+    if (typeof resource !== 'string') continue;
+    assertSecretReadPermitted(`${resource}.get`, ctx.config, ctx.log);
+  }
+  return input;
+}
+
 /** Cross-resource expansion must enforce both resource scope and credential-read authority. */
 export const SEARCH_ACROSS_OPERATION = 'operations.searchAcrossResources';
 /** Shared by invoke defaults and discovery so both expose the same permitted resource set. */
