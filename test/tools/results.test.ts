@@ -221,3 +221,26 @@ describe('0.12.0 error contract fields', () => {
     expect(body.message).toBe('upstream down');
   });
 });
+
+describe('credential refusal collapse and payload redaction', () => {
+  it('collapses a plain-path 401 to the fixed UNAUTHORIZED envelope, never naming the resource', async () => {
+    // The one-refusal-shape contract on EVERY tool: the vendor message of a plain read/list
+    // refusal may name the resource the key may not read, so the fixed envelope is the answer.
+    for (const err of [
+      new UnauthorizedError('Bad credentials', 'https://hudu.invalid/asset_passwords'),
+      new ForbiddenError('Bad credentials', 'https://hudu.invalid/asset_passwords'),
+    ]) {
+      const result = errorContent(err);
+      expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
+      expect(JSON.stringify(result)).not.toContain('hudu.invalid');
+      expect(JSON.stringify(result)).not.toContain('asset_passwords');
+    }
+  });
+
+  it('redacts credential-shaped keys out of the error payload, like the success path', () => {
+    const err = Object.assign(new Error('vendor said no'), { code: 'SERVER_ERROR', httpStatus: 500, details: { note: 'x', otp_seed: 'leak-seed' } });
+    const result = errorContent(err);
+    expect(JSON.stringify(result)).not.toContain('leak-seed');
+    expect(JSON.parse(result.content[0]!.text).details.otp_seed).toBe('[REDACTED]');
+  });
+});
