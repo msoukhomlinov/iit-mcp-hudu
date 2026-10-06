@@ -161,3 +161,94 @@ describe('literal-IP base hosts', () => {
     await s.close();
   });
 });
+
+describe('0.12.0 preset knobs: the env overrides', () => {
+  // A fresh Response per dial: a consumed body cannot be re-read, so the stub must not hand
+  // back one Response object twice.
+  const article = () => Response.json({ id: 22, title: 't', body: 'b' });
+  const read = { operation: 'articles.get', input: { id: 22 } };
+
+  it('HUDU_CACHE_PRESET=off: two identical single-record reads both dial', async () => {
+    const session = await connect(article, { HUDU_CACHE_PRESET: 'off' });
+    for (let i = 0; i < 2; i++) {
+      const r = await session.call('hudu_read', read);
+      expect(r.isError).toBeUndefined();
+    }
+    expect(session.urls).toHaveLength(2);
+    await session.close();
+  });
+
+  it('the default recommended preset serves the second identical read from the cache', async () => {
+    const session = await connect(article, {});
+    for (let i = 0; i < 2; i++) {
+      const r = await session.call('hudu_read', read);
+      expect(r.isError).toBeUndefined();
+    }
+    expect(session.urls).toHaveLength(1);
+    await session.close();
+  });
+
+  it('the default cooldown arms when a 429 spends its retries: the next call is a local notSent refusal', async () => {
+    const always429 = () => new Response('rate limited', { status: 429 });
+    const session = await connect(always429, { HUDU_CACHE_PRESET: 'off' });
+    // The gate arms when the 429's retries are SPENT (SDK issue #77): the first call spends the
+    // profile's 1 retry — two wire attempts — and arms the per-tenant deadline afterwards.
+    const first = await session.call('hudu_read', read);
+    expect(first.isError).toBe(true);
+    expect(session.urls).toHaveLength(2);
+    // The gate is now armed: the next call is refused locally and never re-dials the vendor.
+    const second = await session.call('hudu_read', read);
+    expect(second.isError).toBe(true);
+    // The envelope is double-encoded in the content text; parse it rather than string-matching.
+    const env2 = JSON.parse(second.content[0].text);
+    expect(env2.notSent).toBe(true);
+    expect(session.urls).toHaveLength(2);
+    await session.close();
+  });
+
+  it('HUDU_COOLDOWN=off: no gate arms, so the profile retry means two wire attempts', async () => {
+    const always429 = () => new Response('rate limited', { status: 429 });
+    const session = await connect(always429, { HUDU_CACHE_PRESET: 'off', HUDU_COOLDOWN: 'off' });
+    const r = await session.call('hudu_read', read);
+    expect(r.isError).toBe(true);
+    // A vendor 429 (a sent call) must not be flagged notSent; the flag marks local refusals.
+    const env1 = JSON.parse(r.content[0].text);
+    expect(env1.notSent).toBeUndefined();
+    expect(env1.httpStatus).toBe(429);
+    expect(session.urls).toHaveLength(2);
+    await session.close();
+  });
+
+  it('HUDU_TIMEOUT_MS wins over the profile deadline: an env 150 ms aborts a stalling vendor', async () => {
+    // A wiring regression pin: removing `timeoutMs: config.HUDU_TIMEOUT_MS` from the options
+    // literal would leave every other test green — the deadline would silently fall back to the
+    // agent profile's 20 s. A vendor that never answers must be aborted by the ENV deadline.
+    const session = await connect(undefined, { HUDU_TIMEOUT_MS: 150 });
+    // The harness stub never honours the deadline's signal, so replace it with a vendor that
+    // answers after 3 s — or rejects with the deadline's signal, whichever comes first.
+    const dials: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      async (url: unknown, init?: RequestInit) => {
+        dials.push(String(url));
+        return new Promise<Response>((resolve, reject) => {
+          const t = setTimeout(() => resolve(Response.json({ version: 'late' })), 3000);
+          (init?.signal as AbortSignal | undefined)?.addEventListener('abort', () => {
+            clearTimeout(t);
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          });
+        });
+      },
+    );
+    const started = Date.now();
+    const r = await session.call('hudu_get_api_info', {});
+    const elapsed = Date.now() - started;
+    expect(r.isError).toBe(true);
+    // The env deadline fired — not the 3 s stub and not the profile's 20 s.
+    expect(elapsed).toBeLessThan(1500);
+    expect(dials).toHaveLength(1);
+    const env = JSON.parse(r.content[0].text);
+    expect(env.category).toBe('timeout');
+    await session.close();
+  });
+});

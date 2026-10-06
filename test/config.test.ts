@@ -269,3 +269,30 @@ it('defaults to read-only and accepts only explicit true/false strings', () => {
     expect(() => loadConfig({ ...valid, HUDU_READ_ONLY: value })).toThrow(ConfigError);
   }
 });
+
+describe('preset knob config (0.12.0 adoption)', () => {
+  it('defaults: the recommended cache preset, the cooldown gate on, a 30 s deadline', () => {
+    const c = loadConfig(valid);
+    expect(c.HUDU_CACHE_PRESET).toBe('recommended');
+    expect(c.HUDU_COOLDOWN).toBe('on');
+    expect(c.HUDU_TIMEOUT_MS).toBe(30000);
+  });
+
+  it('accepts the explicit alternatives, coercing the timeout to a number', () => {
+    const c = loadConfig({ ...valid, HUDU_CACHE_PRESET: 'off', HUDU_COOLDOWN: 'off', HUDU_TIMEOUT_MS: '15000' });
+    expect(c.HUDU_CACHE_PRESET).toBe('off');
+    expect(c.HUDU_COOLDOWN).toBe('off');
+    expect(c.HUDU_TIMEOUT_MS).toBe(15000);
+  });
+
+  it('rejects an unknown cache preset or cooldown value, naming the variable', () => {
+    expect(() => loadConfig({ ...valid, HUDU_CACHE_PRESET: 'never' })).toThrow(/HUDU_CACHE_PRESET/);
+    expect(() => loadConfig({ ...valid, HUDU_COOLDOWN: 'maybe' })).toThrow(/HUDU_COOLDOWN/);
+  });
+
+  it('refuses to boot on a non-positive or non-integer HUDU_TIMEOUT_MS', () => {
+    for (const bad of ['0', '-1', 'abc', '10.5']) {
+      expect(() => loadConfig({ ...valid, HUDU_TIMEOUT_MS: bad })).toThrow(ConfigError);
+    }
+  });
+});
