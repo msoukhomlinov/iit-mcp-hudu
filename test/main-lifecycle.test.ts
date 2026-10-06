@@ -19,19 +19,32 @@ import { fileURLToPath } from 'node:url';
 //
 // No process here can reach Hudu: the http boot holds no credential (placeholder origin), and the
 // stdio boot gets a fake origin plus key that is only used by tool calls, which never happen.
+//
+// The http boot's port is a re-roll, not a fixed choice. The probe and the server see different
+// port tables — a probe bound on `127.0.0.1` checks the v4 table only, while the server binds no
+// host, i.e. dual-stack `::`, which the v6 table governs — and the probe-to-bind window spans a
+// full child process boot. Either way a "free" port can still be taken, the server then logs
+// `listen failed` / EADDRINUSE and exits 1, and the test re-rolls on a fresh port instead of
+// failing on a collision that says nothing about the lifecycle under test.
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 const READY_TIMEOUT_MS = 20000;
 const RUN_TIMEOUT_MS = 60000;
+/** Fresh ports a stolen-port EADDRINUSE may be re-rolled on before the test gives up. */
+const MAX_PORT_ATTEMPTS = 5;
 
 // A minimal environment: no HUDU_* value from the machine running the tests can leak into the
 // server process.
 const MIN_ENV = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' };
 
+// Bind the probe the way the server binds — no host, so the kernel's picker checks the same
+// (dual-stack, v6-governed) view of the port table the server's own `::` listen gets. A probe on
+// `127.0.0.1` alone checks the v4 table only: a port a v6-side listener already holds passes that
+// check yet makes the server's bind fail with EADDRINUSE.
 async function freePort(): Promise<number> {
   const probe = createServer();
-  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => probe.listen(0, resolve));
   const port = (probe.address() as AddressInfo).port;
   await new Promise<void>((resolve, reject) => probe.close((err) => (err ? reject(err) : resolve())));
   return port;
@@ -46,7 +59,7 @@ interface Watch {
   close: Promise<[number | null, NodeJS.Signals | null]>;
 }
 
-function watch(child: ChildProcessWithoutNullStreams): Watch {
+function watchChild(child: ChildProcessWithoutNullStreams): Watch {
   let text = '';
   child.stderr.on('data', (chunk) => (text += String(chunk)));
   child.stdout.resume(); // never let a full pipe block the child
@@ -79,22 +92,47 @@ function probe(url: string): Promise<boolean> {
   });
 }
 
-async function waitHealthy(url: string, text: () => string): Promise<void> {
-  const deadline = Date.now() + READY_TIMEOUT_MS;
+// Wait until the server answers healthz or logs that it could not bind. The caller owns the
+// deadline — one shared deadline across every attempt, not one per boot — so a run that keeps
+// losing its ports still fails in bounded time.
+async function waitOutcome(
+  url: string,
+  text: () => string,
+  deadline: number,
+): Promise<'healthy' | 'listen-failed'> {
   for (;;) {
-    if (await probe(url)) return;
+    if (text().includes('"msg":"listen failed"')) return 'listen-failed';
+    if (await probe(url)) return 'healthy';
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${url}; server log:\n${text()}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 
-describe('process lifecycle, as wired by src/main.ts', () => {
-  it('http: SIGTERM leaves shutting-down and server-closed lines and exits 0', async () => {
+// Boot the http transport until it answers healthz. A stolen port shows up as `listen failed`
+// with EADDRINUSE and an exit 1; that re-rolls on a fresh port. Any other way of not coming up is
+// a real failure of the thing under test and fails the run immediately.
+async function bootHealthyHttp(): Promise<{ child: ChildProcessWithoutNullStreams; watch: Watch }> {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  for (let attempt = 1; ; attempt++) {
     const port = await freePort();
     const child = boot({ MCP_TRANSPORT: 'http', HUDU_ALLOW_ANY_BASE_HOST: 'true', PORT: String(port), LOG_LEVEL: 'info' });
-    const { text, close } = watch(child);
+    const watch = watchChild(child);
+    const outcome = await waitOutcome(`http://127.0.0.1:${port}/healthz`, watch.text, deadline);
+    if (outcome === 'healthy') return { child, watch };
+    if (!watch.text().includes('EADDRINUSE')) {
+      throw new Error(`server did not come up; server log:\n${watch.text()}`);
+    }
+    if (attempt >= MAX_PORT_ATTEMPTS) {
+      throw new Error(`EADDRINUSE on every one of ${attempt} fresh ports; server log:\n${watch.text()}`);
+    }
+    await watch.close; // the failed boot has exited on its own; drain it before re-booting
+  }
+}
 
-    await waitHealthy(`http://127.0.0.1:${port}/healthz`, text);
+describe('process lifecycle, as wired by src/main.ts', () => {
+  it('http: SIGTERM leaves shutting-down and server-closed lines and exits 0', async () => {
+    const { child, watch: { text, close } } = await bootHealthyHttp();
+
     child.kill('SIGTERM');
     const [code, signal] = await close;
 
@@ -112,7 +150,7 @@ describe('process lifecycle, as wired by src/main.ts', () => {
       HUDU_BASE_URL: 'https://hudu.example.com',
       HUDU_API_KEY: 'test-key',
     });
-    const { text, close } = watch(child);
+    const { text, close } = watchChild(child);
 
     await waitUntil(() => text().includes('"msg":"serving"'), 'the stdio server to log "serving"', text);
     child.kill('SIGTERM');
