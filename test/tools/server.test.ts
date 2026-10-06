@@ -173,7 +173,7 @@ describe('per-request Hudu credential', () => {
       throw new Error('a key-less catalog request must not reach Hudu');
     });
     const tools = await session.list();
-    expect(tools).toHaveLength(21);
+    expect(tools).toHaveLength(22);
     expect(session.urls).toEqual([]);
     await session.close();
   });
@@ -244,7 +244,7 @@ describe('invalid x-hudu-base-url', () => {
       {},
       base,
     );
-    expect(await session.list()).toHaveLength(21);
+    expect(await session.list()).toHaveLength(22);
     const result = await session.call('hudu_get_api_info', {});
     expect(result.isError).toBe(true);
     expect(session.urls).toEqual([]);

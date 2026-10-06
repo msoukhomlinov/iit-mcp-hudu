@@ -4,6 +4,7 @@
  */
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ToolContext, ToolDeps } from './context.js';
+import { registerFetchManyTool } from './fetch-many.js';
 import { registerListTools } from './lists.js';
 import { registerMetaTools } from './meta.js';
 import { registerReadTools } from './reads.js';
@@ -11,8 +12,9 @@ import { registerSearchTool } from './search.js';
 import { DEFAULT_SEARCH_SCOPE, effectiveDefaultSearchScope, effectiveSearchResources } from './search-policy.js';
 
 /**
- * Register the CORE profile — the SDK's `CORE_TOOLS` plus this server's four dedicated bounded list
- * reads (`hudu_list_companies`, `hudu_list_articles`, `hudu_list_assets`, `hudu_list_asset_layouts`)
+ * Register the CORE profile — the SDK's `CORE_TOOLS` (including, since node-hudu 0.12.0, the
+ * dedicated batch read `hudu_fetch_many`) plus this server's four dedicated bounded list reads
+ * (`hudu_list_companies`, `hudu_list_articles`, `hudu_list_assets`, `hudu_list_asset_layouts`)
  * — on `server`.
  */
 export function registerTools(server: McpServer, deps: ToolDeps): void {
@@ -61,4 +63,5 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   registerSearchTool(server, ctx);
   registerReadTools(server, ctx);
   registerListTools(server, ctx);
+  registerFetchManyTool(server, ctx);
 }

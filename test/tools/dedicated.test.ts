@@ -18,7 +18,10 @@ afterEach(() => vi.unstubAllGlobals());
 
 /** The catalogue's own unexposed count, before the overlay re-labels anything. */
 const SDK_UNEXPOSED = CATALOG.filter((row) => row.reachable === true && row.tool === null).length;
-const RE_LABELLED = 0; // SDK 0.9 excludes these unbounded operations from its reachable set.
+// The four list rows are unreachable in the SDK catalogue (the overlay RESTORES them, which
+// moves the reachable counts, not the unexposed one). `operations.fetchMany` is reachable and
+// tool-less there, so the overlay re-labels exactly that one row.
+const RE_LABELLED = 1;
 
 describe('dedicated read-tool mapping', () => {
   it('matches the tools this server actually registers, by their own backing-operation metadata', async () => {
@@ -52,6 +55,7 @@ describe('hudu_describe_operation steers a mapped read to its ungated tool', () 
     ['companies.list', 'hudu_list_companies'],
     ['articles.list', 'hudu_list_articles'],
     ['asset_layouts.list', 'hudu_list_asset_layouts'],
+    ['operations.fetchMany', 'hudu_fetch_many'],
   ])('%s names %s instead of hudu_read', async (operation, tool) => {
     const session = await connect();
     const result = await session.call('hudu_describe_operation', { operation });
@@ -101,6 +105,17 @@ describe('hudu_describe_operation steers a mapped read to its ungated tool', () 
 });
 
 describe('hudu_list_operations advertises the dedicated tool on the mapped rows', () => {
+  it('re-labels the operations.fetchMany row with hudu_fetch_many', async () => {
+    const session = await connect();
+    const result = await session.call('hudu_list_operations', { resource: 'operations', limit: 100 });
+    const row = result.structuredContent.rows.find((r: Json) => r.op === 'operations.fetchMany');
+    expect(row).toBeDefined();
+    expect(row.tool).toBe('hudu_fetch_many');
+    expect(row.reachable).toBe(true);
+    expect(row.reason ?? '').not.toContain('hudu_read');
+    await session.close();
+  });
+
   it('re-labels the asset list row and drops the hudu_read reason', async () => {
     const session = await connect();
     const result = await session.call('hudu_list_operations', { resource: 'assets', limit: 100 });
@@ -174,14 +189,18 @@ describe('a narrowed HUDU_SEARCH_RESOURCES is honoured before advertising', () =
     // asset_layouts is not searchable and is never gated, so its tool stays advertised.
     const layouts = await session.call('hudu_describe_operation', { operation: 'asset_layouts.list' });
     expect(layouts.structuredContent.exposed_tool).toBe('hudu_list_asset_layouts');
+    // operations is not a search scope either: the batch tool is advertised even when narrowed.
+    const batch = await session.call('hudu_describe_operation', { operation: 'operations.fetchMany' });
+    expect(batch.structuredContent.exposed_tool).toBe('hudu_fetch_many');
     await session.close();
   });
 
   it('leaves an excluded row tool-less in the catalogue and keeps the unexposed count honest', async () => {
     const session = await connect(undefined, { HUDU_SEARCH_RESOURCES: ['articles'] });
     const page = await session.call('hudu_list_operations', { limit: 1 });
-    // Only articles.list and asset_layouts.list are advertised here; companies/assets are not.
-    expect(page.structuredContent.unexposed_operations).toBe(SDK_UNEXPOSED);
+    // Only articles.list and asset_layouts.list are advertised here; companies/assets are not —
+    // but hudu_fetch_many is never search-gated, so its row is still re-labelled.
+    expect(page.structuredContent.unexposed_operations).toBe(SDK_UNEXPOSED - RE_LABELLED);
     const assets = await session.call('hudu_list_operations', { resource: 'assets', limit: 100 });
     const row = assets.structuredContent.rows.find((r: Json) => r.op === 'assets.listAcrossCompanies');
     expect(row.tool).toBeNull();

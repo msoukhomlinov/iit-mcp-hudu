@@ -4,9 +4,10 @@ MCP server for Hudu IT documentation, built on the [`node-hudu`](https://www.npm
 
 ## Tool surface
 
-19 tools by default: `hudu_list_operations`, `hudu_describe_operation`, `hudu_read`, twelve
-core reads, and four bounded list reads. Setting `HUDU_READ_ONLY=false` adds `hudu_write` and
-`hudu_delete` (21 tools). Each dispatcher uses a separate SDK client in its matching mode,
+20 tools by default: `hudu_list_operations`, `hudu_describe_operation`, `hudu_read`,
+`hudu_fetch_many`, twelve core reads, and four bounded list reads. Setting
+`HUDU_READ_ONLY=false` adds `hudu_write` and `hudu_delete` (22 tools). Each dispatcher uses a
+separate SDK client in its matching mode,
 with names, annotations and operation enums from the SDK's curated metadata. SDK enforcement
 rejects cross-effect calls before requests. The old `hudu_invoke`, `hudu_catalog` and
 `hudu_describe` names are removed; consumers must resync their tool catalog.
@@ -25,6 +26,16 @@ request; `asset_layouts` is not searchable (the SDK declares no vendor text filt
 `hudu_get_asset_layout` tool.
 
 These tools run on the node-hudu 0.12.0 line; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins.
+
+`hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
+one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
+numeric vendor id, and an optional client-side field projection. A shape violation is refused at
+the schema layer before any request, and failure is per-item: a miss or a vendor fault lands on
+its own row as a typed error while the rest of the batch is served. The deployment's secret-read
+policy applies to the batch's items exactly as to a single read, so a credential item is
+refused pre-request under the default `HUDU_SECRET_READS=deny`; `HUDU_READ_ONLY` keeps the tool
+— it is a read. The same batch stays reachable through `hudu_read` with operation
+`operations.fetchMany`, gated the same way.
 
 ## Transports
 
@@ -193,8 +204,9 @@ Three SDK behaviours changed in the 0.12.0 line and shape a deployment:
   schema layer with a typed `CONFIG_ERROR` naming the accepted fields, before any request;
   `hudu_describe_operation` serves the same contract as `input_contract`. The batch read
   `operations.fetchMany` (up to 20 single records across mixed resources in one call) is part of
-  the `hudu_read` surface; this server serves it through `hudu_read` rather than a dedicated
-  `hudu_fetch_many` tool, with the secret-read policy applied to its items.
+  the `hudu_read` surface; this server also registers the dedicated `hudu_fetch_many` tool from
+  the 0.12.0 CORE profile, with the secret-read policy applied to the batch's items on both
+  paths.
 - **Error envelopes carry the status in a field.** The error `message` is the vendor's short
   detail (or a fixed default), never the status or the dialed host; those travel in their own
   fields, and a long upstream body is still replaced by the response shape, not served. The

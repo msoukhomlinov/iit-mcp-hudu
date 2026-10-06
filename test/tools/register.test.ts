@@ -30,16 +30,12 @@ describe('tool contract', () => {
     const names = (await session.list()).map((t) => t.name);
     // Set equality, not a count: a swapped name would pass a length check. LIST_TOOLS is derived
     // from the module that registers them, so a rename fails here rather than silently shipping.
-    // The SDK's CORE profile has carried `hudu_fetch_many` since 0.12.0; this server serves the
-    // batch read through `hudu_read` (`operations.fetchMany`, secret-read policy applied) instead
-    // of a dedicated tool — an explicit surface decision, pinned here so its reversal is visible.
-    const expected = [...CORE_TOOLS.filter((t) => t !== 'hudu_fetch_many'), ...LIST_TOOLS];
+    // Since node-hudu 0.12.0 the full SDK CORE profile is registered, `hudu_fetch_many` included:
+    // the dedicated batch read coexists with the `hudu_read` dispatch of `operations.fetchMany`,
+    // and both paths apply the secret-read policy to the batch's items.
+    const expected = [...CORE_TOOLS, ...LIST_TOOLS];
     expect([...names].sort()).toEqual([...expected].sort());
-    expect(names).toHaveLength(21);
-    // The surface decision pinned negatively too: if the SDK ever renames or demotes
-    // hudu_fetch_many out of CORE_TOOLS the filter above silently no-ops — this pin keeps the
-    // decision (served through hudu_read, not as a dedicated tool) visible either way.
-    expect(names).not.toContain('hudu_fetch_many');
+    expect(names).toHaveLength(22);
     await session.close();
   });
 
@@ -82,7 +78,9 @@ it('omits mutation tools in read-only mode, even when write policy is all', asyn
     expect(tools.map((tool) => tool.name)).not.toEqual(expect.arrayContaining(['hudu_write']));
     expect(tools.map((tool) => tool.name)).not.toEqual(expect.arrayContaining(['hudu_delete']));
     expect(tools.map((tool) => tool.name)).not.toContain('hudu_invoke');
-    expect(tools).toHaveLength(19);
+    // hudu_fetch_many is a read: read-only mode keeps it.
+    expect(tools.map((tool) => tool.name)).toContain('hudu_fetch_many');
+    expect(tools).toHaveLength(20);
     for (const name of ['hudu_write', 'hudu_delete', 'hudu_invoke']) {
       expect((await session.call(name, { operation: 'companies.delete', input: { id: 1 } })).code).toBe(-32602);
     }
