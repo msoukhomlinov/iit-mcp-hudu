@@ -8,9 +8,10 @@
  * (tools/search-policy.ts) before the SDK is called, and this tool calls the SAME wrapper first,
  * so an item cannot bypass the deployment's secret-read authority by arriving through the
  * dedicated tool. The SDK remains the validation authority: the closed item shape is served here
- * as the model-facing contract, and the SDK re-validates it with a typed CONFIG_ERROR before any
- * request — a typo in a resource name is distinguished from an unsupported resource, and both are
- * named.
+ * as the model-facing contract, and the SDK re-validates it before any request. A resource
+ * outside the 22 is refused on both paths with a typed error naming the accepted set — the SDK's
+ * deeper typo-vs-unsupported distinction (`validateFetchManyItems`) is pre-empted by the schema
+ * and registry gates and never reaches the model.
  *
  * Each item executes as the single read it names (`<resource>.get`): one wire request per item,
  * sequential, through the resource's own get. Failure is PER-ITEM: a miss or a vendor fault lands
@@ -51,10 +52,11 @@ export const FETCH_MANY_RESOURCES = [
  * The CLOSED item shape: exactly `{ resource, id, fields? }` — a numeric vendor id and an
  * optional projection.
  *
- * The bounds align with the SDK's own authority (`validateFetchManyItems`): a non-negative
- * integer id, and a NON-EMPTY projection — an empty `fields` list would serve
- * `{ found: true, value: {} }`, so the schema layer refuses it instead of silently projecting to
- * nothing.
+ * The non-negative integer `id` matches the SDK's own authority (`validateFetchManyItems`
+ * refuses `id < 0`). The NON-EMPTY `fields` bound is this tool's STRICTER schema-layer refusal,
+ * not an SDK check: the `hudu_read` dispatch of the same batch accepts an empty projection and
+ * serves `{ found: true, value: {} }`, so this layer refuses it instead of silently projecting
+ * to nothing.
  */
 const FETCH_MANY_ITEM = z.object({
   resource: z.enum(FETCH_MANY_RESOURCES),
