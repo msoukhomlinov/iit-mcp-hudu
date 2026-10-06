@@ -185,7 +185,31 @@ Three SDK behaviours changed in the 0.12.0 line and shape a deployment:
   `hudu_fetch_many` tool, with the secret-read policy applied to its items.
 - **Error envelopes carry the status in a field.** The error `message` is the vendor's short
   detail (or a fixed default), never the status or the dialed host; those travel in their own
-  fields, and a long upstream body is still replaced by the response shape, not served.
+  fields, and a long upstream body is still replaced by the response shape, not served. The
+  envelope also carries the SDK's `category`, `retryable`, `operation`, `suggestedAction`,
+  `fieldErrors` and `details` where the error has them, `notSent` on a locally issued 429
+  cooldown refusal, and `location` on a `REDIRECT_BLOCKED` refusal; the status field is
+  `httpStatus`.
+
+Every client the server builds — the parent, the fail-closed placeholders and each
+(origin, credential) scope — opts into four 0.12.0 behaviours:
+
+- `profile: 'agent'`: the conservative agent preset for every option this server leaves unset
+  (20 s whole-call deadline, 1 retry, 240/min rate limit, concurrency 3, bounded resolution
+  scans). The rate-limit bucket is per client, i.e. per scope.
+- `cache: 'recommended'`: the per-entity read-through TTL preset (1 h structural / 5 min
+  mutable / 1 min base). Caches are per client, so per scope. A write through the write or
+  delete client does not clear the read client's cache (separate instances), so a read after a
+  mutation is TTL-bounded stale, never unbounded.
+- `blockPrivateHosts: true`: the literal-IP SSRF floor, fail-closed at client construction. It
+  complements the `HUDU_ALLOWED_BASE_HOSTS` hostname matcher (which alone can express wildcard
+  suffixes) and holds even in bring-your-own-origin mode, where that matcher is wide.
+- `cooldown: { enabled: true }`: the 429 cooldown gate; a call refused locally by the gate
+  answers with `notSent: true` in the error envelope, so a model does not read a local refusal
+  as a vendor rejection of a sent call.
+
+These are deployment-wide, not per-caller: env-var overrides are a recorded follow-up, not a
+foot-gun, until a deployment actually needs a non-default TTL or profile.
 
 ## Development
 

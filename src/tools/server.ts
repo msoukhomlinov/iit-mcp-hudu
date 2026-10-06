@@ -281,6 +281,29 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
   const options: HuduConfig = {
     baseUrl: config.MCP_TRANSPORT === 'http' ? HTTP_PLACEHOLDER_ORIGIN : config.HUDU_BASE_URL!,
     logger: log,
+    // 0.12.0 adoption: the four opt-ins every client this factory builds gets (the parent, the
+    // fail-closed placeholders and the per-scope clients), in one literal so a later option added
+    // here cannot drift between them.
+    // `profile: 'agent'` fills the options left unset with the agent preset (20 s whole-call
+    // deadline, 1 retry, 240/min rate limit, concurrency 3, bounded resolution scans). This
+    // server sets none of those options itself, so EXPLICIT > PROFILE > DEFAULTS degenerates to a
+    // pure gain; the rate-limit bucket is per client, i.e. per (origin, credential) scope.
+    // `cache: 'recommended'` is the per-entity read-through TTL preset (1 h structural / 5 min
+    // mutable / 1 min base). Caches are per client, hence per scope — a write through the write
+    // or delete client does NOT clear the read client's cache (separate instances), so a read
+    // after a mutation is TTL-bounded stale, never unbounded.
+    // `blockPrivateHosts` is the literal-IP SSRF floor, fail-closed at config time. It complements
+    // the HUDU_ALLOWED_BASE_HOSTS hostname matcher in base-hosts.ts (which alone can express
+    // wildcard suffixes) and holds even in bring-your-own-origin mode, where that matcher is wide.
+    // `allowedHosts` is deliberately not passed: it cannot express the hostname matcher's wildcard
+    // suffixes, and the private bound wins over it anyway.
+    // `cooldown` is the 429 cooldown gate; a locally refused call answers with
+    // RateLimitError.notSent, which the error envelope surfaces so a local refusal stays
+    // distinguishable from a vendor rejection.
+    profile: 'agent',
+    cache: 'recommended',
+    blockPrivateHosts: true,
+    cooldown: { enabled: true },
     // Omitted entirely when unset, so the SDK's own default stays the default rather than being
     // shadowed by a local copy of its value.
     ...(config.HUDU_SEARCH_MAX_INDEX_PAGES === undefined
