@@ -12,6 +12,8 @@ import type { Config } from '../config.js';
 import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
+import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
+import { setCredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 
 /** Identity this server reports in `initialize`. The version is this repo's, not the SDK's. */
@@ -94,6 +96,29 @@ const BASE_URL_NOT_ALLOWED: AuthStrategy = {
 };
 
 /**
+ * A strategy that refuses to produce headers because the request's own credential value is
+ * MALFORMED — the pre-dispatch shape gate for the http intake path (2026-10-07 Autotask incident
+ * class, see `src/credential.ts`).
+ *
+ * Sibling of {@link NO_REQUEST_BASE_URL}, and it exists for the same reason: a refusal must happen
+ * BEFORE a `HuduClient` is constructed, so the malformed value cannot reach the wire even as far as
+ * client construction. The name carries the anomaly names and never a character of the value, and
+ * it is the only channel the SDK lets a strategy talk through — which is exactly why the anomaly
+ * names are in it.
+ */
+function malformedCredentialStrategy(anomalies: readonly CredentialAnomaly[]): AuthStrategy {
+  return {
+    // The name is the SDK's only diagnostic channel, and `tools/results.ts` parses exactly this
+    // shape back out of the resulting AuthError to answer with the typed CREDENTIAL_MALFORMED
+    // envelope. Changing the shape means changing the parser with it.
+    name: `x-hudu-api-key malformed (${anomalies.join(', ')})`,
+    headers() {
+      throw new Error('this request presented a credential whose shape is malformed; nothing was dialed');
+    },
+  };
+}
+
+/**
  * A per-(origin, credential) client built from the request's own `x-hudu-base-url` and
  * `x-hudu-api-key`, cached by the pair's hash.
  *
@@ -161,6 +186,23 @@ interface ModeEntry {
   badBase: HuduClient;
   baseRefused: HuduClient;
   scopes: ScopedClientCache;
+  /**
+   * Build one more fail-closed placeholder client for this mode, from the same option literal the
+   * named placeholders use. Only the malformed-credential placeholder needs it, because its
+   * strategy name varies with the anomalies seen.
+   */
+  buildPlaceholder: (auth: AuthStrategy) => HuduClient;
+  /**
+   * The malformed-credential clients, one per anomaly set seen so far.
+   *
+   * Lazily built and cached rather than one per mode: the strategy name carries the anomaly names,
+   * the anomaly set is small and bounded (`CREDENTIAL_ANOMALIES`), and a fresh `HuduClient` per
+   * malformed request would let a caller allocate a client (and its 64 MB text budget) per request
+   * — which is the resource the scoped-client cap exists to protect. The cache is bounded by the
+   * power set of the seven anomalies in `CREDENTIAL_ANOMALIES`, i.e. it cannot grow with request
+   * volume.
+   */
+  malformed: Map<string, HuduClient>;
 }
 
 /**
@@ -188,7 +230,7 @@ interface ModeEntry {
  * Under `stdio` the process boundary is the trust boundary and the parent already carries the
  * environment's credential and origin; the headers are never read on this path.
  */
-function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestContext): { client: HuduClient; origin?: string } {
+function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestContext, log: Logger): { client: HuduClient; origin?: string } {
   if (config.MCP_TRANSPORT === 'stdio') return { client: entry.parent, origin: new URL(config.HUDU_BASE_URL!).origin };
   const headers = ctx.requestInfo === undefined ? undefined : headerRecord(ctx.requestInfo.headers);
   const usable = (v: string | undefined) => (v === undefined || v.trim().length === 0 ? undefined : v);
@@ -212,6 +254,28 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
 
   const key = headerKey ?? (callerNamed ? undefined : config.HUDU_API_KEY);
   if (key === undefined) return { client: entry.parent };
+  // Pre-dispatch shape gate, on the value this request will actually present: a credential whose
+  // bytes were mangled by the load is refused HERE, before a client is constructed and so before
+  // the first dial. The check is on whichever value won above, so it covers the per-request header
+  // and the server-held `HUDU_API_KEY` default alike.
+  const anomalies = detectCredentialShape(key);
+  if (anomalies.length > 0) {
+    // One line, and no part of the value: the anomalies are the diagnostic, and the key is a
+    // per-caller secret that must never reach a log sink.
+    log.warn('refused a malformed Hudu credential before dialing', {
+      source: headerKey === undefined ? 'HUDU_API_KEY' : 'x-hudu-api-key',
+      anomalies,
+      length: key.length,
+      hint: CREDENTIAL_LOAD_HINT,
+    });
+    const id = anomalies.join(',');
+    let client = entry.malformed.get(id);
+    if (client === undefined) {
+      client = entry.buildPlaceholder(malformedCredentialStrategy(anomalies));
+      entry.malformed.set(id, client);
+    }
+    return { client };
+  }
   if (base === undefined) return { client: entry.noBase };
   try {
     const client = entry.scopes.for(base, key);
@@ -353,6 +417,8 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
       noBase,
       badBase,
       baseRefused,
+      buildPlaceholder: (auth: AuthStrategy) => new HuduClient({ ...scopedOptions, auth }),
+      malformed: new Map<string, HuduClient>(),
       // Fresh clients, not `parent.withAuth(key)`: a scoped client must carry the request's origin
       // as well as its credential, and `withAuth()` can carry the credential only.
       // `blockPrivateHosts` floors the CALLER-named origin only (literal-IP SSRF, fail-closed at
@@ -371,8 +437,25 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
   const read = build('read');
   const mutations = config.HUDU_READ_ONLY ? undefined : { write: build('write'), delete: build('delete') };
 
+  // The server-held credential's anomalies, computed once: the auth-failure envelope annotates a
+  // refusal with them so a 401 on a value this server already knows is malformed is diagnosable
+  // without another dial. `undefined` when the value is clean, so nothing is added to the envelope.
+  const envAnomalies = config.HUDU_API_KEY === undefined ? undefined : detectCredentialShape(config.HUDU_API_KEY);
+  const envView = envAnomalies !== undefined && envAnomalies.length > 0 ? envAnomalies : undefined;
+
   return (ctx: McpRequestContext) => {
-    const resolve = (entry: ModeEntry) => resolveHuduClient(entry, config, ctx);
+    const resolve = (entry: ModeEntry) => resolveHuduClient(entry, config, ctx, log);
+    // Per serving unit (one stdio connection, or one HTTP request): which of the credentials this
+    // unit is about to present look malformed. Published before the first tool can fail, so the
+    // auth-failure branch can answer with it. A clean value contributes nothing.
+    const headerKey = config.MCP_TRANSPORT === 'stdio' || ctx.requestInfo === undefined
+      ? undefined
+      : readHuduKey(headerRecord(ctx.requestInfo.headers));
+    const requestAnomalies = headerKey === undefined ? undefined : detectCredentialShape(headerKey);
+    setCredentialShapeView({
+      env: envView,
+      request: requestAnomalies !== undefined && requestAnomalies.length > 0 ? requestAnomalies : undefined,
+    });
     const { client: hudu, origin: huduOrigin } = resolve(read);
     const mutationClients = mutations ? { write: resolve(mutations.write).client, delete: resolve(mutations.delete).client } : undefined;
     const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION, title: 'Hudu MCP Server' });

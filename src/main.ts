@@ -7,13 +7,49 @@
  */
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { ConfigError, loadConfig } from './config.js';
+import { runDoctor } from './doctor.js';
 import { createLogger } from './logger.js';
 import { installHttpLifecycle } from './lifecycle.js';
 import { startHttpServer } from './http.js';
 import { startStdio } from './stdio.js';
 import { createMcpServerFactory } from './tools.js';
 
+/**
+ * `doctor` — the zero-wire preflight subcommand.
+ *
+ * Prints the credential shape report (length, two-character prefix, anomaly names; never a value)
+ * and exits. It is a SUBCOMMAND rather than a flag so it is unmistakable in a shell history and in
+ * a runbook, and it exits non-zero when a credential would be refused, so a deployment gate can use
+ * it directly.
+ *
+ * It dials nothing by construction — see `src/doctor.ts`, which imports no Hudu client. The whole
+ * point is that the question "did my credential load intact?" gets a cheap, local answer, because
+ * the alternative answer is a real auth failure against a vendor account where repeats risk a lock.
+ */
+function runDoctorCommand(): void {
+  let config;
+  try {
+    config = loadConfig(process.env);
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      process.stdout.write(JSON.stringify({ ok: false, stage: 'config', error: err.message }, null, 2) + '\n');
+      process.exit(1);
+    }
+    throw err;
+  }
+  const report = runDoctor(config);
+  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+  // Non-zero: a runbook step (`doctor && live-run`) must stop on a bad credential, not proceed to
+  // the dial the report just said not to make.
+  process.exit(report.ok ? 0 : 1);
+}
+
 function main(): void {
+  // `doctor` is matched before anything else, so it never builds a logger, a transport or a client.
+  if (process.argv[2] === 'doctor') {
+    runDoctorCommand();
+    return;
+  }
   let config;
   try {
     config = loadConfig(process.env);

@@ -8,6 +8,7 @@ import { createLogger } from '../src/logger.js';
 import { loadConfig } from '../src/config.js';
 import { HUDU_BASE_URL_HEADER, HUDU_KEY_HEADER, headerRecord, readHuduBase, readHuduKey } from '../src/auth.js';
 import { createMcpServerFactory } from '../src/tools.js';
+import { runDoctor } from '../src/doctor.js';
 
 const HUDU_KEY = 'the-callers-own-hudu-key';
 // No HUDU_API_KEY and no HUDU_BASE_URL defaults: the caller supplies both per request. There is
@@ -84,6 +85,54 @@ describe('HTTP pass-through', () => {
     await createFetchHandler(fakeMcp())(new Request(`http://localhost:8787${HEALTH_PATH}`));
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe('zero-wire conformance: /healthz and /doctor', () => {
+  // The absent-dial assertion this repo already uses ("health does not call Hudu" above), applied
+  // to both pre-credential routes at once: the only way this process reaches Hudu is `fetch`, so a
+  // spy that is never called IS the zero-wire pin. Under `http` the server may hold a default
+  // credential, so this runs with one configured — the case where a naive implementation would be
+  // tempted to "validate" the credential by dialing.
+  const withDefaults = loadConfig({ MCP_TRANSPORT: 'http', HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'clean-key' });
+
+  it('answers /doctor and /healthz with no vendor request, and never a malformed-credential dial', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch');
+    const mcp = createMcpHandler(createMcpServerFactory(withDefaults, silent));
+    // The production wiring: `startHttpServer` builds the report from THIS process's parsed config.
+    const handler = createFetchHandler(mcp, () => runDoctor(withDefaults));
+    // GET, because that is what an operator (and a container probe) sends: a 405 answer would be a
+    // route that exists on paper only.
+    const doctor = await handler(new Request('http://localhost:8787/doctor', { method: 'GET' }));
+    const health = await handler(new Request('http://localhost:8787/healthz', { method: 'GET' }));
+    expect(doctor.status).toBe(200);
+    expect(health.status).toBe(200);
+    // `dialed: 0` is the report's own claim; the spy is the proof of it.
+    expect((await doctor.json()).dialed).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('answers /doctor with the same shape the CLI prints, from the server-held values', async () => {
+    const mcp = createMcpHandler(createMcpServerFactory(withDefaults, silent));
+    const report = await (await createFetchHandler(mcp, () => runDoctor(withDefaults))(new Request('http://localhost:8787/doctor', { method: 'GET' }))).json() as any;
+    expect(report).toMatchObject({ ok: true, transport: 'http', dialed: 0 });
+    expect(report.credentials[0]).toMatchObject({ name: 'HUDU_API_KEY', status: 'ok', shapeOk: true });
+    expect(JSON.stringify(report)).not.toContain('clean-key');
+  });
+
+  it('is answered without any credential header, under the same trust model as /healthz', async () => {
+    // No x-hudu-api-key, no x-hudu-base-url: the route reports the SERVER's environment, never
+    // echoes a caller's, and is therefore not a way to test a caller-supplied key over the wire.
+    const mcp = createMcpHandler(createMcpServerFactory(withDefaults, silent));
+    const res = await createFetchHandler(mcp, () => runDoctor(withDefaults))(new Request('http://localhost:8787/doctor', { method: 'GET' }));
+    expect(res.status).toBe(200);
+    const body = JSON.stringify(await res.json());
+    // The report carries the SERVER-HELD field's shape only, named as the environment variable. The
+    // header name appears solely in the note that says the per-request credential is checked at the
+    // tool boundary instead — it is a statement about the contract, not a caller credential.
+    expect(body).toContain('HUDU_API_KEY');
+    expect(body).not.toContain('"x-hudu-api-key"');
   });
 });
 
