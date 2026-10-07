@@ -9,6 +9,7 @@
 import * as z from 'zod';
 import { getCapability } from 'node-hudu/capabilities';
 import { SEARCH_RESOURCES } from 'node-hudu/mcp';
+import { CREDENTIAL_LOAD_HINT, detectCredentialShape } from './credential.js';
 import { isWriteEffect } from './policy.js';
 
 /**
@@ -226,6 +227,13 @@ const schema = z
     HUDU_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   })
   .superRefine((c, ctx) => {
+    // Pre-dial integrity check (2026-10-07 Autotask incident class): a credential whose bytes were
+    // mangled by a quote-preserving load is refused HERE, before any client is constructed and so
+    // before the first dial. Refusal is transport-independent: `HUDU_API_KEY` under `http` is the
+    // default key for a request that brings none, and presenting a mangled one is the same
+    // incident on a different path.
+    checkCredentialShape(c.HUDU_API_KEY, ctx, 'HUDU_API_KEY');
+
     // `stdio` has exactly one origin and one credential (the environment's), so it requires both.
     // Under `http` both are optional defaults: a caller's `x-hudu-*` headers win, and the defaults
     // fill in whatever a request leaves out (see `resolveHuduClient` for how they pair).
@@ -348,6 +356,34 @@ const schema = z
       }
     }
   });
+
+/**
+ * Apply the same check to `HUDU_API_KEY` here as to the per-request key under `http`.
+ *
+ * {@link CREDENTIAL_LOAD_HINT} — the env-load pitfall the refusal ends with — lives in
+ * `src/credential.ts` beside the anomaly vocabulary, so the boot error and the http refusal explain
+ * the same cause in the same words.
+ *
+ * Lives in a refinement rather than in the field's own `preprocess` so the issue carries the same
+ * `path` (the variable name) the operator already reads, and so a value that is BOTH blank and
+ * malformed reports only the blank case.
+ *
+ * The message never contains a character of the value: the anomaly names and the length are the
+ * whole diagnostic. That matters — the value is the secret, and this text is printed to the boot
+ * log (and, under `http`, would be too).
+ */
+function checkCredentialShape(value: string | undefined, ctx: z.RefinementCtx, path: string): void {
+  if (value === undefined) return;
+  const anomalies = detectCredentialShape(value);
+  if (anomalies.length === 0) return;
+  ctx.addIssue({
+    code: 'custom',
+    path: [path],
+    message:
+      `${path} has a value whose shape cannot be right (length ${value.length}, ${anomalies.join(', ')}); ` +
+      `the server refuses to boot rather than present a malformed credential to Hudu. ${CREDENTIAL_LOAD_HINT}`,
+  });
+}
 
 export type Config = z.infer<typeof schema>;
 

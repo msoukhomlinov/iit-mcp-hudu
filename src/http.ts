@@ -20,6 +20,7 @@ import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import type { Config } from './config.js';
 import type { Logger } from './logger.js';
 import { HUDU_BASE_URL_HEADER, HUDU_KEY_HEADER } from './auth.js';
+import { runDoctor, type DoctorReport } from './doctor.js';
 
 /** The headers that carry per-request scope, and so must never be read from a duplicated pair. */
 const CREDENTIAL_HEADERS = new Set([HUDU_KEY_HEADER, HUDU_BASE_URL_HEADER]);
@@ -33,17 +34,38 @@ export interface FetchHandler {
 export const HEALTH_PATH = '/healthz';
 
 /**
- * Build the fetch-level request handler: health, then MCP.
+ * The zero-wire credential preflight route.
+ *
+ * Same trust model as {@link HEALTH_PATH}: answered before the MCP handler, never authenticated,
+ * and never touching Hudu. It reports the shape of the SERVER-HELD credential only — the caller's
+ * own per-request key is checked at the tool boundary, one request at a time, and is deliberately
+ * not echoed back to the caller that sent it. Reporting shape facts (a length, a two-character
+ * prefix, anomaly names) about the server's own environment is therefore not a disclosure: the
+ * caller that can reach this listener is the operator who set that environment.
+ */
+export const DOCTOR_PATH = '/doctor';
+
+/**
+ * Build the fetch-level request handler: health, doctor, then MCP.
  *
  * Split out from the listener so the request path is testable without binding a port.
+ *
+ * `doctor` is a builder, not a constant, so the route reports THIS process's parsed config and so
+ * the route itself stays Hudu-free: nothing is read until a request arrives.
  */
-export function createFetchHandler(mcp: FetchHandler) {
+export function createFetchHandler(mcp: FetchHandler, doctor?: () => DoctorReport) {
   return async function handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     // Liveness only. It must not touch Hudu — see the Dockerfile HEALTHCHECK note.
     if (url.pathname === HEALTH_PATH) {
       return Response.json({ status: 'ok' });
+    }
+
+    // Credential shape, still no Hudu. `dialed: 0` is a property of the implementation (see
+    // `src/doctor.ts`, which holds no client), not a counter that a bug could leave at zero.
+    if (url.pathname === DOCTOR_PATH && doctor !== undefined) {
+      return Response.json(doctor());
     }
 
     // No check for the Hudu key: a request with no key is let through so the SDK can answer
@@ -113,7 +135,7 @@ export function startHttpServer(
   log: Logger,
   exit: (code: number) => void = process.exit,
 ): Server {
-  const handle = createFetchHandler(mcp);
+  const handle = createFetchHandler(mcp, () => runDoctor(config));
   const server = createServer((req, res) => {
     void toWebRequest(req, config.PORT)
       .then(handle)

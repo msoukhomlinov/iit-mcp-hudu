@@ -165,6 +165,51 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...valid, PORT: 'http' })).toThrow(ConfigError);
   });
 
+  it('refuses to boot on a credential whose shape a quote-preserving load mangled', () => {
+    // The 2026-10-07 class: `HUDU_API_KEY='a$b'` in a .env, parsed by something that KEEPS the
+    // quotes, so the quotes reach the wire. Before this check the value booted cleanly and dialed.
+    for (const bad of ["'abc$1'", '"abc$1"', 'abc$1\r', ' abc$1', 'abc$1 ']) {
+      try {
+        loadConfig({ ...valid, HUDU_API_KEY: bad });
+        expect.unreachable(`should have thrown for ${JSON.stringify(bad)}`);
+      } catch (e) {
+        const msg = (e as Error).message;
+        expect(msg).toContain('HUDU_API_KEY');
+        // The message names the anomaly and the env-load pitfall, so the operator gets a next step.
+        expect(msg).toMatch(/quote|whitespace|return/);
+        expect(msg).toContain('shell sourcing');
+      }
+    }
+  });
+
+  it('never echoes the malformed value itself in the boot error', () => {
+    // The value IS the secret: the refusal can say its length and its anomalies and nothing else.
+    const secret = "'super-secret-3f9a$1'";
+    try {
+      loadConfig({ ...valid, HUDU_API_KEY: secret });
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).not.toContain('super-secret');
+      expect(msg).not.toContain('3f9a');
+      expect(msg).toContain(`length ${secret.length}`);
+    }
+  });
+
+  it('applies the same refusal to the optional HUDU_API_KEY default under http', () => {
+    // Under http the value is the default key for a request that brings none: presenting a mangled
+    // one is the same incident, so the boot refuses it too.
+    expect(() => loadConfig({ MCP_TRANSPORT: 'http', ...ANY, HUDU_API_KEY: "'a$b'" })).toThrow(/HUDU_API_KEY/);
+    expect(loadConfig({ MCP_TRANSPORT: 'http', ...ANY, HUDU_API_KEY: 'clean-key' }).HUDU_API_KEY).toBe('clean-key');
+  });
+
+  it('still boots a clean credential unchanged, and keeps blank meaning unset', () => {
+    // A hand-typed local key has no anomaly, and a blank stays the "unset" a copied .env.example
+    // leaves behind — the shape check must not turn either into a boot failure.
+    expect(loadConfig({ ...valid, HUDU_API_KEY: 'test-key' }).HUDU_API_KEY).toBe('test-key');
+    expect(loadConfig({ MCP_TRANSPORT: 'http', ...ANY, HUDU_API_KEY: '  ' }).HUDU_API_KEY).toBeUndefined();
+  });
+
   it('never echoes a credential value in an error', () => {
     try {
       loadConfig({ ...valid, HUDU_API_KEY: '', HUDU_BASE_URL: 'nope' });

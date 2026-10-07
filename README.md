@@ -76,6 +76,58 @@ or in `.mcp.json` / Claude Desktop config:
 **From a clone** (for development): see [Development](#development). Point your client at
 `node /absolute/path/to/iit-mcp-hudu/dist/main.js` after `npm run build`.
 
+## Loading credential values (read this before a live session)
+
+A Hudu credential whose bytes reach this server mangled costs a real authentication failure against
+your Hudu account, and repeated ones risk an account lock. Two rules keep that from happening.
+
+**Load an env file the way the file documents — shell sourcing, not a generic dotenv parse.**
+
+```
+set -a; . ./.env; set +a      # the .env.example recipe, for a file of single-quoted values
+```
+
+`.env.example` writes its example values in single quotes, which is the normal `.env` style. A
+**shell** consumes those quotes when the file is sourced, so the value the process sees is exactly
+the secret. A **quote-preserving dotenv parser** (`dotenv`-style `KEY=VALUE` splitting that keeps
+the quotes) does not: it hands `'…'` to the server, quotes included, and the vendor rejects it.
+The trap is sharpest when the secret itself contains `$` — `HUDU_API_KEY='a$b'` becomes `a$b` when
+sourced and `'a$b'` (with quotes) when naively parsed, and both look correct in the file.
+
+The client-config and `--env` paths shown under *Local use* pass values verbatim and never parse a
+file, so they are already safe — this rule is for anyone loading a `.env`.
+
+**Run `doctor` before the first live call.** It answers "did my credential load intact?" from the
+environment alone, with zero Hudu requests:
+
+```
+npx -y iit-mcp-hudu doctor     # or: node dist/main.js doctor
+```
+
+It prints, per credential field, the value's `length`, its two-character `prefix2` and a `shapeOk`
+flag with the anomaly names when it is not; plus the origin that will actually be dialed. It exits
+non-zero when the credential would be refused, so a runbook step can gate on it:
+
+```
+node dist/main.js doctor && <start the live session>
+```
+
+**The contract: a green `doctor` makes any later 401 vendor-side.** With `doctor` clean, a 401 means
+Hudu refused a well-shaped credential — a rotated, revoked, or role-restricted key — and the fix is
+at the vendor, not in the load recipe. Do not re-dial to test it: a 401 at the auth gate is the
+signal to stop and check, because repeated failures risk locking the account. Conversely, a 401
+whose envelope names a shape anomaly (`credentialShape: "anomalous"`) points back at the load.
+
+The server enforces the shape itself, so a bad load cannot reach the wire even if `doctor` is
+skipped: a malformed `HUDU_API_KEY` fails boot; a malformed `X-Hudu-Api-Key` header is refused
+before any client is built, with the typed `CREDENTIAL_MALFORMED` envelope (value-free, and
+`retryable: false`). Neither path dials.
+
+The server inspects **shape only** — length, a two-character prefix, and anomaly names. A credential
+value is never logged, never echoed in an error, and never returned by `/doctor`. The anomalies that
+fail a value are: preserved surrounding quotes (single or double), an embedded quote, a carriage
+return, a newline, edge whitespace, and a NUL byte.
+
 ## Configuration
 
 Copy `.env.example`. Every variable is validated at boot; the process exits non-zero on an invalid
@@ -280,6 +332,10 @@ review of the client authority, operation enums and redaction regressions. Docke
 `Dockerfile` builds a non-root runtime image. The healthcheck is liveness-only and deliberately does
 not call Hudu — otherwise an upstream outage would cycle the container, turning a partial failure
 into a total one.
+
+`GET /doctor` (same trust model as `/healthz`: unauthenticated, answered before the MCP handler,
+zero Hudu requests) serves the same zero-wire credential-shape report the `doctor` subcommand
+prints, so a deployment can check its loaded credential without a vendor dial.
 
 The deployment definition is `docker-compose.yml`: its own Compose project, joining an existing
 `app_net` external network (create it with `docker network create app_net`, or rename it in the
