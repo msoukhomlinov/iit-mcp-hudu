@@ -25,7 +25,7 @@ request; `asset_layouts` is not searchable (the SDK declares no vendor text filt
 `hudu_list_asset_layouts` follows the same reachability as the existing ungated
 `hudu_get_asset_layout` tool.
 
-These tools run on the node-hudu 0.12.0 line; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins.
+These tools run on node-hudu 0.13.1; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -324,7 +324,7 @@ npm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.12.0`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.13.1`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `npm ci`.
 
 ## Deployment

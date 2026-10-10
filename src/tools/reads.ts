@@ -93,7 +93,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       description: TOOL_DESCRIPTIONS['hudu_get_company_context'] +
         ' Context depends on the resources available to this deployment; a refused credential answers UNAUTHORIZED (401, "Bad credentials") like every other tool, and any other failure keeps its real code — never partial results.',
       inputSchema: z.object({
-        id: z.number().int().describe('Numeric company id.'),
+        id: z.number().int().positive().describe('Numeric company id.'),
         opts: z.object({ limit: LIMIT, expand: EXPAND }).optional(),
       }),
       outputSchema: CONTEXT_OUTPUT,
@@ -124,7 +124,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       description: TOOL_DESCRIPTIONS['hudu_get_article_context'] +
         ' Context depends on the resources available to this deployment; a refused credential answers UNAUTHORIZED (401, "Bad credentials") like every other tool, and any other failure keeps its real code — never partial results.',
       inputSchema: z.object({
-        id: z.number().int().describe('Numeric article id (hudu_get_article_context takes the id; use hudu_search or hudu_read / hudu_write / hudu_delete with articles.resolve to find it).'),
+        id: z.number().int().positive().describe('Numeric article id (hudu_get_article_context takes the id; use hudu_search or hudu_read / hudu_write / hudu_delete with articles.resolve to find it).'),
         opts: z.object({ expand: EXPAND }).optional(),
       }),
       outputSchema: CONTEXT_OUTPUT,

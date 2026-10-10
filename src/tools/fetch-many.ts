@@ -52,15 +52,15 @@ export const FETCH_MANY_RESOURCES = [
  * The CLOSED item shape: exactly `{ resource, id, fields? }` — a numeric vendor id and an
  * optional projection.
  *
- * The non-negative integer `id` matches the SDK's own authority (`validateFetchManyItems`
- * refuses `id < 0`). The NON-EMPTY `fields` bound is this tool's STRICTER schema-layer refusal,
+ * The positive integer `id` matches the SDK's per-item `get`, which refuses anything that is not a
+ * positive safe integer (the batch-level `validateFetchManyItems` alone still admits `0`). The NON-EMPTY `fields` bound is this tool's STRICTER schema-layer refusal,
  * not an SDK check: the `hudu_read` dispatch of the same batch accepts an empty projection and
  * serves `{ found: true, value: {} }`, so this layer refuses it instead of silently projecting
  * to nothing.
  */
 const FETCH_MANY_ITEM = z.object({
   resource: z.enum(FETCH_MANY_RESOURCES),
-  id: z.number().int().nonnegative(),
+  id: z.number().int().positive(),
   fields: z.array(z.string()).min(1).optional(),
 }).strict();
 

@@ -48,10 +48,10 @@ export const EXPAND = z
 
 /** Accepts a bare id/name/slug or the identifier object the resource documents. */
 export const IDENTIFIER = z.union([
-  z.number().int(),
+  z.number().int().positive(),
   z.string().min(1),
   z.object({
-    id: z.number().int().optional().describe('Numeric id - the direct fetch.'),
+    id: z.number().int().positive().optional().describe('Numeric id - the direct fetch.'),
     name: z.string().optional().describe('Exact name.'),
     slug: z.string().optional().describe('Exact slug.'),
     external_id: z.string().optional().describe('Vendor-side external id.'),
@@ -61,11 +61,11 @@ export const IDENTIFIER = z.union([
 
 /** `assets.resolve` / `assets.getContext` also accept a primary serial and a company scope. */
 export const ASSET_IDENTIFIER = z.union([
-  z.number().int(),
+  z.number().int().positive(),
   z.string().min(1),
   z.object({
-    id: z.number().int().optional(),
-    companyId: z.number().int().optional(),
+    id: z.number().int().positive().optional(),
+    companyId: z.number().int().positive().optional(),
     name: z.string().optional(),
     slug: z.string().optional(),
     primary_serial: z.string().optional(),

@@ -164,16 +164,18 @@ describe('C1c: auth-failure diagnostics on an anomalous credential', () => {
     await s.close();
   });
 
-  it('annotates the stdio path from the server-held credential too', async () => {
-    await expect(
-      connect(refused, { HUDU_API_KEY: "'env$secret'" }).then(async (s) => {
-        const result = await s.call('hudu_get_api_info', {});
-        const body = JSON.parse(result.content[0]!.text);
-        expect(body).toMatchObject({ code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
-        expect(body.anomalies).toContain('surrounding_single_quotes');
-        await s.close();
-      }),
-    ).resolves.toBeUndefined();
+  it('refuses a malformed server-held credential on the stdio path before dialing', async () => {
+    // loadConfig already refuses this value at boot; behind it, the SDK (>= 0.13) refuses the
+    // shape when the stdio client is constructed, so the value never reaches the wire.
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: unknown) => { urls.push(String(url)); return refused(); });
+    const err = await connect(refused, { HUDU_API_KEY: "'env$secret'" }).then(
+      () => undefined,
+      (e: unknown) => e as { name?: string; code?: string; message?: string },
+    );
+    expect(err).toMatchObject({ name: 'HuduConfigError', code: 'INVALID_CREDENTIAL_SHAPE' });
+    expect(err?.message).not.toContain('env$secret');
+    expect(urls).toEqual([]);
   });
 
   it('keeps the exact legacy envelope when the credential is clean', async () => {
