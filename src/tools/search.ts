@@ -52,7 +52,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           .describe('mode="help" only. Which help section to return (default "core"; "all" adds query syntax and scoring). Rejected in the other modes.'),
         limit: z.number().int().min(1).max(25).optional().describe('mode="search" only. Ranked hits: 1-25, default 8. A larger value is a CONFIG_ERROR, never clamped.'),
         snippetChars: z.number().int().min(0).max(400).optional().describe('mode="search" only. Snippet characters per hit: 0-400, default 200, 0 = no snippet.'),
-        company_id: z.number().int().optional().describe('mode="search" only. Scope the scan to one company.'),
+        company_id: z.number().int().positive().optional().describe('mode="search" only. Scope the scan to one company.'),
         updated_since: z.string().optional().describe('mode="search" only. ISO 8601; only records updated at or after it.'),
         min_score: z.number().optional().describe('mode="search" only. 0-100 score floor: hits below the floor are left out of the result, and NO count of them is reported - an empty result can be the floor, not absence. meta.scanned (candidates scored before the floor) and meta.returned separate absence from exclusion: scanned 0 = nothing scored at all; scanned > 0 with returned 0 = candidates scored but none returned - below the floor, or excluded by the company_id, updated_since or scope filters (lower or drop min_score, or relax those filters, to see what was left out).'),
         exact_only: z.boolean().optional().describe('mode="search" only. true disables fuzzy matching, still ranked and snippeted. Default false.'),
