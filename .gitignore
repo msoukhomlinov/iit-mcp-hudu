@@ -19,5 +19,6 @@ GEMINI.md
 .codex/
 .remember/
 .run-squad/
+.run/
 .mcp.json
 .github/copilot-instructions.md

@@ -1,0 +1,5 @@
+# Repo-audit configuration (intellectit-repo-audit skill).
+# version_surfaces: package.json only (the default). Thresholds: defaults.
+publish:
+  registry: npm
+  package: iit-mcp-hudu
