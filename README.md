@@ -126,7 +126,8 @@ before any client is built, with the typed `CREDENTIAL_MALFORMED` envelope (valu
 The server inspects **shape only** — length, a two-character prefix, and anomaly names. A credential
 value is never logged, never echoed in an error, and never returned by `/doctor`. The anomalies that
 fail a value are: preserved surrounding quotes (single or double), an embedded quote, a carriage
-return, a newline, edge whitespace, and a NUL byte.
+return, a newline, an embedded control character (any non-printable ASCII byte besides those),
+edge whitespace, and a NUL byte.
 
 ## Configuration
 

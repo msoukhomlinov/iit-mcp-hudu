@@ -32,6 +32,7 @@ export const CREDENTIAL_ANOMALIES = [
   'embedded_quotes',
   'carriage_return',
   'newline',
+  'embedded_control_character',
   'edge_whitespace',
   'nul_byte',
 ] as const;
@@ -76,6 +77,15 @@ export function detectCredentialShape(value: string): readonly CredentialAnomaly
   // `Headers` strips it — so this branch is reachable only through the server-held value.)
   if (value.includes('\r')) anomalies.push('carriage_return');
   if (value.includes('\n')) anomalies.push('newline');
+  // Any other non-printable ASCII byte (a tab, bell or stray escape; NUL is named separately
+  // below): a Hudu API key is base64url and cannot legally carry one, so any of them means the
+  // load mangled the value.
+  let embeddedControl = false;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if ((code < 0x20 && code !== 0x0d && code !== 0x0a) || code === 0x7f) { embeddedControl = true; break; }
+  }
+  if (embeddedControl) anomalies.push('embedded_control_character');
   // A trailing space from `KEY=value ` is invisible in every editor and is presented verbatim.
   // `trim()` also catches a tab, which survives a header hop even though Node's Headers strips
   // space at the edges of a header value.

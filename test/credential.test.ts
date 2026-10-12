@@ -40,7 +40,17 @@ describe('credential shape detection', () => {
   it('flags edge whitespace, which is invisible in every editor', () => {
     expect(detectCredentialShape(' key')).toEqual(['edge_whitespace']);
     expect(detectCredentialShape('key ')).toEqual(['edge_whitespace']);
-    expect(detectCredentialShape('key\t')).toEqual(['edge_whitespace']);
+    expect(detectCredentialShape('key\t')).toEqual(['embedded_control_character', 'edge_whitespace']);
+  });
+
+  it('flags every non-printable ASCII byte beyond CR, LF and NUL', () => {
+    expect(detectCredentialShape('ke\ty')).toEqual(['embedded_control_character']);
+    expect(detectCredentialShape('ke\u0007y')).toEqual(['embedded_control_character']);
+    expect(detectCredentialShape('ke\u001by')).toEqual(['embedded_control_character']);
+    expect(detectCredentialShape('ke\u007fy')).toEqual(['embedded_control_character']);
+    // NUL keeps its own named anomaly (a NUL header value throws in Headers.set before any
+    // auth strategy runs) and is also a control character.
+    expect(detectCredentialShape('ke\u0000y')).toEqual(['embedded_control_character', 'nul_byte']);
   });
 
   it('never returns a character of the value it inspected', () => {
