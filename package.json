@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
-    "node-hudu": "0.13.1",
+    "node-hudu": "0.13.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
