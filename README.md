@@ -121,7 +121,10 @@ whose envelope names a shape anomaly (`credentialShape: "anomalous"`) points bac
 The server enforces the shape itself, so a bad load cannot reach the wire even if `doctor` is
 skipped: a malformed `HUDU_API_KEY` fails boot; a malformed `X-Hudu-Api-Key` header is refused
 before any client is built, with the typed `CREDENTIAL_MALFORMED` envelope (value-free, and
-`retryable: false`). Neither path dials.
+`retryable: false`). Neither path dials. Since node-hudu 0.13.2 the SDK enforces credential shape
+itself too — refusing a contaminated value at client construction and attaching a value-free shape
+diagnostic to a refused credential — and this server consumes that diagnostic directly on a 401;
+the server's own gate stays as the boundary guard, a superset of the SDK's checks.
 
 The server inspects **shape only** — length, a two-character prefix, and anomaly names. A credential
 value is never logged, never echoed in an error, and never returned by `/doctor`. The anomalies that

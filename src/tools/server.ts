@@ -6,7 +6,7 @@ import { McpServer, type McpRequestContext, type McpServerFactory } from '@model
 import { createHash } from 'node:crypto';
 import { CAPABILITY_NAMES, getCapability } from 'node-hudu/capabilities';
 import { HuduClient } from 'node-hudu';
-import { HuduConfigError } from 'node-hudu';
+import { AuthError, HuduConfigError } from 'node-hudu';
 import type { AuthStrategy, HuduConfig } from 'node-hudu';
 import type { Config } from '../config.js';
 import type { Logger } from '../logger.js';
@@ -102,18 +102,22 @@ const BASE_URL_NOT_ALLOWED: AuthStrategy = {
  *
  * Sibling of {@link NO_REQUEST_BASE_URL}, and it exists for the same reason: a refusal must happen
  * BEFORE a `HuduClient` is constructed, so the malformed value cannot reach the wire even as far as
- * client construction. The name carries the anomaly names and never a character of the value, and
- * it is the only channel the SDK lets a strategy talk through — which is exactly why the anomaly
- * names are in it.
+ * client construction. The refusal carries the anomaly names and never a character of the value.
  */
 function malformedCredentialStrategy(anomalies: readonly CredentialAnomaly[]): AuthStrategy {
   return {
-    // The name is the SDK's only diagnostic channel, and `tools/results.ts` parses exactly this
-    // shape back out of the resulting AuthError to answer with the typed CREDENTIAL_MALFORMED
-    // envelope. Changing the shape means changing the parser with it.
-    name: `x-hudu-api-key malformed (${anomalies.join(', ')})`,
-    headers() {
-      throw new Error('this request presented a credential whose shape is malformed; nothing was dialed');
+    // A typed AuthError, not a plain throw: node-hudu 0.13.x rethrows a strategy's own AuthError
+    // unchanged, while a plain throw is wrapped into a fixed message that carries only the name.
+    // The SDK's AuthError constructor pins its own code and category, so the marker
+    // `tools/results.ts` reads back is the anomaly list attached to the instance — never message
+    // parsing.
+    name: 'x-hudu-api-key malformed',
+    async headers() {
+      const refusal = new AuthError('this request presented a credential whose shape is malformed; nothing was dialed', {
+        suggestedAction: CREDENTIAL_LOAD_HINT,
+      });
+      (refusal as { anomalies?: readonly string[] }).anomalies = anomalies;
+      throw refusal;
     },
   };
 }
@@ -189,18 +193,19 @@ interface ModeEntry {
   /**
    * Build one more fail-closed placeholder client for this mode, from the same option literal the
    * named placeholders use. Only the malformed-credential placeholder needs it, because its
-   * strategy name varies with the anomalies seen.
+   * strategy carries the anomalies seen.
    */
   buildPlaceholder: (auth: AuthStrategy) => HuduClient;
   /**
-   * The malformed-credential clients, one per anomaly set seen so far.
+   * The malformed-credential clients, one per anomaly set seen so far (the empty set is the
+   * node-hudu shape-gate tripwire: the server gate passed but the SDK's own gate refused).
    *
-   * Lazily built and cached rather than one per mode: the strategy name carries the anomaly names,
+   * Lazily built and cached rather than one per mode: the strategy carries the anomaly names,
    * the anomaly set is small and bounded (`CREDENTIAL_ANOMALIES`), and a fresh `HuduClient` per
    * malformed request would let a caller allocate a client (and its 64 MB text budget) per request
    * — which is the resource the scoped-client cap exists to protect. The cache is bounded by the
-   * power set of the seven anomalies in `CREDENTIAL_ANOMALIES`, i.e. it cannot grow with request
-   * volume.
+   * power set of the anomalies in `CREDENTIAL_ANOMALIES` plus the empty set, i.e. it cannot grow
+   * with request volume.
    */
   malformed: Map<string, HuduClient>;
 }
@@ -283,7 +288,23 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
     return { client, origin: new URL(base).origin };
   } catch (err) {
     // Only the SDK's config validation is caller error; anything else is a bug and must surface.
-    if (err instanceof HuduConfigError) return { client: entry.badBase };
+    if (err instanceof HuduConfigError) {
+      // The pre-dispatch gate above is a superset of the SDK's own shape gate (node-hudu 0.13.2);
+      // the SDK's INVALID_CREDENTIAL_SHAPE firing here means the two have diverged. Fail closed with
+      // the typed credential refusal — nothing was dialed — rather than the base-URL placeholder,
+      // which would misname the cause.
+      if ((err as { code?: string }).code === 'INVALID_CREDENTIAL_SHAPE') {
+        log.warn('the SDK credential shape gate fired where the server gate passed; the gates have diverged', { source: 'node-hudu' });
+        const id = '';
+        let client = entry.malformed.get(id);
+        if (client === undefined) {
+          client = entry.buildPlaceholder(malformedCredentialStrategy([]));
+          entry.malformed.set(id, client);
+        }
+        return { client };
+      }
+      return { client: entry.badBase };
+    }
     throw err;
   }
 }

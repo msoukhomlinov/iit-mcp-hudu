@@ -7,7 +7,7 @@
  * credential — the envelope is byte-identical to what it was before this control.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { UnauthorizedError } from 'node-hudu';
+import { AuthError, HuduConfigError, UnauthorizedError } from 'node-hudu';
 import {
   contextErrorContent,
   credentialMalformedContent,
@@ -91,13 +91,12 @@ describe('shape annotation on the auth-failure branch', () => {
   });
 
   it('answers a malformed-credential refusal with its OWN envelope on every error path', () => {
-    // The pre-dial placeholder surfaces as an SDK AuthError naming the anomalies; the envelope must
-    // be the typed CREDENTIAL_MALFORMED one, not the 401 shape a real refusal gets.
-    const sdkRefusal = Object.assign(new Error('Auth strategy "x-hudu-api-key malformed (embedded_quotes, edge_whitespace)" did not produce usable credential headers for GET /api_info (attempt 1); no request was sent'), {
-      name: 'AuthError',
-      code: 'AUTH_ERROR',
-      category: 'auth',
-      retryable: false,
+    // The pre-dial placeholder throws the AuthError node-hudu 0.13.x rethrows unchanged: the
+    // anomaly list rides on the error instance (the SDK's AuthError constructor pins its own
+    // code), and the envelope must be the typed CREDENTIAL_MALFORMED one, not the 401 shape a
+    // real refusal gets.
+    const sdkRefusal = Object.assign(new AuthError('this request presented a credential whose shape is malformed; nothing was dialed'), {
+      anomalies: ['embedded_quotes', 'edge_whitespace'],
     });
     for (const result of [errorContent(sdkRefusal), searchErrorContent(sdkRefusal), resolveErrorContent(sdkRefusal), contextErrorContent(sdkRefusal)]) {
       const body = JSON.parse(result.content[0]!.text);
@@ -106,8 +105,71 @@ describe('shape annotation on the auth-failure branch', () => {
       expect(body.anomalies).toBeUndefined();
       expect(body.message).toContain('embedded_quotes');
       expect(body.message).toContain('edge_whitespace');
-      // The SDK's own message text (with the strategy name and the operation) must not cross.
-      expect(body.message).not.toContain('did not produce usable credential headers');
+      // The strategy's own message text must not cross the boundary.
+      expect(body.message).not.toContain('this request presented a credential');
     }
+  });
+
+  it('no longer parses anomalies out of a strategy-name message: the pre-0.13.2 stopgap is gone', () => {
+    // The stopgap encoded the anomalies in the strategy NAME and regexed them back out of the
+    // wrapped AuthError message. That parsing is deleted: an untyped AuthError of that shape now
+    // renders as an ordinary error, never as the CREDENTIAL_MALFORMED envelope.
+    const legacy = Object.assign(new Error('Auth strategy "x-hudu-api-key malformed (embedded_quotes)" did not produce usable credential headers for GET /api_info (attempt 1); no request was sent'), {
+      name: 'AuthError',
+      code: 'AUTH_ERROR',
+    });
+    const body = JSON.parse(errorContent(legacy).content[0]!.text);
+    expect(body.code).toBe('AUTH_ERROR');
+    expect(body.credentialShape).toBeUndefined();
+    expect(body.suggestedAction).toBeUndefined();
+  });
+
+  it('answers the SDK construction gate (INVALID_CREDENTIAL_SHAPE) with the same pre-dial envelope', () => {
+    // node-hudu 0.13.2 refuses a shape-contaminated value at client construction with a typed
+    // HuduConfigError. If one ever reaches the envelope (the server's own gate is a superset and
+    // normally refuses first), the answer is the same typed pre-dial refusal; the SDK's gate
+    // speaks the SDK's vocabulary, so no anomaly names are claimed.
+    const sdkGate = new HuduConfigError('apiKey must be loaded the way the file documents (one-sided surrounding quote)', { code: 'INVALID_CREDENTIAL_SHAPE' });
+    const body = JSON.parse(errorContent(sdkGate).content[0]!.text);
+    expect(body).toMatchObject({ error: true, code: 'CREDENTIAL_MALFORMED', category: 'validation', retryable: false });
+    expect(body.message).toContain('shape anomaly');
+    // The SDK's own message text must not cross the boundary.
+    expect(body.message).not.toContain('one-sided surrounding quote');
+    expect(body.suggestedAction).toContain('shell sourcing');
+  });
+});
+
+describe('the SDK 401 shape diagnostic (node-hudu 0.13.2, node-hudu#93)', () => {
+  // The two sentences and the static 401 action are fixed in the exact-pinned SDK; the test
+  // reproduces what the transport attaches: the artifact variant pairs the artifact sentence with
+  // the shape-load pointer action, the clean variant keeps the static action.
+  const staticAction = 'Check the API key and its scopes.';
+  const artifact = () => new UnauthorizedError('Bad credentials', 'https://hudu.invalid/articles', undefined, {
+    details: { diagnostic: 'sent value shows shell-quoting/line-break artifacts — check your env load (one-sided surrounding quote) [length 12 (ab)]' },
+    suggestedAction: 'Load the credential the way the file documents: shell-sourced (`set -a; . ./.env; set +a`) or via loadHuduCredentialsFromEnv() from node-hudu.',
+  });
+  const cleanWithDiagnostic = () => new UnauthorizedError('Bad credentials', 'https://hudu.invalid/articles', undefined, {
+    details: { diagnostic: 'sent value shows no shape anomalies — credentials or account state are the likely cause [length 37 (ey)]' },
+    suggestedAction: staticAction,
+  });
+
+  it('annotates the refusal from the SDK diagnostic when the server view is clean', () => {
+    const body = JSON.parse(errorContent(artifact()).content[0]!.text);
+    expect(body).toMatchObject({ code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials', credentialShape: 'anomalous' });
+    expect(body.credentialShapeDiagnostic).toContain('shell-quoting/line-break artifacts');
+    expect(body.suggestedAction).toContain('do NOT re-dial');
+    expect(body.suggestedAction).toContain('shell sourcing');
+  });
+
+  it('keeps the legacy envelope byte-identical when the SDK reports no anomaly', () => {
+    const body = JSON.parse(errorContent(cleanWithDiagnostic()).content[0]!.text);
+    expect(body).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
+  });
+
+  it('prefers the server view over the SDK diagnostic when both see anomalies', () => {
+    setCredentialShapeView({ request: ['embedded_quotes'] });
+    const body = JSON.parse(errorContent(artifact()).content[0]!.text);
+    expect(body.anomalies).toEqual(['embedded_quotes']);
+    expect(body.credentialShapeDiagnostic).toBeUndefined();
   });
 });
