@@ -42,6 +42,9 @@ Both profiles are now under 40,000 B (write by 1,500 B). `surface_audit.py` (inc
 
 This server registers the SDK `CORE_TOOLS` plus `hudu_list`, which the SDK does not know; the README records that a future SDK upgrade must not re-add the four old names.
 
-## Follow-ups not done
+## Review follow-ups resolved
 
-- Optional review notes left open: `articles.get` Markdown path and the write/delete allow-list dependency follow-ups (one-level `withWriteDependencies`) are unchanged; both fail closed.
+Both items previously listed here as open are done in 9320e28:
+
+- Lossy Markdown reads: `articles.get` / `getContext` / `resolve` and `hudu_get_article_context` now set `markdown_lossy` (with `markdown_lossy_codes`) when the stored HTML holds content the Markdown dialect cannot express, using the SDK's `diffArticleRoundTrip` (content-impact findings only). Served surface after the change: 39,473 / 33,928 B (`tools/list`), still under 40,000 B on both profiles.
+- allow_list registration: `hudu_write` is registered only when the list holds a write-effect operation and `hudu_delete` only when it holds a destructive-effect one; the boot log states which tools were registered. The one-level `withWriteDependencies` stays as is (it fails closed).
