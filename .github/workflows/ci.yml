@@ -14,16 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
+          cache: pnpm
 
-      # `--include=dev`: the toolchain (tsc, eslint, vitest) is a dev dependency, and a bare
-      # `npm ci` under NODE_ENV=production would install production dependencies only, so every
-      # step below would fail with "not found".
-      - run: npm ci --include=dev
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm test
