@@ -5,13 +5,17 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
-RUN pnpm run build
+# Fixed mtimes: the same source must yield the same layer digest on every build path.
+RUN pnpm run build && find dist -exec touch -h -d @0 {} +
 
 # Deps stage: production dependencies only. The package manager lives here and never reaches runtime.
 FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile --prod
+# pnpm's install bookkeeping carries timestamps and is not needed at runtime.
+RUN corepack enable && pnpm install --frozen-lockfile --prod \
+ && rm -f node_modules/.modules.yaml node_modules/.pnpm-workspace-state-v1.json \
+ && find node_modules -exec touch -h -d @0 {} +
 
 # Runtime stage: no package manager (npm, npx, corepack, yarn removed), non-root.
 FROM node:24-alpine AS runtime
