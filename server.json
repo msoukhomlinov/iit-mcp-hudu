@@ -1,0 +1,32 @@
+{
+  "name": "iit-mcp-hudu",
+  "version": "0.3.0",
+  "description": "MCP server for Hudu IT documentation, powered by the node-hudu SDK",
+  "mcpProtocolBaseline": "2026-07-28",
+  "transports": {
+    "streamableHttp": {
+      "endpoint": "/"
+    },
+    "stdio": true
+  },
+  "endpoints": {
+    "health": "/healthz",
+    "doctor": "/doctor"
+  },
+  "stateless": true,
+  "statelessException": "per-(origin, credential) scoped SDK clients are kept in a bounded in-process LRU (MAX_SCOPED_CLIENTS) with an SDK read-through TTL cache and a body index; in-process only, never cross-credential, never on disk. See docs/architecture.md.",
+  "credentialModel": "per-request",
+  "gatewayAssumptions": {
+    "handles": [
+      "client-authentication",
+      "rate-limiting",
+      "credential-injection"
+    ]
+  },
+  "capabilitiesManifest": "capabilities.json",
+  "sdk": {
+    "package": "node-hudu",
+    "versionRange": "0.14.0"
+  },
+  "vendorExtensions": false
+}
