@@ -698,7 +698,6 @@ describe('lossy Markdown reads are signalled', () => {
       expect(result.structuredContent.markdown_lossy_codes).toContain('ROUNDTRIP_RAW_ELEMENT_LOST');
       expect(result.content[0].text).toContain('markdown_lossy: true');
       expect(result.content[0].text).toContain('hudu_fetch_many');
-      // The cache serves the HTML twin: still one request on the wire.
       expect(session.urls).toHaveLength(1);
     } finally {
       await session.close();
@@ -711,6 +710,23 @@ describe('lossy Markdown reads are signalled', () => {
       const result = await session.call('hudu_get_article_context', { id: 22, opts: { expand: true } });
       expect(result.structuredContent.markdown_lossy).toBe(true);
       expect(result.content[0].text).toContain('markdown_lossy: true');
+    } finally {
+      await session.close();
+    }
+  });
+
+  const mermaidForms = {
+    'bare editor-native': '<pre class="language-mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+    'legacy style + data-mermaid-id': '<pre class="language-mermaid" style="white-space: pre;" data-mermaid-id="m1"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+    'pre.mermaid': '<pre class="mermaid">graph TD; A--&gt;B</pre>',
+    'code only': '<pre><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+  };
+  it.each(Object.entries(mermaidForms))('does NOT flag the %s Mermaid form', async (_name, html) => {
+    const session = await connect(article(html));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.structuredContent.markdown_lossy).toBeUndefined();
+      expect(session.urls).toHaveLength(1);
     } finally {
       await session.close();
     }
@@ -732,6 +748,89 @@ describe('lossy Markdown reads are signalled', () => {
         await session.close();
       }
     }
+  });
+});
+
+describe('Markdown article reads: one fetch, caller format honoured', () => {
+  const html = '<h2>Hi</h2><p>body <strong>x</strong></p>';
+  const svg = '<p>Keep</p><svg width="1" height="1"></svg>';
+  const body = (content: string) => () => Response.json({ article: { id: 22, name: 't', content }, articles: [{ id: 22, name: 't', content }] });
+  const reads = {
+    'articles.get': { id: 22 },
+    'articles.getContext': { id: 22, opts: { expand: true } },
+    'articles.resolve': { identifier: { name: 't' }, opts: { expand: true } },
+  } as const;
+  const text = (r: { structuredContent: { result: unknown } }) => JSON.stringify(r.structuredContent.result);
+
+  it.each(Object.entries(reads))('%s: format absent and "markdown" return Markdown, "html" returns stored HTML (no flag), one request each', async (operation, input) => {
+    for (const [format, wantMarkdown] of [[undefined, true], ['markdown', true], ['html', false]] as const) {
+      const session = await connect(body(html));
+      try {
+        const opts = { ...(('opts' in input) ? input.opts : {}), ...(format ? { format } : {}) };
+        const result = await session.call('hudu_read', { operation, input: { ...input, ...(Object.keys(opts).length ? { opts } : {}) } });
+        expect(result.isError, `${operation}/${format}`).toBeUndefined();
+        expect(text(result)).toContain(wantMarkdown ? '## Hi' : '<h2>Hi</h2>');
+        expect(text(result)).not.toContain(wantMarkdown ? '<h2>' : '## Hi');
+        expect(result.structuredContent.markdown_lossy).toBeUndefined();
+        expect(session.urls.length, `${operation}/${format} requests`).toBe(operation === 'articles.getContext' ? session.urls.length : 1);
+        expect(session.urls.length).toBeLessThanOrEqual(3);
+      } finally {
+        await session.close();
+      }
+    }
+  });
+
+  it.each(['articles.get', 'articles.resolve'] as const)('%s flags an <svg> with exactly one wire request', async (operation) => {
+    const session = await connect(body(svg));
+    try {
+      const result = await session.call('hudu_read', { operation, input: reads[operation] });
+      expect(result.structuredContent.markdown_lossy).toBe(true);
+      expect(session.urls).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('articles.get with format html and an <svg> returns HTML and no flag', async () => {
+    const session = await connect(body(svg));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22, opts: { format: 'html' } } });
+      expect(text(result)).toContain('<svg');
+      expect(result.structuredContent.markdown_lossy).toBeUndefined();
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('a compact resolve (no content string) is untouched and not flagged', async () => {
+    const session = await connect(() => Response.json({ articles: [{ id: 22, name: 't' }] }));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.resolve', input: { identifier: { name: 't' } } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.markdown_lossy).toBeUndefined();
+    } finally {
+      await session.close();
+    }
+  });
+
+  it.each([500])('a %i on the single fetch fails exactly like any other read', async (status) => {
+    const failing = () => new Response('boom', { status });
+    // Sequential sessions: each connect() stubs the global fetch.
+    const counts: number[] = [];
+    for (const call of [
+      { operation: 'articles.get', input: { id: 22 } },
+      { operation: 'companies.get', input: { id: 22 } },
+    ]) {
+      const session = await connect(failing);
+      try {
+        const result = await session.call('hudu_read', call);
+        expect(result.isError).toBe(true);
+        counts.push(session.urls.length);
+      } finally {
+        await session.close();
+      }
+    }
+    expect(counts[0]).toBe(counts[1]);
   });
 });
 
