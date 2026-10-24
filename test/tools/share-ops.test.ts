@@ -76,3 +76,18 @@ describe('share operations under HUDU_SECRET_READS=allow', () => {
     await session.close();
   });
 });
+
+describe('discovery names only tools this server serves', () => {
+  it('asset_passwords.resolve / websites.resolve report no exposed_tool', async () => {
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all', HUDU_SECRET_READS: 'allow' });
+    const tools = new Set((await session.list()).map((t) => t.name));
+    for (const operation of ['asset_passwords.resolve', 'websites.resolve']) {
+      const described = await session.call('hudu_describe_operation', { operation });
+      expect(described.structuredContent.exposed_tool).toBeNull();
+      expect(described.content[0].text).not.toMatch(/use hudu_get_/);
+    }
+    const page = await session.call('hudu_list_operations', { limit: 100 });
+    for (const row of page.structuredContent.rows) if (row.tool !== null) expect(tools.has(row.tool), row.op).toBe(true);
+    await session.close();
+  });
+});

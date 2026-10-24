@@ -136,7 +136,7 @@ function boundErrorMessage(raw: string, status: number | undefined, url: string 
  * HTML from a row and writes it back unchanged stays correct while a mixed body does not.
  */
 export const ARTICLE_FORMAT_NOTE =
-  ' Article bodies: single-article reads and writes are Markdown; list, search, fetch-many and company-context rows are stored HTML. A body opening with block HTML is sent as HTML. Re-read with articles.get before editing.';
+  ' Article bodies: single-article reads and writes are Markdown; list, search, fetch-many and company-context rows are stored HTML. A body opening with block HTML is sent as HTML. Re-read with articles.get before editing. Hudu reshapes API-written HTML on the next UI save (h5/h6 flattened, unknown callout types become info); prefer Markdown.';
 
 export function errorContent(err: unknown): ToolReturn {
   // A 401/403-class credential refusal is the fixed UNAUTHORIZED envelope on EVERY tool, not just

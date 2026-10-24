@@ -60,7 +60,7 @@ export const FETCH_MANY_RESOURCES = [
  */
 const FETCH_MANY_ITEM = z.object({
   resource: z.enum(FETCH_MANY_RESOURCES),
-  id: z.number().int().positive(),
+  id: z.number().int().positive().describe('Positive integer id (>= 1).'),
   fields: z.array(z.string()).min(1).optional(),
 }).strict();
 

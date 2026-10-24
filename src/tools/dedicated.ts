@@ -34,7 +34,7 @@
  * not), so `hudu_read / hudu_write / hudu_delete` stays the escape hatch for the long tail. This module only changes what
  * discovery advertises.
  */
-import { CATALOG, catalogPage, MAX_CATALOG_LIMIT } from 'node-hudu/mcp';
+import { CATALOG, CORE_TOOLS, catalogPage, MAX_CATALOG_LIMIT } from 'node-hudu/mcp';
 import type { CatalogPageOptions, CatalogRow, describeOperation } from 'node-hudu/mcp';
 
 /** A page of the generated catalog, as `catalogPage` returns it. */
@@ -262,4 +262,24 @@ export function applyDedicatedToolDescribe(described: Described, searchableResou
     example: null,
     preferred_when: `Call ${tool} for this read; it accepts exactly the schema shown. Only the bounded arguments shown here are available; the unbounded operation is refused by the dispatchers.`,
   };
+}
+
+/**
+ * The tools this server serves. The catalogue also maps some operations to SDK tools this server
+ * does not register (`asset_passwords.resolve` -> `hudu_get_asset_password`); naming one would send
+ * a model to a tool that does not exist, so those rows report no tool of their own.
+ */
+const SERVED_TOOLS: ReadonlySet<string> = new Set([
+  ...CORE_TOOLS,
+  ...Object.keys(DEDICATED_READ_TOOLS),
+  'hudu_read', 'hudu_write', 'hudu_delete',
+]);
+const served = (tool: string | null): boolean => tool === null || SERVED_TOOLS.has(tool);
+
+export function nullUnservedToolCatalog(page: CatalogPage): CatalogPage {
+  return { ...page, rows: page.rows.map((row) => (served(row.tool) ? row : { ...row, tool: null })) };
+}
+
+export function nullUnservedToolDescribe(described: Described): Described {
+  return served(described.exposed_tool) ? described : { ...described, exposed_tool: null };
 }

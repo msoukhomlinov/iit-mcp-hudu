@@ -11,7 +11,7 @@ import {
 } from '../policy.js';
 import { registerDispatchTools } from './dispatch.js';
 import type { ToolContext } from './context.js';
-import { applyDedicatedToolCatalog, applyDedicatedToolDescribe } from './dedicated.js';
+import { applyDedicatedToolCatalog, applyDedicatedToolDescribe, nullUnservedToolCatalog, nullUnservedToolDescribe } from './dedicated.js';
 import { errorContent, metaSpec, createResultBuilders } from './results.js';
 import { CATALOG_OUTPUT } from './schemas.js';
 import { applyAcrossDescribePolicy, applyResolveDescribePolicy, applySearchCatalogPolicy, applySearchDescribePolicy } from './search-prose.js';
@@ -37,13 +37,13 @@ export function registerMetaTools(server: McpServer, ctx: ToolContext): void {
     },
     async (args) => {
       try {
-        const page = applySearchCatalogPolicy(
+        const page = nullUnservedToolCatalog(applySearchCatalogPolicy(
           ctx,
           applyCatalogPolicy(
             applyDedicatedToolCatalog(catalogPage(args), { ...args, searchableResources: ctx.searchableResources }),
             config,
           ),
-        );
+        ));
         const text = `${page.rows.length} of ${page.matched} matching operation(s) shown (offset ${page.offset}, bound ${page.limit}). The registry holds ${page.total_operations} operations; ${page.unexposed_operations} of them have NO tool of their own and are reached with hudu_read / hudu_write / hudu_delete; ${page.unreachable_operations} are deliberately not callable here (see the row's reason and bounded alternative).`;
         return ok(text, { ...page });
       } catch (err) {
@@ -76,13 +76,13 @@ export function registerMetaTools(server: McpServer, ctx: ToolContext): void {
           requireCatalogRow(operation);
           throw configError(`hudu_describe_operation: ${operation} is not a known operation.`);
         }
-        const described = applyAcrossDescribePolicy(ctx, applySearchDescribePolicy(
+        const described = nullUnservedToolDescribe(applyAcrossDescribePolicy(ctx, applySearchDescribePolicy(
           ctx,
           applyResolveDescribePolicy(
             ctx,
             applyDedicatedToolDescribe(applyDescribePolicy(describeOperation(record), operation, record, config), ctx.searchableResources),
           ),
-        ));
+        )));
         // A reachable read with a tool of its own names it, so discovery never sends the model to
         // the approval-gated `hudu_read / hudu_write / hudu_delete` for a read a dedicated ungated tool already serves.
         // Reachability comes first: a policy-refused operation keeps its `exposed_tool` but must

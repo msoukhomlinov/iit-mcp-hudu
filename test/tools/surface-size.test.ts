@@ -8,9 +8,9 @@ import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured 2026-10-24 after the $schema/maximum strip, SDK field text and shorter search query: 45,752 / 40,378.
-const BUDGET_ALL = 46_000;
-const BUDGET_DENY = 40_600;
+// Measured 2026-10-24 after the $schema/maximum strip, SDK field text and shorter search query: 46,284 / 40,788 (incl. the Markdown authoring line).
+const BUDGET_ALL = 46_500;
+const BUDGET_DENY = 41_000;
 
 const bytes = async (policy: 'all' | 'deny') => {
   const session = await connect(undefined, { HUDU_WRITE_POLICY: policy });

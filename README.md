@@ -25,7 +25,7 @@ request; `asset_layouts` is not searchable (the SDK declares no vendor text filt
 `hudu_list_asset_layouts` follows the same reachability as the existing ungated
 `hudu_get_asset_layout` tool.
 
-These tools run on node-hudu 0.14.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
+These tools run on node-hudu 0.16.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -211,6 +211,19 @@ without `expand`. It is independent of `HUDU_WRITE_POLICY`: `all` does not imply
 `allow` does not open writes. `hudu_search` is unaffected — it already redacts hits on those two
 resources. Refusals are `POLICY_DENIED` and appear as unreachable rows in `hudu_list_operations`.
 
+Password share links (node-hudu 0.16.0): `asset_passwords.listShares`, `getShare`, `createShare` and
+`deleteShare` are credential-resource operations, so they are refused under the default
+`HUDU_SECRET_READS=deny`; the two writes also need `HUDU_WRITE_POLICY` (or `HUDU_WRITE_ALLOW`) to permit
+them. Under `allow`, `listShares` / `getShare` work and the share `url` (a bearer link) is masked.
+`createShare` is never runnable here: the SDK refuses it (`POLICY_DENIED`, `reveal_required`, dry-run
+included, no request) without its `reveal` capability, this server never grants `reveal`, and
+`hudu_list_operations` marks the row unreachable. Link-shaped text is scrubbed from share errors.
+
+`hudu_get_company_context` accepts `opts.skip` (`assets`, `articles`, `websites`, `asset_passwords`); pass
+`["asset_passwords"]` when the key cannot read credentials. The skipped list comes back empty with
+`skipped` set, and no request is made for it. `hudu_resolve_any` returns `unauthorized` (the resources the
+credential may not read) beside the permitted hits; it errors only when every requested resource refuses.
+
 All SDK clients keep default redaction enabled, including when `HUDU_SECRET_READS=allow`.
 That flag permits credential-resource operations; it never enables plaintext results. The
 SDK masks credential fields and confidential or unclassified custom fields as `[REDACTED]`.
@@ -242,12 +255,12 @@ The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for
 caller-named origins — a security property, not a deployment preference.
 
-## Article bodies are Markdown (node-hudu 0.14)
+## Article bodies are Markdown (node-hudu 0.14+)
 
 `hudu_read` and `hudu_write` pass `contentFormat: 'markdown'` to the SDK, and `hudu_get_article_context`
 asks for Markdown, so single-article bodies (`articles.get`, `articles.getContext`, `articles.resolve`,
 `create`, `update`) are returned and accepted as Markdown. Hudu callouts (`> [!INFO]`), accordions, task
-lists and Mermaid fences round-trip as the dialect documents. Rows from `hudu_list_articles`,
+lists and Mermaid fences (stored as the editor-native `<pre class="language-mermaid">` form) round-trip as the dialect documents. Rows from `hudu_list_articles`,
 `hudu_fetch_many`, `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
 those operations take no format. Rules a caller needs:
 
@@ -256,6 +269,7 @@ those operations take no format. Rules a caller needs:
   it is sent as HTML. Re-read an article through `articles.get` before editing it.
 - A Markdown write is refused when the stored article holds something the dialect cannot express
   (for example an inline `<svg>`); send HTML to keep it. The SDK's loss guard runs on every write.
+- Prefer Markdown (or editor-native HTML): Hudu reshapes API-written HTML on the next UI save (h5/h6 flattened, `small`/`abbr`/`q`/`section`/`aside` unwrapped, `thead` removed, an unknown callout type becomes info).
 - `articles.getSection` / `articles.patchSection` read or edit one section as Markdown, with dry-run.
 
 ## SDK behaviour (0.12.0)
@@ -334,7 +348,7 @@ pnpm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.14.0`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.16.0`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `pnpm install --frozen-lockfile`.
 
 ## Deployment
