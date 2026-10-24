@@ -7,6 +7,7 @@ import type { KnowledgeResource } from 'node-hudu';
 import { TOOL_DESCRIPTIONS } from 'node-hudu/mcp';
 import { assertSecretReadPermitted } from '../policy.js';
 import { redactCompanyContextCredentials } from './company-context-policy.js';
+import { lossyNote, markdownLossFor } from './article-loss.js';
 import type { ToolContext } from './context.js';
 import { contextErrorContent, errorContent, createResultBuilders, resolveErrorContent } from './results.js';
 import { ASSET_IDENTIFIER, CONTEXT_OUTPUT, DEFAULT_LIMIT, EXPAND, HITS_OUTPUT, IDENTIFIER, LIMIT, ONE_OUTPUT, resourceEnum } from './schemas.js';
@@ -136,10 +137,14 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
     },
     async (args) => {
       try {
-        const context = args.opts?.expand
-          ? await hudu.articles.getContext(args.id, { expand: true, format: 'markdown' })
-          : await hudu.articles.getContext(args.id, { format: 'markdown' });
-        return ok('Article context returned.', { context });
+        const read = (format?: 'markdown') =>
+          args.opts?.expand ? hudu.articles.getContext(args.id, { expand: true, ...(format ? { format } : {}) }) : hudu.articles.getContext(args.id, format ? { format } : {});
+        const context = await read('markdown');
+        const lossy = await markdownLossFor(() => read(), context);
+        return ok('Article context returned.' + (lossy.length ? lossyNote(lossy) : ''), {
+          context,
+          ...(lossy.length ? { markdown_lossy: true, markdown_lossy_codes: lossy } : {}),
+        });
       } catch (err) {
         return contextErrorContent(err);
       }

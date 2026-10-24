@@ -67,7 +67,9 @@ describe('hudu_read write policy', () => {
     expect(permitted.structuredContent.simulated).toBe(true);
     expect(session.urls).toEqual([]); // the dry run is the governor's, not a request
 
-    const refused = await session.call('hudu_delete', { operation: 'companies.delete', input: { id: 1 }, dry_run: false });
+    // No destructive operation is listed, so hudu_delete is not even registered.
+    expect((await session.list()).some((t) => t.name === 'hudu_delete')).toBe(false);
+    const refused = await session.call('hudu_write', { operation: 'assets.create', input: { companyId: 1, data: { name: 'x' } }, dry_run: false });
     expect(refused.isError).toBe(true);
     expect(JSON.parse(refused.content[0].text).code).toBe('POLICY_DENIED');
     expect(session.urls).toEqual([]);
@@ -671,6 +673,64 @@ describe('article content format', () => {
       expect(session.methods).not.toContain('PUT');
     } finally {
       await session.close();
+    }
+  });
+});
+
+describe('lossy Markdown reads are signalled', () => {
+  const article = (content: string) => () => Response.json({ article: { id: 22, name: 't', content } });
+  const task = (checked: boolean, text: string) =>
+    `<li data-type="taskItem" data-checked="${checked}"><label><input type="checkbox"${checked ? ' checked' : ''}><span></span></label><div><p>${text}</p></div></li>`;
+  const lossless = {
+    callout: '<div class="callout callout-info"><p>Mind the <strong>gap</strong></p></div>',
+    accordion: '<details class="mce-accordion"><summary class="mce-accordion-summary">Q</summary><div class="mce-accordion-body"><p>A</p></div></details>',
+    'task list': `<ul data-type="taskList">${task(true, 'done')}${task(false, 'open')}</ul>`,
+    mermaid: '<pre class="language-mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+    'plain markup': '<h2>Hi</h2><p>body <strong>x</strong> <a href="https://e.com">l</a></p><ul><li>a</li></ul>',
+  };
+
+  it('hudu_read flags a stored inline <svg>, with a typed field and one sentence', async () => {
+    const session = await connect(article('<p>Keep</p><svg width="1" height="1"><circle r="1"/></svg>'));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.markdown_lossy).toBe(true);
+      expect(result.structuredContent.markdown_lossy_codes).toContain('ROUNDTRIP_RAW_ELEMENT_LOST');
+      expect(result.content[0].text).toContain('markdown_lossy: true');
+      expect(result.content[0].text).toContain('hudu_fetch_many');
+      // The cache serves the HTML twin: still one request on the wire.
+      expect(session.urls).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('hudu_get_article_context flags it too', async () => {
+    const session = await connect(article('<p>Keep</p><svg width="1" height="1"></svg>'));
+    try {
+      const result = await session.call('hudu_get_article_context', { id: 22, opts: { expand: true } });
+      expect(result.structuredContent.markdown_lossy).toBe(true);
+      expect(result.content[0].text).toContain('markdown_lossy: true');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it.each(Object.entries(lossless))('does NOT flag %s, and the result carries no extra field or text', async (_name, html) => {
+    for (const call of [
+      (s: Awaited<ReturnType<typeof connect>>) => s.call('hudu_read', { operation: 'articles.get', input: { id: 22 } }),
+      (s: Awaited<ReturnType<typeof connect>>) => s.call('hudu_get_article_context', { id: 22, opts: { expand: true } }),
+    ]) {
+      const session = await connect(article(html));
+      try {
+        const result = await call(session);
+        expect(result.isError).toBeUndefined();
+        expect(result.structuredContent.markdown_lossy).toBeUndefined();
+        expect(result.structuredContent.markdown_lossy_codes).toBeUndefined();
+        expect(result.content[0].text).not.toContain('markdown_lossy');
+      } finally {
+        await session.close();
+      }
     }
   });
 });

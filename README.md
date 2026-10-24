@@ -179,9 +179,10 @@ every tool call, with the error naming the missing header. A
 credential header sent twice (which Node would otherwise join with `", "`) is treated as absent
 for the same reason.
 
-`HUDU_WRITE_POLICY` is the one switch for mutation. `deny` (the default) omits `hudu_write` and
-`hudu_delete` entirely; `allow_list` registers them and permits only the canonical keys in
-`HUDU_WRITE_ALLOW` (a write allowed here also allows the writes it delegates to: allowing
+`HUDU_WRITE_POLICY` is the write switch. `deny` (the default) omits `hudu_write` and
+`hudu_delete` entirely; `allow_list` permits only the canonical keys in `HUDU_WRITE_ALLOW` and
+registers `hudu_write` only if the list holds at least one write-effect operation, and `hudu_delete`
+only if it holds at least one destructive-effect one (per the SDK registry's effect) (a write allowed here also allows the writes it delegates to: allowing
 `articles.patchSection` allows `articles.update`); `all` permits the SDK's whole mutation surface.
 An empty or invalid allow-list fails startup. The SDK clients receive the same allow-list plus
 reads needed by helper dependencies.
@@ -278,6 +279,12 @@ those operations take no format. Rules a caller needs:
   (for example an inline `<svg>`); send HTML to keep it. The SDK's loss guard runs on every write.
 - Prefer Markdown (or editor-native HTML): Hudu reshapes API-written HTML on the next UI save (h5/h6 flattened, `small`/`abbr`/`q`/`section`/`aside` unwrapped, `thead` removed, an unknown callout type becomes info).
 - `articles.getSection` / `articles.patchSection` read or edit one section as Markdown, with dry-run.
+- A Markdown read can be incomplete: anything the dialect cannot express (an inline `<svg>`, say) comes
+  back as plain text. `hudu_read` (`articles.get` / `getContext` / `resolve`) and
+  `hudu_get_article_context` then set `markdown_lossy: true` (with `markdown_lossy_codes`, the SDK's
+  `diffArticleRoundTrip` content-loss codes) and add one sentence to the result text; fetch the stored
+  HTML with `hudu_fetch_many` (`resource: "articles"`) to see the full body. Callouts, accordions, task
+  lists and Mermaid round-trip cleanly and are never flagged; a lossless read is unchanged.
 
 ## SDK behaviour (0.12.0)
 

@@ -3,9 +3,10 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { getCapability } from 'node-hudu/capabilities';
 import { dispatchOperation, META_TOOLS } from 'node-hudu/mcp';
-import { assertNeverReachablePermitted, assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
+import { writeToolRegistered, assertNeverReachablePermitted, assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
+import { MARKDOWN_READ_OPERATIONS, lossyNote, markdownLossFor } from './article-loss.js';
 import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent } from './results.js';
 import { INVOKE_OUTPUT } from './schemas.js';
 import { FETCH_MANY_OPERATION, applyFetchManyPolicyToInvoke, SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
@@ -17,7 +18,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
   const { ok } = createResultBuilders(ctx.huduOrigin);
   const { config, log } = ctx;
   for (const mode of ['read', 'write', 'delete'] as const) {
-    if (mode !== 'read' && config.HUDU_WRITE_POLICY === 'deny') continue;
+    if (mode !== 'read' && !writeToolRegistered(config, mode)) continue;
     const client = mode === 'read' ? ctx.hudu : ctx.mutationClients?.[mode];
     if (!client) throw new Error(`Missing ${mode} SDK client`);
     const effect = mode === 'delete' ? 'destructive' : mode;
@@ -108,10 +109,16 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
             result = { ...report, errors: sanitizeSearchFailures(report.errors), failed: sanitizeSearchFailures(report.failed) };
           }
           const simulated = result !== null && typeof result === 'object' && (result as { simulated?: unknown }).simulated === true;
-          return ok(simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`, {
+          // A Markdown article read that lost content says so; a lossless read is byte-identical to before.
+          let lossy: string[] = [];
+          if (mode === 'read' && MARKDOWN_READ_OPERATIONS.has(operation)) {
+            lossy = await markdownLossFor(() => dispatchOperation(client, effect, operation, bag, {}), result);
+          }
+          return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + (lossy.length ? lossyNote(lossy) : ''), {
             simulated,
             operation,
             result: result ?? null,
+            ...(lossy.length ? { markdown_lossy: true, markdown_lossy_codes: lossy } : {}),
           });
         } catch (err) {
           // A thrown auth error on a cross-resource read must not leak the credential's scope any

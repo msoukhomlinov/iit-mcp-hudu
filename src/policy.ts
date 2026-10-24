@@ -56,6 +56,18 @@ const NEVER_REACHABLE: Readonly<Record<string, string>> = {
   'asset_passwords.createShare': 'refused: needs the SDK reveal capability, which this server never grants',
 };
 
+/**
+ * Whether `hudu_write` (`write`) / `hudu_delete` (`delete`) is registered under this config:
+ * never under `deny`; always under `all`; under `allow_list` only when the list holds at least one
+ * operation of that mode's effect (write / destructive, per the SDK registry).
+ */
+export function writeToolRegistered(config: Config, mode: 'write' | 'delete'): boolean {
+  if (config.HUDU_WRITE_POLICY === 'deny') return false;
+  if (config.HUDU_WRITE_POLICY === 'all') return true;
+  const effect = mode === 'delete' ? 'destructive' : 'write';
+  return config.HUDU_WRITE_ALLOW.some((key) => getCapability(key)?.effect === effect);
+}
+
 /** Refuse an operation this server never runs, before any request (the SDK's own `reveal` refusal stays as a second line). */
 export function assertNeverReachablePermitted(operation: string, log: Logger): void {
   if (!(operation in NEVER_REACHABLE)) return;
@@ -223,11 +235,14 @@ export function applyDescribePolicy(
  * are on, because 0.2.x treated an unset HUDU_READ_ONLY as read-only.
  */
 export function logEffectiveWritePolicy(config: Config, log: Logger, env: NodeJS.ProcessEnv): void {
-  const effective = applyReadOnly(config).HUDU_WRITE_POLICY;
-  const fields = { read_only: config.HUDU_READ_ONLY, requested: config.HUDU_WRITE_POLICY, effective };
-  if (effective === 'deny') log.info('effective write policy', fields);
+  const effectiveConfig = applyReadOnly(config);
+  const effective = effectiveConfig.HUDU_WRITE_POLICY;
+  const tools = (['write', 'delete'] as const).filter((m) => writeToolRegistered(effectiveConfig, m)).map((m) => `hudu_${m}`);
+  const fields = { read_only: config.HUDU_READ_ONLY, requested: config.HUDU_WRITE_POLICY, effective, tools_registered: tools };
+  const writesEnabled = tools.length > 0;
+  if (!writesEnabled) log.info('effective write policy: no write tools registered', fields);
   else log.warn('effective write policy: writes are enabled', fields);
-  if (env.HUDU_READ_ONLY === undefined && effective !== 'deny') {
+  if (env.HUDU_READ_ONLY === undefined && writesEnabled) {
     log.warn('HUDU_READ_ONLY is unset and writes are enabled: 0.2.x treated an unset HUDU_READ_ONLY as read-only; set HUDU_READ_ONLY=true to force read-only');
   }
 }

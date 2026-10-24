@@ -123,9 +123,10 @@ describe('meta discovery and credential tool surface', () => {
       const names = (await session.list()).map((t) => t.name);
       // The full SDK CORE profile is registered — `hudu_fetch_many` included (0.12.0); it is a
       // read; only a deny policy omits the two mutation tools.
-      const expected = [...CORE_TOOLS, ...LIST_TOOLS].filter((t) => policy !== 'deny' || !['hudu_write', 'hudu_delete'].includes(t));
+      // allow_list with only a write operation registers hudu_write but not hudu_delete.
+      const expected = [...CORE_TOOLS, ...LIST_TOOLS].filter((t) => policy === 'all' || (policy === 'allow_list' && t !== 'hudu_delete') || !['hudu_write', 'hudu_delete'].includes(t));
       expect([...names].sort(), policy).toEqual(expected.sort());
-      expect(names, policy).toHaveLength(policy === 'deny' ? 17 : 19);
+      expect(names, policy).toHaveLength(policy === 'deny' ? 17 : policy === 'allow_list' ? 18 : 19);
       await session.close();
     }
   });

@@ -140,7 +140,10 @@ export const SEARCH_OUTPUT = z.union([
 ]);
 
 /** A bundled context read (`getContext`). */
-export const CONTEXT_OUTPUT = z.object({ context: z.unknown(), skipped: z.array(z.string()).optional() });
+/** Set only when a Markdown article read lost content (see article-loss.ts); absent otherwise. */
+const LOSSY = { markdown_lossy: z.boolean().optional(), markdown_lossy_codes: z.array(z.string()).optional() };
+
+export const CONTEXT_OUTPUT = z.object({ context: z.unknown(), skipped: z.array(z.string()).optional(), ...LOSSY });
 
 /** A catalog page (`hudu_list_operations`): counts plus the rows the filters matched. */
 export const CATALOG_OUTPUT = z.object({
@@ -156,4 +159,4 @@ export const CATALOG_OUTPUT = z.object({
 });
 
 /** An `hudu_read / hudu_write / hudu_delete` result: `simulated: true` means the dry-run path ran and nothing was written. */
-export const INVOKE_OUTPUT = z.object({ simulated: z.boolean(), operation: z.string(), result: z.unknown() });
+export const INVOKE_OUTPUT = z.object({ simulated: z.boolean(), operation: z.string(), result: z.unknown(), ...LOSSY });

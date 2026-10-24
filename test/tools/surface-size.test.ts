@@ -8,9 +8,9 @@ import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured 2026-10-24 after dropping _meta and merging the four hudu_list_* tools into hudu_list: 38,500 / 33,242.
-const BUDGET_ALL = 38_700;
-const BUDGET_DENY = 33_400;
+// Measured after the markdown_lossy output fields and note clause: 39,473 / 33,928 (both under the 40,000 B target).
+const BUDGET_ALL = 39_600;
+const BUDGET_DENY = 34_050;
 
 const bytes = async (policy: 'all' | 'deny') => {
   const session = await connect(undefined, { HUDU_WRITE_POLICY: policy });
