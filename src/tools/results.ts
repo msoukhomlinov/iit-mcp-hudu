@@ -136,7 +136,7 @@ function boundErrorMessage(raw: string, status: number | undefined, url: string 
  * HTML from a row and writes it back unchanged stays correct while a mixed body does not.
  */
 export const ARTICLE_FORMAT_NOTE =
-  ' Article bodies: articles.get / getContext / resolve and article writes use Markdown (Hudu callouts as "> [!INFO]"); article rows from list, search, fetch-many and company context carry stored HTML. A written body that opens with block HTML (<p>, <div>, <h1>-<h6>, <table>, lists, <pre>, <blockquote>, <hr>, Hudu accordions) is sent as HTML, anything else is parsed as Markdown: re-read with articles.get before editing, and never write a mixed HTML/Markdown body.';
+  ' Article bodies: single-article reads and writes are Markdown; list, search, fetch-many and company-context rows are stored HTML. A body opening with block HTML is sent as HTML. Re-read with articles.get before editing.';
 
 export function errorContent(err: unknown): ToolReturn {
   // A 401/403-class credential refusal is the fixed UNAUTHORIZED envelope on EVERY tool, not just
