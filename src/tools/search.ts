@@ -70,7 +70,6 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: SEARCH_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'operations.searchKnowledge', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       const mode = args.mode ?? 'search';

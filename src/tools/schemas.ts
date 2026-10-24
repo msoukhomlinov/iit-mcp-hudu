@@ -126,6 +126,7 @@ export const HITS_OUTPUT = z.object({
   total: z.number(),
   truncated: z.array(z.string()),
   scanned: z.number(),
+  unauthorized: z.array(z.string()).optional(),
 });
 
 /**
@@ -138,8 +139,11 @@ export const SEARCH_OUTPUT = z.union([
   z.object({ mode: z.literal('resources'), resources: z.unknown(), modes: z.array(z.string()) }),
 ]);
 
+/** Set only when a Markdown article read lost content (see article-loss.ts); absent otherwise. */
+const LOSSY = { markdown_lossy: z.boolean().optional(), markdown_lossy_codes: z.array(z.string()).optional() };
+
 /** A bundled context read (`getContext`). */
-export const CONTEXT_OUTPUT = z.object({ context: z.unknown() });
+export const CONTEXT_OUTPUT = z.object({ context: z.unknown(), skipped: z.array(z.string()).optional(), ...LOSSY });
 
 /** A catalog page (`hudu_list_operations`): counts plus the rows the filters matched. */
 export const CATALOG_OUTPUT = z.object({
@@ -155,4 +159,4 @@ export const CATALOG_OUTPUT = z.object({
 });
 
 /** An `hudu_read / hudu_write / hudu_delete` result: `simulated: true` means the dry-run path ran and nothing was written. */
-export const INVOKE_OUTPUT = z.object({ simulated: z.boolean(), operation: z.string(), result: z.unknown() });
+export const INVOKE_OUTPUT = z.object({ simulated: z.boolean(), operation: z.string(), result: z.unknown(), ...LOSSY });

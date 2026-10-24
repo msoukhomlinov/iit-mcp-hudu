@@ -7,6 +7,13 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { connect } from '../helpers/mcp-session.js';
+type Json = Record<string, any>;
+/** Old flat call shape -> the merged tool: page/page_size stay top-level, everything else is a filter. */
+const callList = (session: { call(name: string, args: Json): Promise<Json> }, resource: string, args: Json = {}) => {
+  const { page, page_size, ...filters } = args;
+  return session.call('hudu_list', { resource, ...(page !== undefined ? { page } : {}), ...(page_size !== undefined ? { page_size } : {}), ...(Object.keys(filters).length ? { filters } : {}) });
+};
+
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -35,7 +42,7 @@ function assetLayoutsPage(n: number): Response {
 describe('hudu_list_companies', () => {
   it('lists one bounded page from the fixed companies.list operation, with filters in the query', async () => {
     const session = await connect(() => companiesPage(3));
-    const result = await session.call('hudu_list_companies', { page: 2, page_size: 3, search: 'acme', city: 'Sydney' });
+    const result = await callList(session, 'companies', { page: 2, page_size: 3, search: 'acme', city: 'Sydney' });
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.count).toBe(3);
@@ -58,7 +65,7 @@ describe('hudu_list_companies', () => {
 
   it('reports has_more=false when the answered page is not full', async () => {
     const session = await connect(() => companiesPage(2));
-    const result = await session.call('hudu_list_companies', { page_size: 3 });
+    const result = await callList(session, 'companies', { page_size: 3 });
     expect(result.structuredContent.count).toBe(2);
     expect(result.structuredContent.has_more).toBe(false);
     await session.close();
@@ -66,7 +73,7 @@ describe('hudu_list_companies', () => {
 
   it('returns an empty bounded page when nothing matches, without following has_more', async () => {
     const session = await connect(() => companiesPage(0));
-    const result = await session.call('hudu_list_companies', {});
+    const result = await callList(session, 'companies', {});
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.rows).toEqual([]);
     expect(result.structuredContent.has_more).toBe(false);
@@ -78,7 +85,7 @@ describe('hudu_list_companies', () => {
 describe('hudu_list_articles', () => {
   it('lists one bounded page from the fixed articles.list operation, with filters in the query', async () => {
     const session = await connect(() => articlesPage(2));
-    const result = await session.call('hudu_list_articles', { page_size: 2, company_id: 7 });
+    const result = await callList(session, 'articles', { page_size: 2, company_id: 7 });
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.count).toBe(2);
@@ -98,7 +105,7 @@ describe('hudu_list_assets', () => {
     // The operation is page-paginated (node-hudu 0.9.2): the vendor answers the requested page, so
     // the stub returns one full page and the handler passes it through without re-windowing.
     const session = await connect(() => assetsPage(3));
-    const result = await session.call('hudu_list_assets', { page: 2, page_size: 3, company_id: 5, primary_serial: 'SER-1', archived: false });
+    const result = await callList(session, 'assets', { page: 2, page_size: 3, company_id: 5, primary_serial: 'SER-1', archived: false });
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.count).toBe(3);
@@ -124,7 +131,7 @@ describe('hudu_list_assets', () => {
 
   it('reports has_more=false when the answered page is not full', async () => {
     const session = await connect(() => assetsPage(2));
-    const result = await session.call('hudu_list_assets', { page_size: 3 });
+    const result = await callList(session, 'assets', { page_size: 3 });
     expect(result.structuredContent.count).toBe(2);
     expect(result.structuredContent.has_more).toBe(false);
     await session.close();
@@ -132,7 +139,7 @@ describe('hudu_list_assets', () => {
 
   it('returns an empty bounded page when nothing matches, without following has_more', async () => {
     const session = await connect(() => assetsPage(0));
-    const result = await session.call('hudu_list_assets', {});
+    const result = await callList(session, 'assets', {});
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.rows).toEqual([]);
     expect(result.structuredContent.has_more).toBe(false);
@@ -149,7 +156,7 @@ describe('hudu_list_assets', () => {
       const ids = Array.from({ length: 7 }, (_, i) => i + 1).slice((page - 1) * size, page * size);
       return Response.json({ assets: ids.map((id) => ({ id, name: `Asset ${id}`, company_id: 1 })) });
     });
-    const result = await session.call('hudu_list_assets', { page: 3, page_size: 3 });
+    const result = await callList(session, 'assets', { page: 3, page_size: 3 });
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.rows.map((r: { id: number }) => r.id)).toEqual([7]);
@@ -163,7 +170,7 @@ describe('hudu_list_assets', () => {
 
   it('never returns more than page_size rows even when the remote ignores page_size', async () => {
     const session = await connect(() => assetsPage(100));
-    const result = await session.call('hudu_list_assets', { page_size: 4 });
+    const result = await callList(session, 'assets', { page_size: 4 });
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.rows).toHaveLength(4);
@@ -180,7 +187,7 @@ describe('hudu_list_asset_layouts', () => {
     // The vendor endpoint honours `page` but NOT `page_size`, so the SDK drops `page_size` from the
     // request and pages at the vendor's own size. The stub returns the vendor page regardless.
     const session = await connect(() => assetLayoutsPage(2));
-    const result = await session.call('hudu_list_asset_layouts', { page: 2, name: 'Server', active: true });
+    const result = await callList(session, 'asset_layouts', { page: 2, name: 'Server', active: true });
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.count).toBe(2);
@@ -206,7 +213,7 @@ describe('hudu_list_asset_layouts', () => {
     // 100-row maximum — is returned intact: no client-side truncation, so walking `page` stays
     // contiguous and no row is silently withheld.
     const session = await connect(() => assetLayoutsPage(150));
-    const result = await session.call('hudu_list_asset_layouts', {});
+    const result = await callList(session, 'asset_layouts', {});
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.rows).toHaveLength(150);
@@ -227,7 +234,7 @@ describe('hudu_list_asset_layouts', () => {
       return Response.json({ asset_layouts: all.slice((p - 1) * 3, (p - 1) * 3 + 3) });
     });
     const ids = async (page: number) =>
-      (await session.call('hudu_list_asset_layouts', { page })).structuredContent.rows.map((r: { id: number }) => r.id);
+      (await callList(session, 'asset_layouts', { page })).structuredContent.rows.map((r: { id: number }) => r.id);
     expect(await ids(1)).toEqual([1, 2, 3]);
     expect(await ids(2)).toEqual([4, 5, 6]);
     expect(await ids(3)).toEqual([7]);
@@ -236,7 +243,7 @@ describe('hudu_list_asset_layouts', () => {
 
   it('returns an empty bounded page when nothing matches, without following has_more', async () => {
     const session = await connect(() => assetLayoutsPage(0));
-    const result = await session.call('hudu_list_asset_layouts', {});
+    const result = await callList(session, 'asset_layouts', {});
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.rows).toEqual([]);
     expect(result.structuredContent.has_more).toBe(false);
@@ -246,101 +253,81 @@ describe('hudu_list_asset_layouts', () => {
 });
 
 describe('dispatch cannot be redirected', () => {
-  it('ignores an operation selector and nested invoke input on the companies tool', async () => {
-    const session = await connect(() => companiesPage(1));
-    const result = await session.call('hudu_list_companies', {
-      page_size: 1,
-      operation: 'companies.delete',
-      input: { id: 1 },
-      confirm: 'companies.delete',
-    });
+  const pages = { companies: companiesPage, assets: assetsPage, asset_layouts: assetLayoutsPage } as const;
+  const redirects = {
+    companies: { operation: 'companies.delete', input: { id: 1 }, confirm: 'companies.delete' },
+    assets: { operation: 'assets.delete', input: { companyId: 1, id: 1 }, confirm: 'assets.delete' },
+    asset_layouts: { operation: 'asset_layouts.update', input: { id: 1, data: { name: 'pwned' } }, confirm: 'asset_layouts.update' },
+  } as const;
 
-    // The call succeeds as a plain list: the extra keys never reach the SDK call.
-    expect(result.isError).toBeUndefined();
-    expect(result.structuredContent.count).toBe(1);
-    expect(session.urls).toHaveLength(1);
-    const url = session.urls[0]!;
-    expect(url).toContain('/companies?');
-    // No record path (a delete/update) and no trace of the injected operation key.
-    expect(/\/companies\/\d+/.test(url)).toBe(false);
-    expect(url).not.toContain('delete');
-    expect(url).not.toContain('operation');
+  it.each(Object.keys(redirects) as (keyof typeof redirects)[])('refuses a top-level operation selector and nested invoke input on %s, before any request', async (resource) => {
+    const session = await connect(() => pages[resource](1));
+    const result = await session.call('hudu_list', { resource, ...(resource === 'asset_layouts' ? {} : { page_size: 1 }), ...redirects[resource] });
+    expect(result.isError).toBe(true);
+    expect(session.urls).toEqual([]);
     await session.close();
   });
 
-  it('ignores an operation selector and nested invoke input on the assets tool', async () => {
+  it.each(Object.keys(redirects) as (keyof typeof redirects)[])('refuses the same keys smuggled in filters on %s, before any request', async (resource) => {
+    const session = await connect(() => pages[resource](1));
+    const result = await session.call('hudu_list', { resource, filters: { operation: redirects[resource].operation } });
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text).code).toBe('CONFIG_ERROR');
+    expect(session.urls).toEqual([]);
+    await session.close();
+  });
+
+  it('refuses the 0.2.x flat filter shape instead of stripping it into an account-wide read', async () => {
     const session = await connect(() => assetsPage(1));
-    const result = await session.call('hudu_list_assets', {
-      page_size: 1,
-      operation: 'assets.delete',
-      input: { companyId: 1, id: 1 },
-      confirm: 'assets.delete',
-    });
-
-    // The call succeeds as a plain list: the extra keys never reach the SDK call.
-    expect(result.isError).toBeUndefined();
-    expect(result.structuredContent.count).toBe(1);
-    expect(session.urls).toHaveLength(1);
-    const url = session.urls[0]!;
-    expect(url).toContain('/assets?');
-    // No record path (a delete/update) and no trace of the injected operation key.
-    expect(/\/assets\/\d+/.test(url)).toBe(false);
-    expect(url).not.toContain('delete');
-    expect(url).not.toContain('operation');
+    const result = await session.call('hudu_list', { resource: 'assets', company_id: 5 });
+    expect(result.isError).toBe(true);
+    expect(session.urls).toEqual([]);
     await session.close();
   });
 
-  it('ignores an operation selector and nested invoke input on the asset layouts tool', async () => {
+  it('refuses a filter another resource owns instead of dropping it (no silent account-wide read)', async () => {
+    const session = await connect(() => companiesPage(1));
+    const result = await session.call('hudu_list', { resource: 'companies', filters: { company_id: 5 } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('accepted:');
+    expect(session.urls).toEqual([]);
+    await session.close();
+  });
+
+  it('refuses page_size on asset_layouts, which the vendor ignores', async () => {
     const session = await connect(() => assetLayoutsPage(1));
-    const result = await session.call('hudu_list_asset_layouts', {
-      page_size: 1,
-      operation: 'asset_layouts.update',
-      input: { id: 1, data: { name: 'pwned' } },
-      confirm: 'asset_layouts.update',
-    });
-
-    // The call succeeds as a plain list: the extra keys never reach the SDK call.
-    expect(result.isError).toBeUndefined();
-    expect(result.structuredContent.count).toBe(1);
-    expect(session.urls).toHaveLength(1);
-    const url = session.urls[0]!;
-    expect(url).toContain('/asset_layouts?');
-    // No record path (an update) and no trace of the injected operation key.
-    expect(/\/asset_layouts\/\d+/.test(url)).toBe(false);
-    expect(url).not.toContain('update');
-    expect(url).not.toContain('operation');
+    const result = await session.call('hudu_list', { resource: 'asset_layouts', page_size: 5 });
+    expect(result.isError).toBe(true);
+    expect(session.urls).toEqual([]);
     await session.close();
   });
 
-  it('advertises a fixed schema: no operation/input fields and a page_size hard cap of 100', async () => {
+  it('advertises one fixed schema: no operation/input fields and a page_size hard cap of 100', async () => {
     const session = await connect();
     const tools = await session.list();
-    for (const name of ['hudu_list_companies', 'hudu_list_articles', 'hudu_list_assets']) {
-      const tool = tools.find((t) => t.name === name)!;
-      const props = tool.inputSchema.properties;
-      expect(props.operation, name).toBeUndefined();
-      expect(props.input, name).toBeUndefined();
-      expect(props.opts, name).toBeUndefined();
-      expect(props.page_size.maximum, name).toBe(100);
-      expect(props.page_size.default, name).toBe(25);
-      expect(props.page.minimum, name).toBe(1);
-      expect(props.page.default, name).toBe(1);
-    }
-    const layouts = tools.find((t) => t.name === 'hudu_list_asset_layouts')!;
-    const layoutProps = layouts.inputSchema.properties;
-    expect(layoutProps.operation).toBeUndefined();
-    expect(layoutProps.input).toBeUndefined();
-    expect(layoutProps.opts).toBeUndefined();
-    expect(layoutProps.page.minimum).toBe(1);
-    expect(layoutProps.page.default).toBe(1);
-    // `asset_layouts` declares no vendor text filter, so the tool must not advertise `search`; the
-    // vendor ignores `page_size`, so advertising it would let a caller skip rows.
-    expect(layoutProps.search).toBeUndefined();
-    expect(layoutProps.page_size).toBeUndefined();
-    expect(layoutProps.active).toBeDefined();
-    // Clients can key an ungated link off this metadata: fixed backing op, no approval.
-    expect(layouts._meta?.backingOperation).toBe('asset_layouts.list');
-    expect(layouts._meta?.requiresApproval).toBe(false);
+    expect(tools.some((t) => /^hudu_list_(companies|articles|assets|asset_layouts)$/.test(t.name))).toBe(false);
+    const props = tools.find((t) => t.name === 'hudu_list')!.inputSchema.properties;
+    expect(props.operation).toBeUndefined();
+    expect(props.input).toBeUndefined();
+    expect(props.resource.enum).toEqual(['companies', 'articles', 'assets', 'asset_layouts']);
+    expect(props.page_size.maximum).toBe(100);
+    expect(props.page.minimum).toBe(1);
+    expect(props.page.default).toBe(1);
+    await session.close();
+  });
+
+  it('answers a call to a replaced hudu_list_* name with a pointer to hudu_list, not "not found"', async () => {
+    const session = await connect();
+    const result = await session.call('hudu_list_companies', { page: 2, search: 'acme' });
+    expect(result.isError).toBe(true);
+    const text = JSON.stringify(result);
+    expect(text).toContain('hudu_list');
+    expect(text).toMatch(/resource.{1,12}companies/);
+    // The pointer names only the filters the new resource accepts (not every old flat argument).
+    expect(text).toContain('Accepted:');
+    expect(text).toContain('phone_number');
+    expect(text).toContain('search');
+    expect(session.urls).toEqual([]);
     await session.close();
   });
 });
@@ -348,7 +335,7 @@ describe('dispatch cannot be redirected', () => {
 describe('read-edge resource policy', () => {
   it('refuses a resource excluded by HUDU_SEARCH_RESOURCES before any request', async () => {
     const session = await connect(undefined, { HUDU_SEARCH_RESOURCES: ['articles'] });
-    const result = await session.call('hudu_list_companies', {});
+    const result = await callList(session, 'companies', {});
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0].text).code).toBe('CONFIG_ERROR');
     expect(session.urls).toEqual([]);
@@ -357,7 +344,7 @@ describe('read-edge resource policy', () => {
 
   it('serves the resource the deployment did keep', async () => {
     const session = await connect(() => articlesPage(1), { HUDU_SEARCH_RESOURCES: ['articles'] });
-    const result = await session.call('hudu_list_articles', { page_size: 1 });
+    const result = await callList(session, 'articles', { page_size: 1 });
     expect(result.isError).toBeUndefined();
     expect(session.urls[0]).toContain('/articles');
     await session.close();
@@ -365,7 +352,7 @@ describe('read-edge resource policy', () => {
 
   it('refuses the assets resource when HUDU_SEARCH_RESOURCES excludes it, before any request', async () => {
     const session = await connect(undefined, { HUDU_SEARCH_RESOURCES: ['articles'] });
-    const result = await session.call('hudu_list_assets', {});
+    const result = await callList(session, 'assets', {});
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0].text).code).toBe('CONFIG_ERROR');
     expect(session.urls).toEqual([]);
@@ -376,7 +363,7 @@ describe('read-edge resource policy', () => {
     // `asset_layouts` is not searchable, so HUDU_SEARCH_RESOURCES can never name it and must not
     // gate it: the resource is already reachable through the ungated `hudu_get_asset_layout`.
     const session = await connect(() => assetLayoutsPage(1), { HUDU_SEARCH_RESOURCES: ['articles'] });
-    const result = await session.call('hudu_list_asset_layouts', {});
+    const result = await callList(session, 'asset_layouts', {});
     expect(result.isError).toBeUndefined();
     expect(session.urls[0]).toContain('/asset_layouts');
     await session.close();

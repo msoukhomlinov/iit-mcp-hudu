@@ -5,8 +5,10 @@
  * Nothing else lives here. Both transports register the same tool surface from the same factory
  * (`createMcpServerFactory`), so "which transport" is the only decision this file makes.
  */
+import { createRequire } from 'node:module';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { ConfigError, loadConfig } from './config.js';
+import { logEffectiveWritePolicy } from './policy.js';
 import { runDoctor } from './doctor.js';
 import { createLogger } from './logger.js';
 import { installHttpLifecycle } from './lifecycle.js';
@@ -44,7 +46,28 @@ function runDoctorCommand(): void {
   process.exit(report.ok ? 0 : 1);
 }
 
+const USAGE = `iit-mcp-hudu: MCP server for Hudu IT documentation
+
+Usage:
+  iit-mcp-hudu            serve (MCP_TRANSPORT=stdio|http, configured by environment)
+  iit-mcp-hudu doctor     zero-wire credential preflight
+  iit-mcp-hudu --version  print the version
+  iit-mcp-hudu --help     print this help
+
+Configuration is environment-only; see .env.example in the package.
+`;
+
 function main(): void {
+  // Answered before config is loaded, so they work with no credentials.
+  const flag = process.argv[2];
+  if (flag === '--version' || flag === '-v') {
+    process.stdout.write(`${(createRequire(import.meta.url)('../package.json') as { version: string }).version}\n`);
+    return;
+  }
+  if (flag === '--help' || flag === '-h') {
+    process.stdout.write(USAGE);
+    return;
+  }
   // `doctor` is matched before anything else, so it never builds a logger, a transport or a client.
   if (process.argv[2] === 'doctor') {
     runDoctorCommand();
@@ -65,6 +88,7 @@ function main(): void {
   }
 
   const log = createLogger(config.LOG_LEVEL);
+  logEffectiveWritePolicy(config, log, process.env);
 
   if (
     config.MCP_TRANSPORT === 'http'

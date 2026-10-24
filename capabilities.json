@@ -1,0 +1,215 @@
+{
+  "version": "0.3.0",
+  "domain": "hudu",
+  "capabilities": [
+    {
+      "id": "hudu.registry.list",
+      "description": "List the operations the Hudu SDK implements, with the tool that exposes each one (when it has one), its effect, whether it needs a dry run or a confirmation flag, and the arguments it requires.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_list_operations",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.registry.describe",
+      "description": "Return the full input schema, effect, flags, dry-run support, error vocabulary, related operations and preferredWhen guidance for ONE operation, so a capability can be called correctly without carrying every schema...",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_describe_operation",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.registry.read",
+      "description": "Execute only read operations by canonical registry key.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_read",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.registry.write",
+      "description": "Execute only write operations by canonical registry key.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_write",
+      "type": "write",
+      "annotations": {
+        "destructive": false
+      },
+      "gatedBy": "HUDU_WRITE_POLICY (registered only when not deny); dry-run by default"
+    },
+    {
+      "id": "hudu.registry.delete",
+      "description": "Execute only destructive operations by canonical registry key.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_delete",
+      "type": "write",
+      "annotations": {
+        "destructive": true
+      },
+      "gatedBy": "HUDU_WRITE_POLICY (registered only when not deny); dry-run by default"
+    },
+    {
+      "id": "hudu.knowledge.search",
+      "description": "Search Hudu.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_search",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.knowledge.resolve",
+      "description": "Resolve an identifier against several resources and return the candidates that match.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_resolve_any",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.api.info",
+      "description": "Return the API information document.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_get_api_info",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.company.context",
+      "description": "Fetch a company together with the bounded context an agent needs about it.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_get_company_context",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      },
+      "composite": true
+    },
+    {
+      "id": "hudu.article.context",
+      "description": "Fetch an article with its company and folder context.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_get_article_context",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      },
+      "composite": true
+    },
+    {
+      "id": "hudu.asset.context",
+      "description": "Fetch an asset with the context an agent needs about it.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_get_asset_context",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      },
+      "composite": true
+    },
+    {
+      "id": "hudu.asset-layout.get",
+      "description": "Resolve an asset layout from an id, name or slug.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_get_asset_layout",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.password.find-by-slug",
+      "description": "Find one password record by its URL slug.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_find_asset_passwords_by_slug",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.website.find-by-slug",
+      "description": "Find one website by its URL slug.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_find_websites_by_slug",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.folder.get",
+      "description": "Resolve a folder from an id or name, optionally scoped to a company.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_get_folder",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.password-folder.get",
+      "description": "Resolve a password folder from an id or name, optionally scoped to a company.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_get_password_folder",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.group.get",
+      "description": "Resolve a user group from an id, name or slug.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_get_group",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.records.list",
+      "description": "List ONE bounded page of companies, articles, assets or asset layouts (resource argument), backed by the fixed list operations; one page, no operation selector.",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_list",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      }
+    },
+    {
+      "id": "hudu.batch.fetch-many",
+      "description": "Fetch up to 20 single records across MIXED resources in ONE call — the batch form of the single-record reads (it collapses N sequential hudu_read calls into one).",
+      "mcpPrimitive": "tool",
+      "toolName": "hudu_fetch_many",
+      "type": "read",
+      "annotations": {
+        "readOnly": true
+      },
+      "composite": true
+    }
+  ],
+  "genericCapabilityLayer": {
+    "enabled": true,
+    "tools": [
+      "hudu_list_operations",
+      "hudu_describe_operation",
+      "hudu_read",
+      "hudu_write",
+      "hudu_delete"
+    ],
+    "registry": "node-hudu capability registry (236 operations at 0.16.0)",
+    "note": "Writes are dry-run unless dry_run:false; destructive operations also need confirm equal to the operation key."
+  },
+  "schemas": {}
+}

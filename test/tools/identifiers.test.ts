@@ -17,7 +17,7 @@ const CASES: Case[] = [
   ['hudu_get_article_context', (id) => ({ id }), 'https://hudu.invalid/api/v1/articles/42'],
   ['hudu_fetch_many', (id) => ({ items: [{ resource: 'companies', id }] }), 'https://hudu.invalid/api/v1/companies/42'],
   ['hudu_get_folder', (id) => ({ identifier: { id } }), 'https://hudu.invalid/api/v1/folders/42'],
-  ['hudu_list_assets', (id) => ({ company_id: id }), 'https://hudu.invalid/api/v1/assets?company_id=42&page=1&page_size=25'],
+  ['hudu_list', (id) => ({ resource: 'assets', filters: { company_id: id } }), 'https://hudu.invalid/api/v1/assets?company_id=42&page=1&page_size=25'],
 ];
 
 const respond = () => Response.json({ company: { id: 42 }, article: { id: 42 }, folder: { id: 42 }, companies: [], assets: [], articles: [] });

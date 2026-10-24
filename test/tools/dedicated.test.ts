@@ -12,6 +12,7 @@ import {
   DEDICATED_READ_TOOLS,
   DEDICATED_READ_TOOL_BY_OPERATION,
 } from '../../src/tools/dedicated.js';
+import { LIST_RESOURCES } from '../../src/tools/lists.js';
 import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -24,19 +25,21 @@ const SDK_UNEXPOSED = CATALOG.filter((row) => row.reachable === true && row.tool
 const RE_LABELLED = 1;
 
 describe('dedicated read-tool mapping', () => {
-  it('matches the tools this server actually registers, by their own backing-operation metadata', async () => {
+  it('matches the tools this server actually registers, by argument set and by the registry', async () => {
     const session = await connect();
     const byName = new Map((await session.list()).map((t) => [t.name, t]));
     for (const [tool, spec] of Object.entries(DEDICATED_READ_TOOLS)) {
       const registered = byName.get(tool);
       expect(registered, tool).toBeDefined();
-      expect(registered!._meta?.backingOperation, tool).toBe(spec.backingOperation);
-      expect(registered!._meta?.requiresApproval, tool).toBe(false);
+      // _meta is no longer served; the backing operations are checked against the SDK registry itself.
+      for (const op of spec.covers) expect(CATALOG.find((row) => row.op === op)?.effect, op).toBe('read');
       // The describe presents the tool's own argument set, so it must be exactly this list.
       expect([...Object.keys(registered!.inputSchema.properties)].sort(), tool).toEqual(
         [...(spec.toolArguments as readonly string[])].sort(),
       );
     }
+    // hudu_list covers exactly the four operations its resources are bound to.
+    expect([...DEDICATED_READ_TOOLS.hudu_list.covers].sort()).toEqual(Object.values(LIST_RESOURCES).map((r) => r.operation).sort());
     await session.close();
   });
 
@@ -51,10 +54,10 @@ describe('dedicated read-tool mapping', () => {
 
 describe('hudu_describe_operation steers a mapped read to its ungated tool', () => {
   it.each([
-    ['assets.listAcrossCompanies', 'hudu_list_assets'],
-    ['companies.list', 'hudu_list_companies'],
-    ['articles.list', 'hudu_list_articles'],
-    ['asset_layouts.list', 'hudu_list_asset_layouts'],
+    ['assets.listAcrossCompanies', 'hudu_list'],
+    ['companies.list', 'hudu_list'],
+    ['articles.list', 'hudu_list'],
+    ['asset_layouts.list', 'hudu_list'],
     ['operations.fetchMany', 'hudu_fetch_many'],
   ])('%s names %s instead of hudu_read', async (operation, tool) => {
     const session = await connect();
@@ -69,25 +72,27 @@ describe('hudu_describe_operation steers a mapped read to its ungated tool', () 
   });
 
   it('presents the dedicated tool schema, not the operation schema', async () => {
-    // assets.listAcrossCompanies accepts `include`; hudu_list_assets does not. The describe must
-    // present the tool's arguments so a caller cannot supply one the tool would silently strip.
+    // assets.listAcrossCompanies accepts `include`; hudu_list does not. The describe must
+    // present the tool's arguments so a caller cannot supply one the tool would refuse.
     const session = await connect();
     const d = (await session.call('hudu_describe_operation', { operation: 'assets.listAcrossCompanies' })).structuredContent;
     expect(Object.keys(d.input_schema)).not.toContain('include');
-    expect(d.input_schema.company_id).toBeDefined();
+    expect(Object.keys(d.input_schema).sort()).toEqual(['filters', 'page', 'page_size', 'resource']);
+    expect(d.input_schema.resource.enum).toEqual(['assets']);
+    expect(d.input_schema.filters.description).toContain('company_id');
     expect(d.example).toBeNull();
-    expect(d.preferred_when).toContain('hudu_list_assets');
+    expect(d.preferred_when).toContain('hudu_list');
     await session.close();
   });
 
-  it('does not steer assets.list to hudu_list_assets, whose arguments differ', async () => {
-    // assets.list takes { companyId, params }; hudu_list_assets takes a flat company_id. Advertising
+  it('does not steer assets.list to hudu_list, whose arguments differ', async () => {
+    // assets.list takes { companyId, params }; hudu_list takes a flat company_id filter. Advertising
     // the tool here would let a caller follow the shown schema and issue an unscoped request.
     const session = await connect();
     const result = await session.call('hudu_describe_operation', { operation: 'assets.list' });
     expect(result.structuredContent.exposed_tool).toBeNull();
     expect(result.structuredContent.why_not).toContain('hudu_read');
-    expect(result.content[0].text).not.toContain('hudu_list_assets');
+    expect(result.content[0].text).not.toContain('hudu_list ');
     await session.close();
   });
 
@@ -121,7 +126,7 @@ describe('hudu_list_operations advertises the dedicated tool on the mapped rows'
     const result = await session.call('hudu_list_operations', { resource: 'assets', limit: 100 });
     const row = result.structuredContent.rows.find((r: Json) => r.op === 'assets.listAcrossCompanies');
     expect(row).toBeDefined();
-    expect(row.tool).toBe('hudu_list_assets');
+    expect(row.tool).toBe('hudu_list');
     expect(row.reason ?? '').not.toContain('hudu_read');
     // assets.list keeps its tool-less row: its arguments do not match the dedicated tool.
     const scoped = result.structuredContent.rows.find((r: Json) => r.op === 'assets.list');
@@ -154,12 +159,15 @@ describe('hudu_list_operations advertises the dedicated tool on the mapped rows'
     // client advancing by offset sees each remaining row exactly once and `matched` never moves.
     const session = await connect();
     const first = await session.call('hudu_list_operations', { unexposed_only: true, limit: 20 });
-    const second = await session.call('hudu_list_operations', { unexposed_only: true, limit: 20, offset: first.structuredContent.rows.length });
     expect(first.structuredContent.matched).toBe(SDK_UNEXPOSED - RE_LABELLED);
-    expect(second.structuredContent.matched).toBe(first.structuredContent.matched);
     expect(first.structuredContent.has_more).toBe(true);
-    expect(second.structuredContent.has_more).toBe(false);
-    const ops = [...first.structuredContent.rows, ...second.structuredContent.rows].map((r: Json) => r.op);
+    // Page until has_more is false: the set size is the SDK's, not a fixed two pages.
+    const ops: string[] = first.structuredContent.rows.map((r: Json) => r.op);
+    for (let page = first; page.structuredContent.has_more; ) {
+      page = await session.call('hudu_list_operations', { unexposed_only: true, limit: 20, offset: ops.length });
+      expect(page.structuredContent.matched).toBe(first.structuredContent.matched);
+      ops.push(...page.structuredContent.rows.map((r: Json) => r.op));
+    }
     expect(ops).toHaveLength(first.structuredContent.matched);
     expect(new Set(ops).size).toBe(ops.length);
     await session.close();
@@ -185,10 +193,10 @@ describe('a narrowed HUDU_SEARCH_RESOURCES is honoured before advertising', () =
     // companies is excluded, so hudu_list_companies would be refused before any request.
     const companies = await session.call('hudu_describe_operation', { operation: 'companies.list' });
     expect(companies.structuredContent.exposed_tool).toBeNull();
-    expect(companies.content[0].text).not.toContain('hudu_list_companies');
+    expect(companies.content[0].text).not.toContain('hudu_list');
     // asset_layouts is not searchable and is never gated, so its tool stays advertised.
     const layouts = await session.call('hudu_describe_operation', { operation: 'asset_layouts.list' });
-    expect(layouts.structuredContent.exposed_tool).toBe('hudu_list_asset_layouts');
+    expect(layouts.structuredContent.exposed_tool).toBe('hudu_list');
     // operations is not a search scope either: the batch tool is advertised even when narrowed.
     const batch = await session.call('hudu_describe_operation', { operation: 'operations.fetchMany' });
     expect(batch.structuredContent.exposed_tool).toBe('hudu_fetch_many');

@@ -30,7 +30,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { ToolContext } from './context.js';
-import { errorContent, metaSpec, createResultBuilders } from './results.js';
+import { ARTICLE_FORMAT_NOTE, errorContent, metaSpec, createResultBuilders } from './results.js';
 import { applyFetchManyPolicyToInvoke } from './search-policy.js';
 
 /**
@@ -60,7 +60,7 @@ export const FETCH_MANY_RESOURCES = [
  */
 const FETCH_MANY_ITEM = z.object({
   resource: z.enum(FETCH_MANY_RESOURCES),
-  id: z.number().int().positive(),
+  id: z.number().int().positive().describe('Positive integer id (>= 1).'),
   fields: z.array(z.string()).min(1).optional(),
 }).strict();
 
@@ -83,9 +83,9 @@ export function registerFetchManyTool(server: McpServer, ctx: ToolContext): void
     'hudu_fetch_many',
     {
       ...metaSpec('hudu_fetch_many'),
+      description: metaSpec('hudu_fetch_many').description + ARTICLE_FORMAT_NOTE,
       inputSchema: FETCH_MANY_INPUT,
       outputSchema: FETCH_MANY_OUTPUT,
-      _meta: { backingOperation: 'operations.fetchMany', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       try {

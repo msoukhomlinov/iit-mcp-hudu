@@ -3,29 +3,32 @@
 MCP server for Hudu IT documentation, built on the [`node-hudu`](https://www.npmjs.com/package/node-hudu) SDK.
 
 ## Tool surface
+17 tools by default: `hudu_list_operations`, `hudu_describe_operation`, `hudu_read`,
+`hudu_fetch_many`, twelve core reads, and `hudu_list`. Setting `HUDU_WRITE_POLICY` `allow_list` or
+`all` adds `hudu_write` and `hudu_delete` (19 tools). Each dispatcher uses a separate SDK client in
+its matching mode; names, annotations and the dispatcher field text are the SDK's curated metadata.
+SDK enforcement rejects cross-effect calls before any request. The old `hudu_invoke`,
+`hudu_catalog` and `hudu_describe` names are removed; consumers must resync their tool catalog.
 
-20 tools by default: `hudu_list_operations`, `hudu_describe_operation`, `hudu_read`,
-`hudu_fetch_many`, twelve core reads, and four bounded list reads. Setting
-`HUDU_READ_ONLY=false` adds `hudu_write` and `hudu_delete` (22 tools). Each dispatcher uses a
-separate SDK client in its matching mode,
-with names, annotations and operation enums from the SDK's curated metadata. SDK enforcement
-rejects cross-effect calls before requests. The old `hudu_invoke`, `hudu_catalog` and
-`hudu_describe` names are removed; consumers must resync their tool catalog.
+`hudu_list(resource)` replaces the four `hudu_list_companies` / `hudu_list_articles` /
+`hudu_list_assets` / `hudu_list_asset_layouts` tools of 0.2.x (a call to an old name answers with a
+pointer to `hudu_list`). `resource` selects one of four fixed registry operations (`companies.list` /
+`articles.list` / `assets.listAcrossCompanies` / `asset_layouts.list`); the tool takes exactly one
+page and accepts no operation selector or nested invocation, so an ungated reader can page these
+collections without the registry dispatcher and without exposing the write surface. Filters go in
+`filters`; each resource accepts only its own set, and any other key is refused naming the accepted
+ones (never dropped, which would turn a company-scoped request into an account-wide one). Companies,
+articles and assets take `page` / `page_size` (capped at 100); `asset_layouts` takes `page` only,
+because `/asset_layouts` ignores `page_size`: a caller bound would truncate the vendor page and skip
+rows as `page` advanced, so the tool returns the vendor page whole and page N is always the
+vendor's Nth page. For searchable resources (`companies` / `articles` / `assets`) a resource
+excluded by `HUDU_SEARCH_RESOURCES` is refused by the list tool too, before any request;
+`asset_layouts` is not searchable (the SDK declares no vendor text filter for it), so it follows the
+same reachability as the existing ungated `hudu_get_asset_layout` tool. The tool set is the SDK's
+`CORE_TOOLS` plus `hudu_list`, which is this server's own; a future SDK upgrade must not re-add the
+four old names.
 
-The four list tools each wrap exactly ONE fixed registry operation (`companies.list` /
-`articles.list` / `assets.listAcrossCompanies` / `asset_layouts.list`), take exactly one page and
-accept no operation selector or nested invocation, so an ungated Reader can page companies,
-articles, assets or asset layouts without using a registry dispatcher and without exposing the write
-surface. The first three take `page` / `page_size` (capped at 100); `hudu_list_asset_layouts` takes
-`page` only, because `/asset_layouts` ignores `page_size` — a caller bound would truncate a vendor
-page and skip rows as `page` advanced, so the tool returns the vendor page whole and page N is
-always the vendor's Nth page. For the searchable resources (`companies` / `articles` /
-`assets`) a resource excluded by `HUDU_SEARCH_RESOURCES` is refused by the list tool too, before any
-request; `asset_layouts` is not searchable (the SDK declares no vendor text filter for it), so
-`hudu_list_asset_layouts` follows the same reachability as the existing ungated
-`hudu_get_asset_layout` tool.
-
-These tools run on node-hudu 0.13.2; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
+These tools run on node-hudu 0.16.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -33,7 +36,7 @@ numeric vendor id, and an optional client-side field projection. A shape violati
 the schema layer before any request, and failure is per-item: a miss or a vendor fault lands on
 its own row as a typed error while the rest of the batch is served. The deployment's secret-read
 policy applies to the batch's items exactly as to a single read, so a credential item is
-refused pre-request under the default `HUDU_SECRET_READS=deny`; `HUDU_READ_ONLY` keeps the tool
+refused pre-request under the default `HUDU_SECRET_READS=deny`; `HUDU_WRITE_POLICY=deny` keeps the tool
 — it is a read. The same batch stays reachable through `hudu_read` with operation
 `operations.fetchMany`, gated the same way.
 
@@ -47,7 +50,7 @@ refused pre-request under the default `HUDU_SECRET_READS=deny`; `HUDU_READ_ONLY`
 ## Local use (stdio)
 
 Needs Node 24+, a Hudu API key and your Hudu origin. `stdio` is the default transport, so no
-`MCP_TRANSPORT` is needed. Mutation tools stay off unless you set `HUDU_READ_ONLY=false`.
+`MCP_TRANSPORT` is needed. Mutation tools stay off unless you set `HUDU_WRITE_POLICY`.
 
 **From npm** (recommended):
 
@@ -74,7 +77,7 @@ or in `.mcp.json` / Claude Desktop config:
 `npx` fetches the package on first run and caches it; use `iit-mcp-hudu@<version>` to pin one.
 
 **From a clone** (for development): see [Development](#development). Point your client at
-`node /absolute/path/to/iit-mcp-hudu/dist/main.js` after `npm run build`.
+`node /absolute/path/to/iit-mcp-hudu/dist/main.js` after `pnpm run build`.
 
 ## Loading credential values (read this before a live session)
 
@@ -121,7 +124,7 @@ whose envelope names a shape anomaly (`credentialShape: "anomalous"`) points bac
 The server enforces the shape itself, so a bad load cannot reach the wire even if `doctor` is
 skipped: a malformed `HUDU_API_KEY` fails boot; a malformed `X-Hudu-Api-Key` header is refused
 before any client is built, with the typed `CREDENTIAL_MALFORMED` envelope (value-free, and
-`retryable: false`). Neither path dials. Since node-hudu 0.13.2 the SDK enforces credential shape
+`retryable: false`). Neither path dials. Since node-hudu 0.14.0 the SDK enforces credential shape
 itself too — refusing a contaminated value at client construction and attaching a value-free shape
 diagnostic to a refused credential — and this server consumes that diagnostic directly on a 401;
 the server's own gate stays as the boundary guard, a superset of the SDK's checks.
@@ -176,15 +179,20 @@ every tool call, with the error naming the missing header. A
 credential header sent twice (which Node would otherwise join with `", "`) is treated as absent
 for the same reason.
 
-`HUDU_READ_ONLY=true` is the default and omits both mutation tools entirely, regardless of
-write policy. To enable mutations, explicitly set it to `false` and configure
-`HUDU_WRITE_POLICY`: `deny` rejects all mutations, `allow_list` permits only the canonical
-keys in `HUDU_WRITE_ALLOW`, and `all` permits the SDK's mutation surface. An empty or invalid
-allow-list fails startup. The SDK clients receive the same allow-list plus reads needed by
-helper dependencies; client mode and effect dispatch remain independent restrictions.
+`HUDU_WRITE_POLICY` is the write switch. `deny` (the default) omits `hudu_write` and
+`hudu_delete` entirely; `allow_list` permits only the canonical keys in `HUDU_WRITE_ALLOW` and
+registers `hudu_write` only if the list holds at least one write-effect operation, and `hudu_delete`
+only if it holds at least one destructive-effect one (per the SDK registry's effect) (a write allowed here also allows the writes it delegates to: allowing
+`articles.patchSection` allows `articles.update`); `all` permits the SDK's whole mutation surface.
+An empty or invalid allow-list fails startup. The SDK clients receive the same allow-list plus
+reads needed by helper dependencies.
 Writes default to dry-run previews; execution requires `dry_run:false`, and destructive
 operations additionally require exact `confirm`. A confirmation string is not human consent.
 Discovery reports deployment-policy refusals as unreachable.
+
+`HUDU_READ_ONLY=true` is a hard override of the write policy: no `hudu_write` / `hudu_delete` tool is
+registered and every mutation is refused, whatever `HUDU_WRITE_POLICY` and `HUDU_WRITE_ALLOW` say. Unset or
+`false` leaves `HUDU_WRITE_POLICY` in charge (default `deny`). The effective policy is logged once at boot.
 
 `HUDU_WRITE_POLICY` stays a **deployment-wide** decision, not a per-caller one. Per-caller
 credentials make each caller's Hudu role an external authority too, but that authority is not ours
@@ -210,6 +218,19 @@ whole resource rather than to the `expand` flag, because `asset_passwords.get` r
 without `expand`. It is independent of `HUDU_WRITE_POLICY`: `all` does not imply open secrets, and
 `allow` does not open writes. `hudu_search` is unaffected — it already redacts hits on those two
 resources. Refusals are `POLICY_DENIED` and appear as unreachable rows in `hudu_list_operations`.
+
+Password share links (node-hudu 0.16.0): `asset_passwords.listShares`, `getShare`, `createShare` and
+`deleteShare` are credential-resource operations, so they are refused under the default
+`HUDU_SECRET_READS=deny`; the two writes also need `HUDU_WRITE_POLICY` (or `HUDU_WRITE_ALLOW`) to permit
+them. Under `allow`, `listShares` / `getShare` work and the share `url` (a bearer link) is masked.
+`createShare` is never runnable here: the SDK refuses it (`POLICY_DENIED`, `reveal_required`, dry-run
+included, no request) without its `reveal` capability, this server never grants `reveal`, and
+`hudu_list_operations` marks the row unreachable. Link-shaped text is scrubbed from share errors.
+
+`hudu_get_company_context` accepts `opts.skip` (`assets`, `articles`, `websites`, `asset_passwords`); pass
+`["asset_passwords"]` when the key cannot read credentials. The skipped list comes back empty with
+`skipped` set, and no request is made for it. `hudu_resolve_any` returns `unauthorized` (the resources the
+credential may not read) beside the permitted hits; it errors only when every requested resource refuses.
 
 All SDK clients keep default redaction enabled, including when `HUDU_SECRET_READS=allow`.
 That flag permits credential-resource operations; it never enables plaintext results. The
@@ -238,16 +259,34 @@ background, so a caller's later search is body-aware without the first one await
 walk (some clients enforce a 60s call timeout). Under `stdio` the one long-lived index stays warm and the
 default is `"index"`. Pass `tier:"index"` explicitly for a complete first answer.
 
-Three 0.12.0 preset knobs are env-tunable, each defaulting to the adopted behaviour.
-`HUDU_CACHE_PRESET` (`on` | `off`) toggles the read-through cache: the default `on` selects
-the SDK's `recommended` per-entity TTL preset, and `off` disables it, so repeated reads
-re-dial Hudu instead of being served from the cache.
-`HUDU_COOLDOWN` (`on` | `off`) is the 429 cooldown gate: `off` means a 429 retries per the
-agent profile instead of arming a local deadline whose refusals answer with `notSent: true`.
-`HUDU_TIMEOUT_MS` (positive integer milliseconds) is the whole-call deadline, default `30000`;
-it is always sent to the SDK explicitly, so it stays above the profile's 20 s.
+The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for
 caller-named origins — a security property, not a deployment preference.
+
+## Article bodies are Markdown (node-hudu 0.14+)
+
+`hudu_read` and `hudu_write` pass `contentFormat: 'markdown'` to the SDK, and `hudu_get_article_context`
+asks for Markdown, so single-article bodies (`articles.get`, `articles.getContext`, `articles.resolve`,
+`create`, `update`) are returned and accepted as Markdown. Hudu callouts (`> [!INFO]`), accordions, task
+lists and Mermaid fences (stored as the editor-native `<pre class="language-mermaid">` form) round-trip as the dialect documents. Rows from `hudu_list` (articles),
+`hudu_fetch_many`, `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
+those operations take no format. Rules a caller needs:
+
+- A write's `data.content` is parsed as Markdown unless it opens with block-level HTML (`<p>`, `<div>`,
+  `<h1>`-`<h6>`, `<table>`, lists, `<pre>`, `<blockquote>`, `<hr>`, Hudu's `mce-accordion`), in which case
+  it is sent as HTML. Re-read an article through `articles.get` before editing it.
+- A Markdown write is refused when the stored article holds something the dialect cannot express
+  (for example an inline `<svg>`); send HTML to keep it. The SDK's loss guard runs on every write.
+- Prefer Markdown (or editor-native HTML): Hudu reshapes API-written HTML on the next UI save (h5/h6 flattened, `small`/`abbr`/`q`/`section`/`aside` unwrapped, `thead` removed, an unknown callout type becomes info).
+- `articles.getSection` / `articles.patchSection` read or edit one section as Markdown, with dry-run.
+- A Markdown read can be incomplete: anything the dialect cannot express (an inline `<svg>`, say) comes
+  back as plain text. `hudu_read` (`articles.get` / `getContext` / `resolve`) and
+  `hudu_get_article_context` then set `markdown_lossy: true` (with `markdown_lossy_codes`, the SDK's
+  `diffArticleRoundTrip` content-loss codes) and add one sentence to the result text; fetch the stored
+  HTML with `hudu_fetch_many` (`{items:[{resource:"articles", id}]}`) to see the full body. The read is one
+  fetch with HTML forced and converted locally (so there is no second request); a caller's own
+  `opts.format: "html"` returns the stored HTML untouched with no flag. Callouts, accordions, task
+  lists and Mermaid round-trip cleanly and are never flagged; a lossless read is unchanged.
 
 ## SDK behaviour (0.12.0)
 
@@ -284,13 +323,13 @@ Every client the server builds — the parent, the fail-closed placeholders and 
   (1 retry, 240/min rate limit, concurrency 3, bounded resolution scans). The rate-limit bucket
   is per client, i.e. per scope. The preset stays a deployment-wide constant with no env
   override; the one deadline it would otherwise govern is pinned explicitly instead
-  (`HUDU_TIMEOUT_MS`, below), and the 429 now arms the cooldown gate instead of retrying
+  (a fixed 30 s, below), and the 429 now arms the cooldown gate instead of retrying
   blindly.
-- `cache: 'recommended'` — env-toggled as `HUDU_CACHE_PRESET` (default `on`): the
+- `cache: 'recommended'` — fixed on: the
   per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min base). Caches are
   per client, so per scope. A write through the write or delete client does not clear the read
   client's cache (separate instances), so a read after a mutation is TTL-bounded stale, never
-  unbounded. `off` disables the read-through cache: repeated reads re-dial Hudu.
+  unbounded.
 - `blockPrivateHosts` on the per-scope clients: the literal-IP SSRF floor for CALLER-named
   origins, fail-closed at client construction. It complements the `HUDU_ALLOWED_BASE_HOSTS`
   hostname matcher (which alone can express wildcard suffixes) and holds even in
@@ -299,20 +338,17 @@ Every client the server builds — the parent, the fail-closed placeholders and 
   env boundary and is never floor-checked, so an on-prem install whose Hudu sits on a literal
   private IP is unaffected by the upgrade. Deliberately no env override: it is a security
   property, not a deployment preference.
-- `cooldown: { enabled: true }` — env-tunable as `HUDU_COOLDOWN` (default `on`): the 429
+- `cooldown: { enabled: true }` — fixed on: the 429
   cooldown gate; a call refused locally by the gate answers with `notSent: true` in the error
   envelope, so a model does not read a local refusal as a vendor rejection of a sent call.
-  `off` retries a 429 per the profile instead of arming a local deadline.
 
-The whole-call deadline is `HUDU_TIMEOUT_MS` (positive integer milliseconds, default `30000`):
+The whole-call deadline is a fixed `30000` ms:
 it is always passed to the SDK explicitly, so it stays above the agent profile's 20 s
 regardless of preset — the preset's 20 s would shorten a cold `tier:'index'` body-index walk
 that the 0.9.2 deployment tolerated at the SDK's 30 s, and a cold-scope search must not start
 timing out because of an upgrade.
 
-These are deployment-wide, not per-caller: `HUDU_CACHE_PRESET`, `HUDU_COOLDOWN` and
-`HUDU_TIMEOUT_MS` are env-tunable with the defaults above, while `profile` and
-`blockPrivateHosts` stay constants.
+These are deployment-wide constants, not per-caller and not env-tunable.
 
 
 ## Development
@@ -320,16 +356,16 @@ These are deployment-wide, not per-caller: `HUDU_CACHE_PRESET`, `HUDU_COOLDOWN` 
 ```
 git clone https://github.com/msoukhomlinov/iit-mcp-hudu.git
 cd iit-mcp-hudu
-npm install
-npm run build
-npm test
-npm run dev
+pnpm install
+pnpm run build
+pnpm test
+pnpm run dev
 ```
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.13.2`. The catalog hash test detects metadata drift; upgrades require
-review of the client authority, operation enums and redaction regressions. Docker uses `npm ci`.
+`node-hudu` is pinned to `0.16.0`. The catalog hash test detects metadata drift; upgrades require
+review of the client authority, operation enums and redaction regressions. Docker uses `pnpm install --frozen-lockfile`.
 
 ## Deployment
 

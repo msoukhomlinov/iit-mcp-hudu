@@ -151,18 +151,6 @@ const schema = z
     HUDU_ALLOW_ANY_BASE_HOST: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
     MCP_TRANSPORT: z.enum(TRANSPORTS).default('stdio'),
     /**
-     * Pages the body index walks per resource per build (SDK default 250 = 25,000 records).
-     *
-     * Tenant-shaped, so it is a knob rather than a constant. The walk runs articles first and assets
-     * second, and both compete for one 64 MB text budget that evicts least-recently-read text: on a
-     * tenant with tens of thousands of assets the asset text arrives last, so the ARTICLE BODIES are
-     * the first thing evicted — and article bodies are the only reason this index exists (assets
-     * carry no body, and Hudu's own ?search= already covers their titles and fields). Sizing this so
-     * the article walk completes with budget left over is what keeps searches from going body-blind.
-     * A tenant with 3,000+ articles needs about 32 pages.
-     */
-    HUDU_SEARCH_MAX_INDEX_PAGES: z.coerce.number().int().min(1).max(1000).optional(),
-    /**
      * The resources `hudu_search` may offer and query — the read-edge counterpart to
      * `HUDU_WRITE_POLICY`.
      *
@@ -171,15 +159,21 @@ const schema = z
      * resources THIS credential can read so the tool never advertises a guaranteed-empty search and
      * a model never spends a turn on a resource the key is not allowed to read. Every name is
      * validated against the SDK's searchable set at boot, so a typo fails the container instead of a
-     * call weeks later. Applies to `hudu_search` only; the dedicated resolve tools are unaffected.
+     * call weeks later. Applies to `hudu_search`, `hudu_resolve_any` and the same operations through `hudu_read`; the dedicated per-resource resolve tools are unaffected.
      */
     HUDU_SEARCH_RESOURCES: z.string().optional().transform(parseSearchResources),
     /**
-     * Whether `hudu_read / hudu_write / hudu_delete` may reach a `write` or `destructive` operation at all. Read/`null`
-     * effects are never touched by this policy. Defaults to `deny` — see {@link WRITE_POLICIES}.
+     * The single switch for mutation. `deny` (the default) registers no `hudu_write` / `hudu_delete`
+     * tool at all; `allow_list` and `all` register them and gate every call. Read effects are never
+     * touched. See {@link WRITE_POLICIES}.
      */
-    HUDU_READ_ONLY: z.enum(['true', 'false']).default('true').transform((value) => value === 'true'),
     HUDU_WRITE_POLICY: z.enum(WRITE_POLICIES).default('deny'),
+    /**
+     * Hard override. `true` means no `hudu_write` / `hudu_delete` tool and no write or destructive
+     * operation, whatever `HUDU_WRITE_POLICY` / `HUDU_WRITE_ALLOW` say (see {@link applyReadOnly}).
+     * Unset or `false` leaves `HUDU_WRITE_POLICY` in charge (its default is `deny`).
+     */
+    HUDU_READ_ONLY: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
     /**
      * The operation keys `HUDU_WRITE_POLICY=allow_list` permits. Read only under `allow_list`;
      * ignored under `deny`/`all`. Exposed as the parsed array so no consumer re-splits the string.
@@ -198,33 +192,6 @@ const schema = z
     HUDU_SECRET_READS: z.enum(SECRET_READ_POLICIES).default('deny'),
     PORT: z.coerce.number().int().positive().max(65535).default(8787),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-    /**
-     * The read-through cache preset every client this server builds gets (SDK 0.12.0).
-     *
-     * The operator-facing toggle for the read-through cache. `on` (the default) selects the
-     * SDK's `recommended` per-entity TTL preset (1 h structural / 5 min mutable / 1 min base);
-     * `off` disables the read-through cache, so a repeated read re-dials Hudu instead of
-     * being served from the cache.
-     */
-    HUDU_CACHE_PRESET: z.enum(['on', 'off']).default('on'),
-    /**
-     * The 429 cooldown gate (SDK 0.12.0).
-     *
-     * `on` (the default) arms a local deadline after a vendor 429 whose retries are SPENT (the
-     * agent profile's 1 retry, so the first such call makes two wire attempts): calls the gate
-     * then refuses locally, and the error envelope marks them `notSent: true` so a local
-     * refusal stays distinguishable from a vendor rejection of a sent call. `off`
-     * retries a 429 per the profile's retry budget instead of arming a local deadline.
-     */
-    HUDU_COOLDOWN: z.enum(['on', 'off']).default('on'),
-    /**
-     * The whole-call deadline in milliseconds (SDK 0.12.0). Positive integer.
-     *
-     * Defaults to 30000 and is always passed to the SDK explicitly, so it wins over the
-     * agent profile's 20 s deadline regardless of preset; the default keeps the tolerance
-     * a cold `tier:'index'` body-index walk had before the 0.12.0 adoption.
-     */
-    HUDU_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   })
   .superRefine((c, ctx) => {
     // Pre-dial integrity check (2026-10-07 Autotask incident class): a credential whose bytes were
@@ -396,12 +363,28 @@ export type Config = z.infer<typeof schema>;
  * @throws {ConfigError} when any variable is missing or malformed. The message lists every problem
  *   at once — a boot loop that surfaces one missing variable per restart wastes real minutes.
  */
+/** Variables removed in 0.3.0. A stale one must fail boot rather than be ignored silently. */
+const REMOVED_VARS = ['HUDU_CACHE_PRESET', 'HUDU_COOLDOWN', 'HUDU_TIMEOUT_MS', 'HUDU_SEARCH_MAX_INDEX_PAGES'] as const;
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const stale = REMOVED_VARS.filter((name) => env[name] !== undefined);
+  if (stale.length > 0) {
+    throw new ConfigError(`Invalid configuration:\n  ${stale.join(', ')}: removed in 0.3.0; delete it. HUDU_WRITE_POLICY (deny | allow_list | all) governs writes, with HUDU_READ_ONLY=true as a hard override.`);
+  }
   const parsed = schema.safeParse(env);
   if (parsed.success) return parsed.data;
 
   const problems = parsed.error.issues.map((i) => `  ${i.path.join('.') || '(config)'}: ${i.message}`);
   throw new ConfigError(`Invalid configuration:\n${problems.join('\n')}`);
+}
+
+/**
+ * The configuration the server actually runs with: `HUDU_READ_ONLY=true` forces the policy to
+ * `deny` (no write or delete tool is registered and every write is refused), whatever
+ * `HUDU_WRITE_POLICY` / `HUDU_WRITE_ALLOW` say. Otherwise the config is returned unchanged.
+ */
+export function applyReadOnly(config: Config): Config {
+  return config.HUDU_READ_ONLY ? { ...config, HUDU_WRITE_POLICY: 'deny', HUDU_WRITE_ALLOW: [] } : config;
 }
 
 /** Thrown only by {@link loadConfig}. Never carries a credential value — only variable names. */

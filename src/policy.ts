@@ -15,7 +15,7 @@ import type { catalogPage, describeOperation, CatalogRow } from 'node-hudu/mcp';
 import { getCapability } from 'node-hudu/capabilities';
 import type { CapabilityRecord } from 'node-hudu/capabilities';
 import { PolicyDeniedError } from 'node-hudu/errors';
-import type { Config } from './config.js';
+import { applyReadOnly, type Config } from './config.js';
 import type { Logger } from './logger.js';
 
 /** A page of the generated catalog, as `catalogPage` returns it. */
@@ -47,6 +47,34 @@ export function isSecretOperation(operation: string): boolean {
   return CREDENTIAL_RESOURCES.some((resource) => operation.startsWith(`${resource}.`));
 }
 
+/**
+ * Operations this server can never run, whatever the policy. `createShare` mints a live credential
+ * link and the SDK refuses it (POLICY_DENIED, reveal_required, dry-run included, no request) on any
+ * client without `reveal`; every scoped client here is built with `reveal: false`.
+ */
+const NEVER_REACHABLE: Readonly<Record<string, string>> = {
+  'asset_passwords.createShare': 'refused: needs the SDK reveal capability, which this server never grants',
+};
+
+/**
+ * Whether `hudu_write` (`write`) / `hudu_delete` (`delete`) is registered under this config:
+ * never under `deny`; always under `all`; under `allow_list` only when the list holds at least one
+ * operation of that mode's effect (write / destructive, per the SDK registry).
+ */
+export function writeToolRegistered(config: Config, mode: 'write' | 'delete'): boolean {
+  if (config.HUDU_WRITE_POLICY === 'deny') return false;
+  if (config.HUDU_WRITE_POLICY === 'all') return true;
+  const effect = mode === 'delete' ? 'destructive' : 'write';
+  return config.HUDU_WRITE_ALLOW.some((key) => getCapability(key)?.effect === effect);
+}
+
+/** Refuse an operation this server never runs, before any request (the SDK's own `reveal` refusal stays as a second line). */
+export function assertNeverReachablePermitted(operation: string, log: Logger): void {
+  if (!(operation in NEVER_REACHABLE)) return;
+  log.warn('operation refused: never reachable on this server', { operation });
+  throw new PolicyDeniedError(`${operation} ${NEVER_REACHABLE[operation]}.`, { operation, retryable: false, suggestedAction: 'This server never runs this operation; do not retry it.' });
+}
+
 /** Whether this deployment permits reads that can return a plaintext credential. */
 export function secretReadsPermitted(config: Config): boolean {
   return config.HUDU_SECRET_READS === 'allow';
@@ -58,7 +86,7 @@ export function secretReadsPermitted(config: Config): boolean {
  * Under deny, only an explicitly classified read may reach the SDK.
  */
 export function policyAllows(operation: string, record: CapabilityRecord | undefined, config: Config): boolean {
-  if (config.HUDU_READ_ONLY || config.HUDU_WRITE_POLICY === 'deny') return record?.effect === 'read';
+  if (config.HUDU_WRITE_POLICY === 'deny') return record?.effect === 'read';
   if (record === undefined || !isWriteEffect(record)) return true;
   switch (config.HUDU_WRITE_POLICY) {
     case 'allow_list':
@@ -76,18 +104,19 @@ export function policyAllows(operation: string, record: CapabilityRecord | undef
  * questions for different owners.
  */
 export function operationPermitted(operation: string, record: CapabilityRecord | undefined, config: Config): boolean {
+  if (operation in NEVER_REACHABLE) return false;
   if (isSecretOperation(operation) && !secretReadsPermitted(config)) return false;
   return policyAllows(operation, record, config);
 }
 
 /** Why `operation` is refused, phrased for a catalog row, or `null` when it is permitted. */
 function refusalReason(operation: string, record: CapabilityRecord | undefined, config: Config): string | null {
+  if (operation in NEVER_REACHABLE) return NEVER_REACHABLE[operation]!;
   if (isSecretOperation(operation) && !secretReadsPermitted(config)) {
     return 'refused by HUDU_SECRET_READS=deny';
   }
   if (!policyAllows(operation, record, config)) {
-    if (config.HUDU_READ_ONLY) return 'refused by HUDU_READ_ONLY=true';
-    return `refused by HUDU_WRITE_POLICY=${config.HUDU_WRITE_POLICY}`;
+    return config.HUDU_READ_ONLY ? 'refused by HUDU_READ_ONLY=true' : `refused by HUDU_WRITE_POLICY=${config.HUDU_WRITE_POLICY}`;
   }
   return null;
 }
@@ -116,6 +145,9 @@ export function assertSecretReadPermitted(operation: string, config: Config, log
 
 /** The one-line reason a refused call carries, in the SDK's `POLICY_DENIED` policy vocabulary. */
 export function policyRefusalMessage(operation: string, effect: string, config: Config): string {
+  if (config.HUDU_READ_ONLY) {
+    return `hudu_read / hudu_write / hudu_delete: ${operation} (${effect}) is refused by HUDU_READ_ONLY=true; this deployment does not permit writes. Reads are unaffected.`;
+  }
   if (config.HUDU_WRITE_POLICY === 'allow_list') {
     return `hudu_read / hudu_write / hudu_delete: ${operation} (${effect}) is refused by HUDU_WRITE_POLICY=allow_list; this deployment permits only: ${config.HUDU_WRITE_ALLOW.join(', ')}. Reads are unaffected.`;
   }
@@ -165,9 +197,8 @@ function refusedReachableCount(config: Config): number {
  * surfaces is the shape being matched; rows the SDK already refused are left untouched.
  */
 export function applyCatalogPolicy(page: CatalogPage, config: Config): CatalogPage {
-  // `all` alone is no longer an early exit: the secret-read policy refuses rows independently of
-  // the write policy, so a deployment with `all` + `deny` still has rows to mark.
-  if (!config.HUDU_READ_ONLY && config.HUDU_WRITE_POLICY === 'all' && secretReadsPermitted(config)) return page;
+  // No early exit: the secret-read policy and NEVER_REACHABLE refuse rows independently of the
+  // write policy, so even `all` + `allow` has rows to mark.
   const rows: CatalogRow[] = page.rows.map((row) => {
     const reason = row.reachable ? refusalReason(row.op, getCapability(row.op), config) : null;
     return reason === null ? row : { ...row, reachable: false, reason };
@@ -196,4 +227,22 @@ export function applyDescribePolicy(
   const reason = described.reachable ? refusalReason(operation, record, config) : null;
   if (reason !== null) return { ...described, reachable: false, why_not: reason };
   return described;
+}
+
+/**
+ * Log the effective write policy once at boot. `warn` whenever writes are enabled (so
+ * LOG_LEVEL=warn still records it), and a second `warn` when HUDU_READ_ONLY is unset while writes
+ * are on, because 0.2.x treated an unset HUDU_READ_ONLY as read-only.
+ */
+export function logEffectiveWritePolicy(config: Config, log: Logger, env: NodeJS.ProcessEnv): void {
+  const effectiveConfig = applyReadOnly(config);
+  const effective = effectiveConfig.HUDU_WRITE_POLICY;
+  const tools = (['write', 'delete'] as const).filter((m) => writeToolRegistered(effectiveConfig, m)).map((m) => `hudu_${m}`);
+  const fields = { read_only: config.HUDU_READ_ONLY, requested: config.HUDU_WRITE_POLICY, effective, tools_registered: tools };
+  const writesEnabled = tools.length > 0;
+  if (!writesEnabled) log.info('effective write policy: no write tools registered', fields);
+  else log.warn('effective write policy: writes are enabled', fields);
+  if (env.HUDU_READ_ONLY === undefined && writesEnabled) {
+    log.warn('HUDU_READ_ONLY is unset and writes are enabled: 0.2.x treated an unset HUDU_READ_ONLY as read-only; set HUDU_READ_ONLY=true to force read-only');
+  }
 }

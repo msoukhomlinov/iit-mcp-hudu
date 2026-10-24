@@ -210,7 +210,7 @@ export function searchToolDescription(ctx: ToolContext): string {
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
   if (fullSet && toolDefaultTier === 'index') return base;
   const defaultSentence =
-    'As a TOOL it defaults to tier "index" (build or await the body index), so the answer is complete rather than body-blind.';
+    'As a tool it defaults to tier "index" (builds/awaits the body index), so results are body-complete.';
   const replacement = !indexSearchable
     ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
     : toolDefaultTier === 'auto'
@@ -223,6 +223,8 @@ export function searchToolDescription(ctx: ToolContext): string {
       `ranked, fuzzy search over the resources this deployment may read: ${searchableResources.join(', ')}.`,
     );
   }
+  // Fail loudly, not silently: a missed anchor would advertise a default tier this deployment refuses.
+  if (!out.includes(defaultSentence)) throw new Error('hudu_search description: SDK default-tier sentence changed; update defaultSentence');
   return out.replace(defaultSentence, replacement);
 }
 
@@ -230,7 +232,7 @@ export function searchToolDescription(ctx: ToolContext): string {
 export function searchQueryDescription(ctx: ToolContext): string {
   const { indexSearchable, toolDefaultTier } = ctx;
   const base =
-    'mode="search" only, and REQUIRED there: omitting it is a CONFIG_ERROR naming mode:"help" (it never falls back to help). Partial words are tolerated; article BODY content is searched. Hudu\'s own search differs by resource. Companies, websites, passwords and assets match the words in order with gaps allowed, so reordering words can miss a record ("acme corp" finds "Acme Corp Pty", "corp acme" may not). Users, groups and password folders match the whole query as one exact phrase, so use one word. Some instances answer from a fuzzy index that returns records matching only some of the words. Indexed articles and assets score each word independently (match.coverage). On a multi-word query, when the full phrase finds nothing, the tool retries the individual words and ranks partial matches lower; match.coverage shows how good a match is. For an exact lookup, search one distinctive word.';
+    'mode="search" only, and REQUIRED there: omitting it is a CONFIG_ERROR naming mode:"help" (it never falls back to help). Partial words are tolerated; article BODY content is searched. Per-resource matching rules and multi-word behaviour: mode="help", topic="query".';
   if (!indexSearchable) {
     return base.replace(
       'article BODY content is searched.',

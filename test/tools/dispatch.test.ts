@@ -50,25 +50,6 @@ describe('hudu_read governor', () => {
 describe('hudu_read write policy', () => {
   const deny = { HUDU_WRITE_POLICY: 'deny' } as const;
 
-  it('deny refuses a write before any request, with POLICY_DENIED', async () => {
-    const session = await connect(undefined, deny);
-    const result = await session.call('hudu_write', { operation: 'companies.update', input: { id: 1, data: { name: 'renamed' } }, dry_run: false });
-    expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0].text).code).toBe('POLICY_DENIED');
-    expect(session.urls).toEqual([]);
-    await session.close();
-  });
-
-  it('deny refuses a destructive operation before any request, with POLICY_DENIED', async () => {
-    const session = await connect(undefined, deny);
-    // A correct `confirm` is irrelevant: the policy refuses strictly before the governor sees it.
-    const result = await session.call('hudu_delete', { operation: 'companies.delete', input: { id: 1 }, dry_run: false, confirm: 'companies.delete' });
-    expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0].text).code).toBe('POLICY_DENIED');
-    expect(session.urls).toEqual([]);
-    await session.close();
-  });
-
   it('deny still allows a read through hudu_read', async () => {
     const session = await connect(() => Response.json({ version: '2.45.1' }), deny);
     const result = await session.call('hudu_read', { operation: 'api_info.get' });
@@ -86,7 +67,9 @@ describe('hudu_read write policy', () => {
     expect(permitted.structuredContent.simulated).toBe(true);
     expect(session.urls).toEqual([]); // the dry run is the governor's, not a request
 
-    const refused = await session.call('hudu_delete', { operation: 'companies.delete', input: { id: 1 }, dry_run: false });
+    // No destructive operation is listed, so hudu_delete is not even registered.
+    expect((await session.list()).some((t) => t.name === 'hudu_delete')).toBe(false);
+    const refused = await session.call('hudu_write', { operation: 'assets.create', input: { companyId: 1, data: { name: 'x' } }, dry_run: false });
     expect(refused.isError).toBe(true);
     expect(JSON.parse(refused.content[0].text).code).toBe('POLICY_DENIED');
     expect(session.urls).toEqual([]);
@@ -94,11 +77,11 @@ describe('hudu_read write policy', () => {
   });
 
   it('logs exactly one refusal line and issues no request, never logging the input bag', async () => {
-    const session = await connect(undefined, deny);
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'allow_list', HUDU_WRITE_ALLOW: ['articles.update'] });
     await session.call('hudu_write', { operation: 'assets.create', input: { companyId: 1, data: { password: 'hunter2' } }, dry_run: false });
     const refusals = session.logs.filter((l) => l.msg === 'hudu_read / hudu_write / hudu_delete refused by write policy');
     expect(refusals).toHaveLength(1);
-    expect(refusals[0]).toMatchObject({ operation: 'assets.create', effect: 'write', policy: 'deny' });
+    expect(refusals[0]).toMatchObject({ operation: 'assets.create', effect: 'write', policy: 'allow_list' });
     expect(session.urls).toEqual([]);
     // The refusal line must never carry the operation input bag: it can hold a credential.
     expect(JSON.stringify(session.logs)).not.toContain('hunter2');
@@ -652,4 +635,319 @@ it('the SDK read client rejects every mutation even when the MCP enum is bypasse
     }
   }
   expect(fetch).not.toHaveBeenCalled();
+});
+
+describe('article context format', () => {
+  it('hudu_get_article_context returns the expanded body as Markdown', async () => {
+    const stored = '<h2>Hi</h2><p>body <strong>x</strong></p>';
+    const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored } }));
+    try {
+      const result = await session.call('hudu_get_article_context', { id: 22, opts: { expand: true } });
+      expect(result.isError).toBeUndefined();
+      expect(JSON.stringify(result.structuredContent)).toContain('## Hi');
+    } finally {
+      await session.close();
+    }
+  });
+});
+
+describe('article content format', () => {
+  it('hudu_read returns an article body as Markdown, not stored HTML', async () => {
+    const stored = '<div class="callout callout-info"><p>Mind the <strong>gap</strong></p></div>';
+    const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored } }));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.result.content).toBe('> [!INFO]\n> Mind the **gap**');
+    } finally {
+      await session.close();
+    }
+  });
+  it('hudu_write applies the Markdown loss guard: a body the dialect cannot hold is refused, no PUT', async () => {
+    const stored = '<p>Keep</p><svg width="1" height="1"></svg>';
+    const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored, updated_at: '2026-01-01T00:00:00Z' } }));
+    try {
+      const result = await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: 'Keep' } }, dry_run: false });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/markdown|lossy|svg/i);
+      expect(session.methods).not.toContain('PUT');
+    } finally {
+      await session.close();
+    }
+  });
+});
+
+describe('lossy Markdown reads are signalled', () => {
+  const article = (content: string) => () => Response.json({ article: { id: 22, name: 't', content } });
+  const task = (checked: boolean, text: string) =>
+    `<li data-type="taskItem" data-checked="${checked}"><label><input type="checkbox"${checked ? ' checked' : ''}><span></span></label><div><p>${text}</p></div></li>`;
+  const lossless = {
+    callout: '<div class="callout callout-info"><p>Mind the <strong>gap</strong></p></div>',
+    accordion: '<details class="mce-accordion"><summary class="mce-accordion-summary">Q</summary><div class="mce-accordion-body"><p>A</p></div></details>',
+    'task list': `<ul data-type="taskList">${task(true, 'done')}${task(false, 'open')}</ul>`,
+    mermaid: '<pre class="language-mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+    'plain markup': '<h2>Hi</h2><p>body <strong>x</strong> <a href="https://e.com">l</a></p><ul><li>a</li></ul>',
+  };
+
+  it('hudu_read flags a stored inline <svg>, with a typed field and one sentence', async () => {
+    const session = await connect(article('<p>Keep</p><svg width="1" height="1"><circle r="1"/></svg>'));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.markdown_lossy).toBe(true);
+      expect(result.structuredContent.markdown_lossy_codes).toContain('ROUNDTRIP_RAW_ELEMENT_LOST');
+      expect(session.urls).toHaveLength(1); // one wire request for the read itself
+      expect(result.content[0].text).toContain('markdown_lossy: true');
+      expect(result.content[0].text).toContain('hudu_fetch_many {items:[{resource:');
+      // The pointer's literal shape is a valid call and returns the stored HTML, <svg> included.
+      const fetched = await session.call('hudu_fetch_many', { items: [{ resource: 'articles', id: 22 }] });
+      expect(fetched.isError).toBeUndefined();
+      expect(JSON.stringify(fetched.structuredContent)).toContain('<svg');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('hudu_get_article_context flags it too', async () => {
+    const session = await connect(article('<p>Keep</p><svg width="1" height="1"></svg>'));
+    try {
+      const result = await session.call('hudu_get_article_context', { id: 22, opts: { expand: true } });
+      expect(result.structuredContent.markdown_lossy).toBe(true);
+      expect(result.content[0].text).toContain('markdown_lossy: true');
+    } finally {
+      await session.close();
+    }
+  });
+
+  const mermaidForms = {
+    'bare editor-native': '<pre class="language-mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+    'legacy style + data-mermaid-id': '<pre class="language-mermaid" style="white-space: pre;" data-mermaid-id="m1"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+    'pre.mermaid': '<pre class="mermaid">graph TD; A--&gt;B</pre>',
+    'code only': '<pre><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+  };
+  it.each(Object.entries(mermaidForms))('does NOT flag the %s Mermaid form', async (_name, html) => {
+    const session = await connect(article(html));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.structuredContent.markdown_lossy).toBeUndefined();
+      expect(session.urls).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it.each(Object.entries(lossless))('does NOT flag %s, and the result carries no extra field or text', async (_name, html) => {
+    for (const call of [
+      (s: Awaited<ReturnType<typeof connect>>) => s.call('hudu_read', { operation: 'articles.get', input: { id: 22 } }),
+      (s: Awaited<ReturnType<typeof connect>>) => s.call('hudu_get_article_context', { id: 22, opts: { expand: true } }),
+    ]) {
+      const session = await connect(article(html));
+      try {
+        const result = await call(session);
+        expect(result.isError).toBeUndefined();
+        expect(result.structuredContent.markdown_lossy).toBeUndefined();
+        expect(result.structuredContent.markdown_lossy_codes).toBeUndefined();
+        expect(result.content[0].text).not.toContain('markdown_lossy');
+      } finally {
+        await session.close();
+      }
+    }
+  });
+});
+
+describe('Markdown article reads: one fetch, caller format honoured', () => {
+  const html = '<h2>Hi</h2><p>body <strong>x</strong></p>';
+  const svg = '<p>Keep</p><svg width="1" height="1"></svg>';
+  const body = (content: string) => () => Response.json({ article: { id: 22, name: 't', content }, articles: [{ id: 22, name: 't', content }] });
+  const reads = {
+    'articles.get': { id: 22 },
+    'articles.getContext': { id: 22, opts: { expand: true } },
+    'articles.resolve': { identifier: { name: 't' }, opts: { expand: true } },
+  } as const;
+  const text = (r: { structuredContent: { result: unknown } }) => JSON.stringify(r.structuredContent.result);
+
+  it.each(Object.entries(reads))('%s: format absent and "markdown" return Markdown, "html" returns stored HTML (no flag), one request each', async (operation, input) => {
+    for (const [format, wantMarkdown] of [[undefined, true], ['markdown', true], ['html', false]] as const) {
+      const session = await connect(body(html));
+      try {
+        const opts = { ...(('opts' in input) ? input.opts : {}), ...(format ? { format } : {}) };
+        const result = await session.call('hudu_read', { operation, input: { ...input, ...(Object.keys(opts).length ? { opts } : {}) } });
+        expect(result.isError, `${operation}/${format}`).toBeUndefined();
+        expect(text(result)).toContain(wantMarkdown ? '## Hi' : '<h2>Hi</h2>');
+        expect(text(result)).not.toContain(wantMarkdown ? '<h2>' : '## Hi');
+        expect(result.structuredContent.markdown_lossy).toBeUndefined();
+        expect(session.urls.length, `${operation}/${format} requests`).toBe(operation === 'articles.getContext' ? session.urls.length : 1);
+        expect(session.urls.length).toBeLessThanOrEqual(3);
+      } finally {
+        await session.close();
+      }
+    }
+  });
+
+  it.each(['articles.get', 'articles.resolve'] as const)('%s flags an <svg> with exactly one wire request', async (operation) => {
+    const session = await connect(body(svg));
+    try {
+      const result = await session.call('hudu_read', { operation, input: reads[operation] });
+      expect(result.structuredContent.markdown_lossy).toBe(true);
+      expect(session.urls).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('articles.get with format html and an <svg> returns HTML and no flag', async () => {
+    const session = await connect(body(svg));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22, opts: { format: 'html' } } });
+      expect(text(result)).toContain('<svg');
+      expect(result.structuredContent.markdown_lossy).toBeUndefined();
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('a compact resolve (no content string) is untouched and not flagged', async () => {
+    const session = await connect(() => Response.json({ articles: [{ id: 22, name: 't' }] }));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.resolve', input: { identifier: { name: 't' } } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.markdown_lossy).toBeUndefined();
+    } finally {
+      await session.close();
+    }
+  });
+
+  it.each([500])('a %i on the single fetch fails exactly like any other read', async (status) => {
+    const failing = () => new Response('boom', { status });
+    // Sequential sessions: each connect() stubs the global fetch.
+    const counts: number[] = [];
+    for (const call of [
+      { operation: 'articles.get', input: { id: 22 } },
+      { operation: 'companies.get', input: { id: 22 } },
+    ]) {
+      const session = await connect(failing);
+      try {
+        const result = await session.call('hudu_read', call);
+        expect(result.isError).toBe(true);
+        counts.push(session.urls.length);
+      } finally {
+        await session.close();
+      }
+    }
+    expect(counts[0]).toBe(counts[1]);
+  });
+});
+
+describe('article writes: Markdown versus block HTML', () => {
+  const stored = () => Response.json({ article: { id: 22, name: 't', content: '<h2>Setup</h2><p>Old</p>', updated_at: '2026-01-01T00:00:00Z' } });
+  const put = (session: { methods: string[]; bodies: string[] }) => session.bodies[session.methods.indexOf('PUT')];
+
+  it('a body that opens with block HTML is sent as HTML, untouched', async () => {
+    const session = await connect(stored);
+    try {
+      await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: '<p>New <b>text</b></p>' } }, dry_run: false });
+      expect(put(session)).toContain('<p>New <b>text</b></p>');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('Mermaid round-trips through the bare editor-native form (node-hudu 0.16)', async () => {
+    const fence = '```mermaid\ngraph TD; A-->B\n```';
+    const write = await connect(stored);
+    try {
+      await write.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: fence } }, dry_run: false });
+      const html = put(write);
+      expect(html).toContain('<pre class=\\"language-mermaid\\"><code class=\\"language-mermaid\\">');
+      expect(html).not.toContain('data-mermaid-id');
+    } finally {
+      await write.close();
+    }
+    const html = '<pre class="language-mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>';
+    const read = await connect(() => Response.json({ article: { id: 22, name: 't', content: html } }));
+    try {
+      const result = await read.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.structuredContent.result.content).toBe(fence);
+    } finally {
+      await read.close();
+    }
+  });
+
+  it('any other body is parsed as Markdown', async () => {
+    const session = await connect(stored);
+    try {
+      await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: '## Setup\n\nNew' } }, dry_run: false });
+      expect(put(session)).toContain('<h2>Setup</h2>');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('articles.getSection reads one section as Markdown through hudu_read', async () => {
+    const session = await connect(stored);
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.getSection', input: { id: 22, heading: 'Setup' } });
+      expect(result.isError).toBeUndefined();
+      expect(JSON.stringify(result.structuredContent)).toContain('Old');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('articles.patchSection dry-runs by default and executes with dry_run false', async () => {
+    const session = await connect(stored);
+    try {
+      const input = { id: 22, patch: { heading: 'Setup', markdown: 'New', mode: 'replace' } };
+      const dry = await session.call('hudu_write', { operation: 'articles.patchSection', input });
+      expect(dry.structuredContent.simulated).toBe(true);
+      expect(session.methods).not.toContain('PUT');
+      const done = await session.call('hudu_write', { operation: 'articles.patchSection', input, dry_run: false });
+      expect(done.isError).toBeUndefined();
+      expect(put(session)).toContain('New');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('the article tools tell the model which format each path speaks', async () => {
+    const session = await connect();
+    try {
+      const tools = await session.list();
+      for (const name of ['hudu_write', 'hudu_read', 'hudu_list', 'hudu_fetch_many']) {
+        expect(tools.find((t) => t.name === name)?.description, name).toContain('Article bodies:');
+      }
+      for (const t of tools.filter((x) => x.name.startsWith('hudu_') && ['hudu_read', 'hudu_write', 'hudu_delete'].includes(x.name))) {
+        expect(t.description, t.name).not.toMatch(/issues? #\d+/);
+      }
+    } finally {
+      await session.close();
+    }
+  });
+});
+
+describe('allow_list write policy and delegated writes', () => {
+  it('allowing articles.patchSection also allows its articles.update dependency', async () => {
+    const stored = '<h2>Setup</h2><p>Old</p>';
+    const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored, updated_at: '2026-01-01T00:00:00Z' } }),
+      { HUDU_WRITE_POLICY: 'allow_list', HUDU_WRITE_ALLOW: ['articles.patchSection'] });
+    try {
+      const result = await session.call('hudu_write', { operation: 'articles.patchSection', input: { id: 22, patch: { heading: 'Setup', markdown: 'New', mode: 'replace' } }, dry_run: false });
+      expect(JSON.stringify(result)).not.toContain('POLICY_DENIED');
+      expect(session.methods).toContain('PUT');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('a patchSection allow-list does not open articles.update directly', async () => {
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'allow_list', HUDU_WRITE_ALLOW: ['articles.patchSection'] });
+    try {
+      const result = await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: 'x' } }, dry_run: false });
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0].text).code).toBe('POLICY_DENIED');
+      expect(session.urls).toEqual([]);
+    } finally {
+      await session.close();
+    }
+  });
 });

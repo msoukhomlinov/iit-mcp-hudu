@@ -56,6 +56,44 @@ describe('hudu_resolve_any resource policy', () => {
   });
 });
 
+describe('hudu_resolve_any unauthorized pass-through', () => {
+  // companies answers, asset_passwords refuses: a partial refusal is annotated, not thrown.
+  const respond = (url: string) =>
+    url.includes('/asset_passwords')
+      ? new Response(JSON.stringify({ error: 'Bad credentials' }), { status: 401, headers: { 'content-type': 'application/json' } })
+      : Response.json({ id: 1, name: 'Acme' });
+  const args = { identifier: { id: 1 }, opts: { resources: ['companies', 'asset_passwords'] } };
+
+  it('reports the refused resources next to the permitted hits', async () => {
+    const session = await connect(respond, { HUDU_SEARCH_RESOURCES: ['companies', 'asset_passwords'] });
+    const result = await session.call('hudu_resolve_any', args);
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent.unauthorized).toEqual(['asset_passwords']);
+    expect(result.structuredContent.hits.length).toBeGreaterThan(0);
+    await session.close();
+  });
+
+  it('reaches the agent through the dispatcher path too', async () => {
+    const session = await connect(respond, { HUDU_SEARCH_RESOURCES: ['companies', 'asset_passwords'], HUDU_SECRET_READS: 'allow' });
+    const result = await session.call('hudu_read', { operation: 'operations.resolveAny', input: args });
+    expect(result.isError).toBeUndefined();
+    expect(JSON.stringify(result.structuredContent)).toContain('"unauthorized":["asset_passwords"]');
+    await session.close();
+  });
+});
+
+describe('hudu_get_company_context opts.skip', () => {
+  it('forwards skip, makes no /asset_passwords request, and returns skipped', async () => {
+    const session = await connect(companyContextHudu);
+    const result = await session.call('hudu_get_company_context', { id: 1, opts: { skip: ['asset_passwords'] } });
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent.skipped).toEqual(['asset_passwords']);
+    expect(result.structuredContent.context.assetPasswords).toEqual([]);
+    expect(session.urls.some((u) => u.includes('/asset_passwords'))).toBe(false);
+    await session.close();
+  });
+});
+
 describe('hudu_get_company_context secret-read policy', () => {
   // The SDK lists the company's asset_passwords on every context read and returns them raw under
   // expand; companies.getContext is not a credential operation, so the read assertion never fires.

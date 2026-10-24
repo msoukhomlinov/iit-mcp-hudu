@@ -142,21 +142,13 @@ describe('hudu_search advertised description', () => {
     await session.close();
   });
 
-  it('documents per-resource multi-word semantics without promising a meta field or a term AND', async () => {
+  it('keeps the query field short and sends per-resource matching rules to help topic query', async () => {
     const session = await connect();
     const query = (await session.list()).find((t) => t.name === 'hudu_search')!.inputSchema.properties.query.description;
-    expect(query).toContain('reordering words can miss a record');
-    expect(query).toContain('match the whole query as one exact phrase');
-    expect(query).toContain('Indexed articles and assets score each word independently');
-    // node-hudu 0.9.1 per-term vendor fallback: documented without promising which words are tried,
-    // reordering tolerance, or single-word behaviour.
-    expect(query).toContain('On a multi-word query, when the full phrase finds nothing');
-    expect(query).toContain('the tool retries the individual words and ranks partial matches lower');
-    expect(query).toContain('match.coverage shows how good a match is');
-    expect(query).not.toContain('ANDs');
-    expect(query).not.toContain('reordered words are tolerated');
-    // Permanent: meta.matching was dropped (Hudu cannot say which engine answered), not deferred.
+    expect(query).toContain('mode="help", topic="query"');
+    expect(query).not.toContain('reordering words');
     expect(query).not.toContain('meta.matching');
+    expect(query.length).toBeLessThan(500);
     await session.close();
   });
 

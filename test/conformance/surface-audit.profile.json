@@ -1,0 +1,36 @@
+{
+  "mcp_entrypoint": [
+    "node",
+    "dist/main.js"
+  ],
+  "node_repo": ".",
+  "audit_line_pattern": "\"msg\":\"hudu request\"",
+  "internal_patterns": [
+    "\\bissues? #\\d+",
+    "\\(#\\d+",
+    "\\bINT-\\d+",
+    "(?i)paperclip",
+    "(?i)iit-mcp-hudu-private"
+  ],
+  "max_surface_bytes": 39500,
+  "max_tools": 19,
+  "surface_calls": [
+    {
+      "tool": "hudu_list_operations",
+      "params": {}
+    },
+    {
+      "tool": "hudu_describe_operation",
+      "params": {
+        "operation": "articles.patchSection"
+      }
+    },
+    {
+      "tool": "hudu_describe_operation",
+      "params": {
+        "operation": "operations.searchKnowledge"
+      }
+    }
+  ],
+  "credentials_source": "test/conformance/surface-audit.placeholder.env"
+}

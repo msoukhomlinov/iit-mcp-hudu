@@ -54,9 +54,12 @@ describe('meta discovery and credential tool surface', () => {
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read; the batch's credential
     // items are refused per item by the fetchMany policy, not per row). The +1 is anchored to
     // the row by identity below, so a different row changing could not keep this delta honest.
+    // 0.13.2 -> 0.14.0: +2 rows (articles.getSection a read, reachable under deny; articles.patchSection
+    // a write, refused by deny). Moved with the SDK's plan hash in src/tools.ts.
+    // 0.14.0 -> 0.16.0: 230 -> 236 rows (articles.pin/unpin, asset_passwords share ops x4).
     expect(CATALOG.some((row) => row.op === 'operations.fetchMany')).toBe(true);
-    expect(result.structuredContent.reachable_operations).toBe(88);
-    expect(result.structuredContent.unreachable_operations).toBe(140);
+    expect(result.structuredContent.reachable_operations).toBe(89);
+    expect(result.structuredContent.unreachable_operations).toBe(147);
     await session.close();
   });
 
@@ -68,8 +71,8 @@ describe('meta discovery and credential tool surface', () => {
     // `all` opens the write surface but not the credential one: the reachable
     // asset_passwords/password_folders rows stay refused under the secret-read default.
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
-    expect(result.structuredContent.reachable_operations).toBe(165);
-    expect(result.structuredContent.unreachable_operations).toBe(63);
+    expect(result.structuredContent.reachable_operations).toBe(169);
+    expect(result.structuredContent.unreachable_operations).toBe(67);
     await session.close();
   });
 
@@ -78,8 +81,10 @@ describe('meta discovery and credential tool surface', () => {
     const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all', HUDU_SECRET_READS: 'allow' });
     const result = await session.call('hudu_list_operations', { effect: 'destructive', limit: 100 });
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
-    expect(result.structuredContent.reachable_operations).toBe(180);
-    expect(result.structuredContent.unreachable_operations).toBe(48);
+    // 0.13.2 -> 0.14.0: +2 (articles.getSection, articles.patchSection).
+    // 0.16.0: asset_passwords.createShare is never reachable (SDK reveal_required; this server never grants reveal).
+    expect(result.structuredContent.reachable_operations).toBe(187);
+    expect(result.structuredContent.unreachable_operations).toBe(49);
     await session.close();
   });
 
@@ -109,7 +114,7 @@ describe('meta discovery and credential tool surface', () => {
     await session.close();
   });
 
-  it('never changes tools/list, in any mode', async () => {
+  it('registers hudu_write / hudu_delete only when the write policy is not deny', async () => {
     for (const policy of ['deny', 'allow_list', 'all'] as const) {
       const session = await connect(
         undefined,
@@ -117,10 +122,11 @@ describe('meta discovery and credential tool surface', () => {
       );
       const names = (await session.list()).map((t) => t.name);
       // The full SDK CORE profile is registered — `hudu_fetch_many` included (0.12.0); it is a
-      // read, so no write policy changes the surface.
-      const expected = [...CORE_TOOLS, ...LIST_TOOLS];
+      // read; only a deny policy omits the two mutation tools.
+      // allow_list with only a write operation registers hudu_write but not hudu_delete.
+      const expected = [...CORE_TOOLS, ...LIST_TOOLS].filter((t) => policy === 'all' || (policy === 'allow_list' && t !== 'hudu_delete') || !['hudu_write', 'hudu_delete'].includes(t));
       expect([...names].sort(), policy).toEqual(expected.sort());
-      expect(names, policy).toHaveLength(22);
+      expect(names, policy).toHaveLength(policy === 'deny' ? 17 : policy === 'allow_list' ? 18 : 19);
       await session.close();
     }
   });
@@ -208,7 +214,7 @@ describe('searchAcrossResources discovery matches execution', () => {
 
 describe('credential operation schema discovery', () => {
   it.each(['asset_passwords.create', 'asset_passwords.update'])('%s retains the SDK input schema', async (operation) => {
-    const session = await connect(undefined, { HUDU_READ_ONLY: false, HUDU_WRITE_POLICY: 'all', HUDU_SECRET_READS: 'allow' });
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'all', HUDU_SECRET_READS: 'allow' });
     try {
       const result = await session.call('hudu_describe_operation', { operation });
       expect(result.isError).toBeUndefined();

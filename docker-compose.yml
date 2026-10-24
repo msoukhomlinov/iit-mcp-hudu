@@ -17,6 +17,10 @@ services:
     pull_policy: never
     restart: unless-stopped
     env_file: .env
+    # The container serves http regardless of what a copied .env.example says (its default is stdio,
+    # which would leave no listener and fail the healthcheck).
+    environment:
+      MCP_TRANSPORT: http
     networks:
       - app_net
     # No ports: the listener is reachable only from inside app_net. Publishing it to the host would

@@ -1,10 +1,11 @@
 node_modules
 dist
 coverage
-.git
+# every dotfile and dot directory (.git, .env*, .run, .remember, .squad, .claude, .mcp.json): nothing here needs one
+.*
+# explicit, so the intent survives a later edit of the line above
 .env
 .env.*
-!.env.example
 docs
 test
 *.md
