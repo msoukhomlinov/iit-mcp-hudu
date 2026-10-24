@@ -50,25 +50,6 @@ describe('hudu_read governor', () => {
 describe('hudu_read write policy', () => {
   const deny = { HUDU_WRITE_POLICY: 'deny' } as const;
 
-  it('deny refuses a write before any request, with POLICY_DENIED', async () => {
-    const session = await connect(undefined, deny);
-    const result = await session.call('hudu_write', { operation: 'companies.update', input: { id: 1, data: { name: 'renamed' } }, dry_run: false });
-    expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0].text).code).toBe('POLICY_DENIED');
-    expect(session.urls).toEqual([]);
-    await session.close();
-  });
-
-  it('deny refuses a destructive operation before any request, with POLICY_DENIED', async () => {
-    const session = await connect(undefined, deny);
-    // A correct `confirm` is irrelevant: the policy refuses strictly before the governor sees it.
-    const result = await session.call('hudu_delete', { operation: 'companies.delete', input: { id: 1 }, dry_run: false, confirm: 'companies.delete' });
-    expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0].text).code).toBe('POLICY_DENIED');
-    expect(session.urls).toEqual([]);
-    await session.close();
-  });
-
   it('deny still allows a read through hudu_read', async () => {
     const session = await connect(() => Response.json({ version: '2.45.1' }), deny);
     const result = await session.call('hudu_read', { operation: 'api_info.get' });
@@ -94,11 +75,11 @@ describe('hudu_read write policy', () => {
   });
 
   it('logs exactly one refusal line and issues no request, never logging the input bag', async () => {
-    const session = await connect(undefined, deny);
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'allow_list', HUDU_WRITE_ALLOW: ['articles.update'] });
     await session.call('hudu_write', { operation: 'assets.create', input: { companyId: 1, data: { password: 'hunter2' } }, dry_run: false });
     const refusals = session.logs.filter((l) => l.msg === 'hudu_read / hudu_write / hudu_delete refused by write policy');
     expect(refusals).toHaveLength(1);
-    expect(refusals[0]).toMatchObject({ operation: 'assets.create', effect: 'write', policy: 'deny' });
+    expect(refusals[0]).toMatchObject({ operation: 'assets.create', effect: 'write', policy: 'allow_list' });
     expect(session.urls).toEqual([]);
     // The refusal line must never carry the operation input bag: it can hold a credential.
     expect(JSON.stringify(session.logs)).not.toContain('hunter2');
@@ -652,4 +633,134 @@ it('the SDK read client rejects every mutation even when the MCP enum is bypasse
     }
   }
   expect(fetch).not.toHaveBeenCalled();
+});
+
+describe('article context format', () => {
+  it('hudu_get_article_context returns the expanded body as Markdown', async () => {
+    const stored = '<h2>Hi</h2><p>body <strong>x</strong></p>';
+    const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored } }));
+    try {
+      const result = await session.call('hudu_get_article_context', { id: 22, opts: { expand: true } });
+      expect(result.isError).toBeUndefined();
+      expect(JSON.stringify(result.structuredContent)).toContain('## Hi');
+    } finally {
+      await session.close();
+    }
+  });
+});
+
+describe('article content format', () => {
+  it('hudu_read returns an article body as Markdown, not stored HTML', async () => {
+    const stored = '<div class="callout callout-info"><p>Mind the <strong>gap</strong></p></div>';
+    const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored } }));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.result.content).toBe('> [!INFO]\n> Mind the **gap**');
+    } finally {
+      await session.close();
+    }
+  });
+  it('hudu_write applies the Markdown loss guard: a body the dialect cannot hold is refused, no PUT', async () => {
+    const stored = '<p>Keep</p><svg width="1" height="1"></svg>';
+    const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored, updated_at: '2026-01-01T00:00:00Z' } }));
+    try {
+      const result = await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: 'Keep' } }, dry_run: false });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/markdown|lossy|svg/i);
+      expect(session.methods).not.toContain('PUT');
+    } finally {
+      await session.close();
+    }
+  });
+});
+
+describe('article writes: Markdown versus block HTML', () => {
+  const stored = () => Response.json({ article: { id: 22, name: 't', content: '<h2>Setup</h2><p>Old</p>', updated_at: '2026-01-01T00:00:00Z' } });
+  const put = (session: { methods: string[]; bodies: string[] }) => session.bodies[session.methods.indexOf('PUT')];
+
+  it('a body that opens with block HTML is sent as HTML, untouched', async () => {
+    const session = await connect(stored);
+    try {
+      await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: '<p>New <b>text</b></p>' } }, dry_run: false });
+      expect(put(session)).toContain('<p>New <b>text</b></p>');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('any other body is parsed as Markdown', async () => {
+    const session = await connect(stored);
+    try {
+      await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: '## Setup\n\nNew' } }, dry_run: false });
+      expect(put(session)).toContain('<h2>Setup</h2>');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('articles.getSection reads one section as Markdown through hudu_read', async () => {
+    const session = await connect(stored);
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.getSection', input: { id: 22, heading: 'Setup' } });
+      expect(result.isError).toBeUndefined();
+      expect(JSON.stringify(result.structuredContent)).toContain('Old');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('articles.patchSection dry-runs by default and executes with dry_run false', async () => {
+    const session = await connect(stored);
+    try {
+      const input = { id: 22, patch: { heading: 'Setup', markdown: 'New', mode: 'replace' } };
+      const dry = await session.call('hudu_write', { operation: 'articles.patchSection', input });
+      expect(dry.structuredContent.simulated).toBe(true);
+      expect(session.methods).not.toContain('PUT');
+      const done = await session.call('hudu_write', { operation: 'articles.patchSection', input, dry_run: false });
+      expect(done.isError).toBeUndefined();
+      expect(put(session)).toContain('New');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('the article tools tell the model which format each path speaks', async () => {
+    const session = await connect();
+    try {
+      const tools = await session.list();
+      for (const name of ['hudu_write', 'hudu_read', 'hudu_list_articles', 'hudu_fetch_many']) {
+        expect(tools.find((t) => t.name === name)?.description, name).toContain('Article bodies:');
+      }
+    } finally {
+      await session.close();
+    }
+  });
+});
+
+describe('allow_list write policy and delegated writes', () => {
+  it('allowing articles.patchSection also allows its articles.update dependency', async () => {
+    const stored = '<h2>Setup</h2><p>Old</p>';
+    const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored, updated_at: '2026-01-01T00:00:00Z' } }),
+      { HUDU_WRITE_POLICY: 'allow_list', HUDU_WRITE_ALLOW: ['articles.patchSection'] });
+    try {
+      const result = await session.call('hudu_write', { operation: 'articles.patchSection', input: { id: 22, patch: { heading: 'Setup', markdown: 'New', mode: 'replace' } }, dry_run: false });
+      expect(JSON.stringify(result)).not.toContain('POLICY_DENIED');
+      expect(session.methods).toContain('PUT');
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('a patchSection allow-list does not open articles.update directly', async () => {
+    const session = await connect(undefined, { HUDU_WRITE_POLICY: 'allow_list', HUDU_WRITE_ALLOW: ['articles.patchSection'] });
+    try {
+      const result = await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: 'x' } }, dry_run: false });
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0].text).code).toBe('POLICY_DENIED');
+      expect(session.urls).toEqual([]);
+    } finally {
+      await session.close();
+    }
+  });
 });

@@ -21,7 +21,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('hudu_fetch_many (the dedicated batch-read tool)', () => {
   it('is registered as a read-only tool in every mode, with both schemas', async () => {
     for (const readOnly of [false, true]) {
-      const session = await connect(undefined, { HUDU_READ_ONLY: readOnly });
+      const session = await connect(undefined, { HUDU_WRITE_POLICY: readOnly ? 'deny' : 'all' });
       const tool = (await session.list()).find((t) => t.name === 'hudu_fetch_many');
       expect(tool, `hudu_fetch_many in ${readOnly ? 'read-only' : 'default'} mode`).toBeDefined();
       expect(tool!.annotations?.readOnlyHint, 'readOnlyHint').toBe(true);

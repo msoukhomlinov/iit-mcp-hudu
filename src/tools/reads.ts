@@ -33,7 +33,8 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
               ),
             limit: LIMIT,
           })
-          .optional(),
+          .optional()
+          .describe('Optional resolve options: which resources to try and how many matches to return.'),
       }),
       outputSchema: HITS_OUTPUT,
       // Derived from the curated manifest annotations (readOnlyHint / destructiveHint /
@@ -71,7 +72,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       description: TOOL_DESCRIPTIONS['hudu_get_api_info'],
       inputSchema: z.object({
         identifier: IDENTIFIER.optional().describe('Optional identifier; omit it for the tenant-wide api info.'),
-        opts: z.object({ expand: EXPAND }).optional(),
+        opts: z.object({ expand: EXPAND }).optional().describe('Optional read options: expand returns full typed records.'),
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -94,7 +95,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         ' Context depends on the resources available to this deployment; a refused credential answers UNAUTHORIZED (401, "Bad credentials") like every other tool, and any other failure keeps its real code — never partial results.',
       inputSchema: z.object({
         id: z.number().int().positive().describe('Numeric company id.'),
-        opts: z.object({ limit: LIMIT, expand: EXPAND }).optional(),
+        opts: z.object({ limit: LIMIT, expand: EXPAND }).optional().describe('Optional read options: limit bounds the rows, expand returns full typed records.'),
       }),
       outputSchema: CONTEXT_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -122,10 +123,11 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Get Article Context',
       description: TOOL_DESCRIPTIONS['hudu_get_article_context'] +
+        ' Article bodies in the context are Markdown.' +
         ' Context depends on the resources available to this deployment; a refused credential answers UNAUTHORIZED (401, "Bad credentials") like every other tool, and any other failure keeps its real code — never partial results.',
       inputSchema: z.object({
         id: z.number().int().positive().describe('Numeric article id (hudu_get_article_context takes the id; use hudu_search or hudu_read / hudu_write / hudu_delete with articles.resolve to find it).'),
-        opts: z.object({ expand: EXPAND }).optional(),
+        opts: z.object({ expand: EXPAND }).optional().describe('Optional read options: expand returns full typed records.'),
       }),
       outputSchema: CONTEXT_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -134,8 +136,8 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
     async (args) => {
       try {
         const context = args.opts?.expand
-          ? await hudu.articles.getContext(args.id, { expand: true })
-          : await hudu.articles.getContext(args.id);
+          ? await hudu.articles.getContext(args.id, { expand: true, format: 'markdown' })
+          : await hudu.articles.getContext(args.id, { format: 'markdown' });
         return ok('Article context returned.', { context });
       } catch (err) {
         return contextErrorContent(err);
@@ -151,7 +153,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         ' Context depends on the resources available to this deployment; a refused credential answers UNAUTHORIZED (401, "Bad credentials") like every other tool, and any other failure keeps its real code — never partial results.',
       inputSchema: z.object({
         identifier: ASSET_IDENTIFIER.describe('Id, name, slug, primary serial or { id, companyId }.'),
-        opts: z.object({ limit: LIMIT, expand: EXPAND }).optional(),
+        opts: z.object({ limit: LIMIT, expand: EXPAND }).optional().describe('Optional read options: limit bounds the rows, expand returns full typed records.'),
       }),
       outputSchema: CONTEXT_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -179,7 +181,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       description: TOOL_DESCRIPTIONS['hudu_get_asset_layout'],
       inputSchema: z.object({
         identifier: IDENTIFIER.describe('Id, exact name/slug, or an identifier object.'),
-        opts: z.object({ expand: EXPAND }).optional(),
+        opts: z.object({ expand: EXPAND }).optional().describe('Optional read options: expand returns full typed records.'),
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -206,7 +208,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         // `findBySlug` takes a slug, not the general identifier union: the SDK signature is
         // `(slug: string)`. The reference's shared IDENTIFIER here is a generated artefact.
         slug: z.string().min(1).describe('Exact slug of the asset password.'),
-        opts: z.object({ expand: EXPAND }).optional(),
+        opts: z.object({ expand: EXPAND }).optional().describe('Optional read options: expand returns full typed records.'),
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -235,7 +237,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       description: TOOL_DESCRIPTIONS['hudu_find_websites_by_slug'],
       inputSchema: z.object({
         slug: z.string().min(1).describe('Exact slug of the website.'),
-        opts: z.object({ expand: EXPAND }).optional(),
+        opts: z.object({ expand: EXPAND }).optional().describe('Optional read options: expand returns full typed records.'),
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -260,7 +262,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       description: TOOL_DESCRIPTIONS['hudu_get_folder'],
       inputSchema: z.object({
         identifier: IDENTIFIER.describe('Id, exact name/slug, or an identifier object.'),
-        opts: z.object({ expand: EXPAND }).optional(),
+        opts: z.object({ expand: EXPAND }).optional().describe('Optional read options: expand returns full typed records.'),
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -285,7 +287,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       description: TOOL_DESCRIPTIONS['hudu_get_password_folder'],
       inputSchema: z.object({
         identifier: IDENTIFIER.describe('Id, exact name/slug, or an identifier object.'),
-        opts: z.object({ expand: EXPAND }).optional(),
+        opts: z.object({ expand: EXPAND }).optional().describe('Optional read options: expand returns full typed records.'),
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -311,7 +313,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       description: TOOL_DESCRIPTIONS['hudu_get_group'],
       inputSchema: z.object({
         identifier: IDENTIFIER.describe('Id, exact name/slug, or an identifier object.'),
-        opts: z.object({ expand: EXPAND }).optional(),
+        opts: z.object({ expand: EXPAND }).optional().describe('Optional read options: expand returns full typed records.'),
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },

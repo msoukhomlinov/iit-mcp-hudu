@@ -42,7 +42,7 @@ import { getCapability } from 'node-hudu/capabilities';
 import { configError } from 'node-hudu/mcp';
 import { assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import type { ToolContext } from './context.js';
-import { errorContent, createResultBuilders } from './results.js';
+import { ARTICLE_FORMAT_NOTE, errorContent, createResultBuilders } from './results.js';
 import { LIST_OUTPUT, LIST_PAGE, LIST_PAGE_SIZE } from './schemas.js';
 
 /**
@@ -221,7 +221,7 @@ export function registerListTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'List Articles',
       description:
-        'List ONE bounded page of knowledge-base articles, backed by the fixed operation articles.list. Returns at most page_size rows plus whether more exist; it never pages through the tenant. This tool takes no operation argument and cannot be redirected to a write. Prefer hudu_search to find an article by text, and hudu_get_article_context to read one. This is the ungated path for the articles.list read; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.',
+        'List ONE bounded page of knowledge-base articles, backed by the fixed operation articles.list. Returns at most page_size rows plus whether more exist; it never pages through the tenant. This tool takes no operation argument and cannot be redirected to a write. Prefer hudu_search to find an article by text, and hudu_get_article_context to read one. This is the ungated path for the articles.list read; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.' + ARTICLE_FORMAT_NOTE,
       inputSchema: z.object({
         page: LIST_PAGE,
         page_size: LIST_PAGE_SIZE,

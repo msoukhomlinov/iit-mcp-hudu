@@ -6,7 +6,7 @@ import { dispatchOperation, META_TOOLS } from 'node-hudu/mcp';
 import { assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
-import { contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent } from './results.js';
+import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent } from './results.js';
 import { INVOKE_OUTPUT } from './schemas.js';
 import { FETCH_MANY_OPERATION, applyFetchManyPolicyToInvoke, SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
 
@@ -14,7 +14,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
   const { ok } = createResultBuilders(ctx.huduOrigin);
   const { config, log } = ctx;
   for (const mode of ['read', 'write', 'delete'] as const) {
-    if (mode !== 'read' && config.HUDU_READ_ONLY) continue;
+    if (mode !== 'read' && config.HUDU_WRITE_POLICY === 'deny') continue;
     const client = mode === 'read' ? ctx.hudu : ctx.mutationClients?.[mode];
     if (!client) throw new Error(`Missing ${mode} SDK client`);
     const effect = mode === 'delete' ? 'destructive' : mode;
@@ -25,7 +25,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
       spec.name,
       {
         title: spec.title,
-        description: spec.description,
+        description: mode === 'delete' ? spec.description : spec.description + ARTICLE_FORMAT_NOTE,
         inputSchema: z.strictObject({
           operation: z.enum(operations).describe('Canonical operation key (see hudu_list_operations). Exact registry key, never a tool name.'),
           input: z.record(z.string(), z.unknown()).optional().describe('The operation arguments as one object; validated against the registry record before any request. The field contract is closed: an unknown top-level field is a typed CONFIG_ERROR naming the accepted fields, which hudu_describe_operation serves as input_contract.'),
@@ -69,7 +69,9 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           // destructive one, and then calls the operation's OWN typed method. Passing the flags
           // through only when present matters: an explicit `dryRun: undefined` is not the same input
           // to the governor as an absent one.
-          const opts: { dryRun?: boolean; confirm?: string } = {};
+          // Article bodies cross this boundary as Markdown (node-hudu 0.14 dialect): far fewer tokens than
+          // HTML for the model, converted by the SDK, with its round-trip loss guard on every write.
+          const opts: { dryRun?: boolean; confirm?: string; contentFormat: 'markdown' } = { contentFormat: 'markdown' };
           if (typeof dry_run === 'boolean') opts.dryRun = dry_run;
           if (typeof confirm === 'string') opts.confirm = confirm;
           let result = await dispatchOperation(client, effect, operation, bag, opts);

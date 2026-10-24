@@ -23,7 +23,6 @@ const config = (override: Partial<Config> = {}): Config => ({
   MCP_TRANSPORT: 'stdio',
   PORT: 8787,
   LOG_LEVEL: 'error',
-  HUDU_READ_ONLY: false,
   HUDU_WRITE_POLICY: 'deny',
   HUDU_WRITE_ALLOW: [],
   HUDU_SECRET_READS: 'deny',

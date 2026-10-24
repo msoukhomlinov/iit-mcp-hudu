@@ -1,0 +1,13 @@
+{
+  "mcp_entrypoint": [
+    "node",
+    "dist/main.js"
+  ],
+  "node_repo": ".",
+  "audit_line_pattern": "",
+  "internal_patterns": [],
+  "max_surface_bytes": 56000,
+  "max_tools": 22,
+  "surface_calls": [],
+  "credentials_source": "test/conformance/surface-audit.placeholder.env"
+}

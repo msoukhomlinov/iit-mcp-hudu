@@ -26,15 +26,9 @@ export const config: Config = {
   LOG_LEVEL: 'error',
   // `all` is today's behaviour, so every pre-existing governor assertion keeps describing the
   // `all` path; the policy tests override it per-session.
-  HUDU_READ_ONLY: false,
   HUDU_WRITE_POLICY: 'all',
   HUDU_WRITE_ALLOW: [],
   HUDU_SECRET_READS: 'deny',
-  // The 0.12.0 preset knobs at their defaults (see src/config.ts); per-session tests
-  // override them.
-  HUDU_CACHE_PRESET: 'on',
-  HUDU_COOLDOWN: 'on',
-  HUDU_TIMEOUT_MS: 30000,
 };
 
 export type Json = Record<string, any>;
@@ -44,6 +38,10 @@ export interface Session {
   call(name: string, args: Json): Promise<Json>;
   /** Every URL the SDK actually requested. A write that slipped the governor would show up here. */
   urls: string[];
+  /** HTTP method of each request, parallel to `urls`. */
+  methods: string[];
+  /** Request body of each request, parallel to `urls` ('' when none). */
+  bodies: string[];
   /** Every log line the server wrote, as parsed JSON — the audit hook's output lands here. */
   logs: Json[];
   close(): Promise<void>;
@@ -66,8 +64,12 @@ export async function connect(respond?: (url: string) => Response, override: Par
   const handle = serveStdio(createMcpServerFactory({ ...config, ...override }, log), { transport });
 
   const urls: string[] = [];
-  vi.stubGlobal('fetch', async (url: unknown) => {
+  const methods: string[] = [];
+  const bodies: string[] = [];
+  vi.stubGlobal('fetch', async (url: unknown, init?: RequestInit) => {
     urls.push(String(url));
+    methods.push(init?.method ?? 'GET');
+    bodies.push(typeof init?.body === 'string' ? init.body : '');
     if (respond === undefined) throw new Error('unexpected network call');
     return respond(String(url));
   });
@@ -93,6 +95,8 @@ export async function connect(respond?: (url: string) => Response, override: Par
       return reply.result ?? reply.error;
     },
     urls,
+    methods,
+    bodies,
     logs,
     close: () => handle.close(),
   };

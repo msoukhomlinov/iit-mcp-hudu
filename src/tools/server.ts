@@ -24,7 +24,7 @@ const SERVER_VERSION = '0.1.0';
  * The maximum number of per-(origin, credential) scoped clients kept warm in one process.
  *
  * Each scoped client owns its own Hudu knowledge index, which the SDK bounds with a 64 MB text
- * budget (see `HUDU_SEARCH_MAX_INDEX_PAGES`, the same budget from the walk side). An unbounded map
+ * budget (the SDK's `search.maxIndexPages` bounds the same budget from the walk side). An unbounded map
  * would let enough distinct callers grow the heap past the container limit, so the cache is capped
  * and evicts least-recently-used first. Eight scopes is 8 × 64 MB of text at the absolute worst
  * case — the cap, not a typical tenant — which leaves headroom under the 1 GB container limit for
@@ -373,37 +373,28 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
     // deadline, 1 retry, 240/min rate limit, concurrency 3, bounded resolution scans). It stays
     // a deployment-wide constant (no env override), so every option this server sets explicitly
     // wins over it; the rate-limit bucket is per client, i.e. per (origin, credential) scope.
-    // `timeoutMs` is env-tunable via HUDU_TIMEOUT_MS (default 30000). It is ALWAYS passed
+    // `timeoutMs` is a fixed 30 s. It is ALWAYS passed
     // explicitly, so it stays above the profile's 20 s deadline regardless of preset: the
     // preset's 20 s would shorten a cold `tier:'index'` body-index walk that the 0.9.2 deployment
     // tolerated at the SDK's 30 s, and a cold-scope search must not start timing out because of
     // an upgrade.
-    // `cache` is env-toggled via HUDU_CACHE_PRESET (default 'on'): 'on' selects the SDK's
-    // `recommended` per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min
+    // `cache` is the SDK's `recommended` per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min
     // base). Caches are per
     // client, hence per scope — a write through the write or delete client does NOT clear the
     // read client's cache (separate instances), so a read after a mutation is TTL-bounded stale,
-    // never unbounded. 'off' omits the preset: repeated reads re-dial Hudu.
-    // `cooldown` is env-tunable via HUDU_COOLDOWN (default 'on'): the 429 cooldown gate; a
+    // never unbounded.
+    // `cooldown` is the 429 cooldown gate, always on; a
     // locally refused call answers with RateLimitError.notSent, which the error envelope
-    // surfaces so a local refusal stays distinguishable from a vendor rejection. 'off' retries
-    // a 429 per the profile instead of arming a local deadline.
+    // surfaces so a local refusal stays distinguishable from a vendor rejection.
     // The literal-IP SSRF floor is NOT here: it applies to the per-scope clients only (below) —
     // the caller-named origins are the untrusted surface. The operator's own base (the
     // HUDU_BASE_URL under stdio, the default origin under http) is trusted at the process / env
     // boundary, and flooring it would break an on-prem install whose Hudu sits on a literal
     // private IP. No env override: it is a security property, not a deployment preference.
     profile: 'agent',
-    // Omitted entirely when 'off', so the SDK's own default (no read-through cache) stays the
-    // default rather than being shadowed by a local copy of its value.
-    ...(config.HUDU_CACHE_PRESET === 'on' ? { cache: 'recommended' } : {}),
-    timeoutMs: config.HUDU_TIMEOUT_MS,
-    ...(config.HUDU_COOLDOWN === 'on' ? { cooldown: { enabled: true } } : {}),
-    // Omitted entirely when unset, so the SDK's own default stays the default rather than being
-    // shadowed by a local copy of its value.
-    ...(config.HUDU_SEARCH_MAX_INDEX_PAGES === undefined
-      ? {}
-      : { search: { maxIndexPages: config.HUDU_SEARCH_MAX_INDEX_PAGES } }),
+    cache: 'recommended',
+    timeoutMs: 30000,
+    cooldown: { enabled: true },
     // One line per Hudu request, on the success and the error path. The SDK redacts every
     // credential-shaped key out of the event, and the path stays query-free — but the SDK does not
     // redact query *values*, so the sink records only each query value's shape. This prevents a
@@ -418,11 +409,14 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
   // Separate effect clients prevent the read dispatcher from ever borrowing mutation authority.
   // Reads are included for SDK helper dependencies; write filters never widen the SDK's mode.
   const reads = CAPABILITY_NAMES.filter((key) => getCapability(key)?.effect === 'read');
+  // A write operation may delegate to another write (articles.patchSection -> articles.update); the SDK
+  // refuses the delegate unless it is allowed too, so granting the parent grants its write dependencies.
+  const withWriteDependencies = (key: string, effect: string): string[] => [key, ...(getCapability(key)?.dependsOn ?? []).filter((dep) => getCapability(dep)?.effect === effect)];
   const build = (mode: 'read' | 'write' | 'delete') => {
-    const allowOperations = mode === 'read' || config.HUDU_READ_ONLY || config.HUDU_WRITE_POLICY === 'deny'
+    const allowOperations = mode === 'read' || config.HUDU_WRITE_POLICY === 'deny'
       ? reads
       : config.HUDU_WRITE_POLICY === 'allow_list'
-        ? [...reads, ...config.HUDU_WRITE_ALLOW.filter((key) => getCapability(key)?.effect === (mode === 'delete' ? 'destructive' : 'write'))]
+        ? [...reads, ...config.HUDU_WRITE_ALLOW.filter((key) => getCapability(key)?.effect === (mode === 'delete' ? 'destructive' : 'write')).flatMap((key) => withWriteDependencies(key, mode === 'delete' ? 'destructive' : 'write'))]
         : undefined;
     const scopedOptions = { ...options, mode, reveal: false, ...(allowOperations ? { allowOperations } : {}) };
     const parent = config.MCP_TRANSPORT === 'stdio'
@@ -456,7 +450,7 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
     };
   };
   const read = build('read');
-  const mutations = config.HUDU_READ_ONLY ? undefined : { write: build('write'), delete: build('delete') };
+  const mutations = config.HUDU_WRITE_POLICY === 'deny' ? undefined : { write: build('write'), delete: build('delete') };
 
   // The server-held credential's anomalies, computed once: the auth-failure envelope annotates a
   // refusal with them so a 401 on a value this server already knows is malformed is diagnosable

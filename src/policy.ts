@@ -58,7 +58,7 @@ export function secretReadsPermitted(config: Config): boolean {
  * Under deny, only an explicitly classified read may reach the SDK.
  */
 export function policyAllows(operation: string, record: CapabilityRecord | undefined, config: Config): boolean {
-  if (config.HUDU_READ_ONLY || config.HUDU_WRITE_POLICY === 'deny') return record?.effect === 'read';
+  if (config.HUDU_WRITE_POLICY === 'deny') return record?.effect === 'read';
   if (record === undefined || !isWriteEffect(record)) return true;
   switch (config.HUDU_WRITE_POLICY) {
     case 'allow_list':
@@ -86,7 +86,6 @@ function refusalReason(operation: string, record: CapabilityRecord | undefined, 
     return 'refused by HUDU_SECRET_READS=deny';
   }
   if (!policyAllows(operation, record, config)) {
-    if (config.HUDU_READ_ONLY) return 'refused by HUDU_READ_ONLY=true';
     return `refused by HUDU_WRITE_POLICY=${config.HUDU_WRITE_POLICY}`;
   }
   return null;
@@ -167,7 +166,7 @@ function refusedReachableCount(config: Config): number {
 export function applyCatalogPolicy(page: CatalogPage, config: Config): CatalogPage {
   // `all` alone is no longer an early exit: the secret-read policy refuses rows independently of
   // the write policy, so a deployment with `all` + `deny` still has rows to mark.
-  if (!config.HUDU_READ_ONLY && config.HUDU_WRITE_POLICY === 'all' && secretReadsPermitted(config)) return page;
+  if (config.HUDU_WRITE_POLICY === 'all' && secretReadsPermitted(config)) return page;
   const rows: CatalogRow[] = page.rows.map((row) => {
     const reason = row.reachable ? refusalReason(row.op, getCapability(row.op), config) : null;
     return reason === null ? row : { ...row, reachable: false, reason };

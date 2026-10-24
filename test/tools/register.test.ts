@@ -70,8 +70,8 @@ describe('tool contract', () => {
   });
 });
 
-it('omits mutation tools in read-only mode, even when write policy is all', async () => {
-  const session = await connect(undefined, { HUDU_READ_ONLY: true, HUDU_WRITE_POLICY: 'all' });
+it('omits mutation tools when write policy is deny', async () => {
+  const session = await connect(undefined, { HUDU_WRITE_POLICY: 'deny' });
   try {
     const tools = await session.list();
     expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['hudu_read']));
