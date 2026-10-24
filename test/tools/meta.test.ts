@@ -82,8 +82,9 @@ describe('meta discovery and credential tool surface', () => {
     const result = await session.call('hudu_list_operations', { effect: 'destructive', limit: 100 });
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
     // 0.13.2 -> 0.14.0: +2 (articles.getSection, articles.patchSection).
-    expect(result.structuredContent.reachable_operations).toBe(188);
-    expect(result.structuredContent.unreachable_operations).toBe(48);
+    // 0.16.0: asset_passwords.createShare is never reachable (SDK reveal_required; this server never grants reveal).
+    expect(result.structuredContent.reachable_operations).toBe(187);
+    expect(result.structuredContent.unreachable_operations).toBe(49);
     await session.close();
   });
 

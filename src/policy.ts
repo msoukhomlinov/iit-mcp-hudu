@@ -47,6 +47,15 @@ export function isSecretOperation(operation: string): boolean {
   return CREDENTIAL_RESOURCES.some((resource) => operation.startsWith(`${resource}.`));
 }
 
+/**
+ * Operations this server can never run, whatever the policy. `createShare` mints a live credential
+ * link and the SDK refuses it (POLICY_DENIED, reveal_required, dry-run included, no request) on any
+ * client without `reveal`; every scoped client here is built with `reveal: false`.
+ */
+const NEVER_REACHABLE: Readonly<Record<string, string>> = {
+  'asset_passwords.createShare': 'refused: needs the SDK reveal capability, which this server never grants',
+};
+
 /** Whether this deployment permits reads that can return a plaintext credential. */
 export function secretReadsPermitted(config: Config): boolean {
   return config.HUDU_SECRET_READS === 'allow';
@@ -76,12 +85,14 @@ export function policyAllows(operation: string, record: CapabilityRecord | undef
  * questions for different owners.
  */
 export function operationPermitted(operation: string, record: CapabilityRecord | undefined, config: Config): boolean {
+  if (operation in NEVER_REACHABLE) return false;
   if (isSecretOperation(operation) && !secretReadsPermitted(config)) return false;
   return policyAllows(operation, record, config);
 }
 
 /** Why `operation` is refused, phrased for a catalog row, or `null` when it is permitted. */
 function refusalReason(operation: string, record: CapabilityRecord | undefined, config: Config): string | null {
+  if (operation in NEVER_REACHABLE) return NEVER_REACHABLE[operation]!;
   if (isSecretOperation(operation) && !secretReadsPermitted(config)) {
     return 'refused by HUDU_SECRET_READS=deny';
   }
@@ -164,9 +175,8 @@ function refusedReachableCount(config: Config): number {
  * surfaces is the shape being matched; rows the SDK already refused are left untouched.
  */
 export function applyCatalogPolicy(page: CatalogPage, config: Config): CatalogPage {
-  // `all` alone is no longer an early exit: the secret-read policy refuses rows independently of
-  // the write policy, so a deployment with `all` + `deny` still has rows to mark.
-  if (config.HUDU_WRITE_POLICY === 'all' && secretReadsPermitted(config)) return page;
+  // No early exit: the secret-read policy and NEVER_REACHABLE refuse rows independently of the
+  // write policy, so even `all` + `allow` has rows to mark.
   const rows: CatalogRow[] = page.rows.map((row) => {
     const reason = row.reachable ? refusalReason(row.op, getCapability(row.op), config) : null;
     return reason === null ? row : { ...row, reachable: false, reason };
