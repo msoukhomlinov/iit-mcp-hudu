@@ -33,8 +33,9 @@ Measured with node-hudu 0.16.0 (compact `tools/list` UTF-8 bytes; write-enabled 
 | Baseline (0.16.0, no change) | 50,070 | 43,714 |
 | Low-loss levers (`$schema`, safe-integer `maximum`, SDK dispatcher field text, shorter `hudu_search` query and format note) | 46,261 | 40,767 |
 | Drop served `_meta` + merge the four `hudu_list_*` tools into `hudu_list(resource)` | 38,500 | 33,242 |
+| + `markdown_lossy` output fields and note clause (current) | 39,473 | 33,928 |
 
-Both profiles are now under 40,000 B (write by 1,500 B). `surface_audit.py` (incl. instructions): 38,480 / 33,224 B, 19 / 17 tools. Measured, not landed: operation `enum` to plain string (-3,817 / -1,922 B on the 46,261 / 40,767 baseline) is the next lever if more headroom is needed; moving thin resolve/find tools to the discoverable tier needs a node-hudu CORE rule change and an SDK release first, so it is not started here.
+Both profiles are under 40,000 B (write by 527 B). `surface_audit.py` (incl. instructions): 39,453 / 33,910 B, 19 / 17 tools. Measured, not landed: operation `enum` to plain string (-3,817 / -1,922 B on the 46,261 / 40,767 baseline) is the next lever if more headroom is needed; moving thin resolve/find tools to the discoverable tier needs a node-hudu CORE rule change and an SDK release first, so it is not started here.
 
 `_meta` (`backingOperation`, `sensitive`, `requiresApproval`, `registryWide`, `dryRunAffordance`) is dropped from every served tool definition (owner confirmed nothing external reads it). The drift check in `dedicated.test.ts` now reads the SDK registry instead.
 
@@ -48,3 +49,8 @@ Both items previously listed here as open are done in 9320e28:
 
 - Lossy Markdown reads: `articles.get` / `getContext` / `resolve` and `hudu_get_article_context` now set `markdown_lossy` (with `markdown_lossy_codes`) when the stored HTML holds content the Markdown dialect cannot express, using the SDK's `diffArticleRoundTrip` (content-impact findings only). Served surface after the change: 39,473 / 33,928 B (`tools/list`), still under 40,000 B on both profiles.
 - allow_list registration: `hudu_write` is registered only when the list holds a write-effect operation and `hudu_delete` only when it holds a destructive-effect one; the boot log states which tools were registered. The one-level `withWriteDependencies` stays as is (it fails closed).
+
+## node-hudu follow-ups to raise (reported, not yet reproduced here)
+
+- `htmlToMarkdown` can throw `CONVERSION_EMPTY_OUTPUT` (non-empty input converting to empty output). A Markdown read of such an article now fails with that error exactly as the SDK's own conversion did; a lossy-but-non-empty body degrades to the `markdown_lossy` flag instead.
+- Converting a ~157 KB article with a 2,500-row table was reported to take ~26 s, which looks quadratic in the table path. The read now converts locally, so the cost is paid per read in this process; worth a performance issue on node-hudu before large articles are common.

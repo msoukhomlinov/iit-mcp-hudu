@@ -139,10 +139,10 @@ export const SEARCH_OUTPUT = z.union([
   z.object({ mode: z.literal('resources'), resources: z.unknown(), modes: z.array(z.string()) }),
 ]);
 
-/** A bundled context read (`getContext`). */
 /** Set only when a Markdown article read lost content (see article-loss.ts); absent otherwise. */
 const LOSSY = { markdown_lossy: z.boolean().optional(), markdown_lossy_codes: z.array(z.string()).optional() };
 
+/** A bundled context read (`getContext`). */
 export const CONTEXT_OUTPUT = z.object({ context: z.unknown(), skipped: z.array(z.string()).optional(), ...LOSSY });
 
 /** A catalog page (`hudu_list_operations`): counts plus the rows the filters matched. */

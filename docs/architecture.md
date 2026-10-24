@@ -13,7 +13,7 @@
 
 - Generic layer: `hudu_list_operations`, `hudu_describe_operation`, `hudu_read`, `hudu_write`, `hudu_delete` reach the whole SDK registry by canonical key with slim, closed schemas.
 - Dedicated tools exist only where a model would otherwise pay for a long path: context composites, search, resolve, bounded lists, slug lookups, `hudu_fetch_many`.
-- `hudu_write` and `hudu_delete` are registered only when the write policy is not `deny`.
+- `hudu_write` and `hudu_delete` are never registered under `deny` or `HUDU_READ_ONLY=true`; under `all` both are; under `allow_list` `hudu_write` only if the list holds a write-effect operation and `hudu_delete` only if it holds a destructive-effect one.
 
 ## 3. Safety layers (outermost first)
 

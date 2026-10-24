@@ -696,9 +696,13 @@ describe('lossy Markdown reads are signalled', () => {
       expect(result.isError).toBeUndefined();
       expect(result.structuredContent.markdown_lossy).toBe(true);
       expect(result.structuredContent.markdown_lossy_codes).toContain('ROUNDTRIP_RAW_ELEMENT_LOST');
+      expect(session.urls).toHaveLength(1); // one wire request for the read itself
       expect(result.content[0].text).toContain('markdown_lossy: true');
-      expect(result.content[0].text).toContain('hudu_fetch_many');
-      expect(session.urls).toHaveLength(1);
+      expect(result.content[0].text).toContain('hudu_fetch_many {items:[{resource:');
+      // The pointer's literal shape is a valid call and returns the stored HTML, <svg> included.
+      const fetched = await session.call('hudu_fetch_many', { items: [{ resource: 'articles', id: 22 }] });
+      expect(fetched.isError).toBeUndefined();
+      expect(JSON.stringify(fetched.structuredContent)).toContain('<svg');
     } finally {
       await session.close();
     }

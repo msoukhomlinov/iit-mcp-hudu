@@ -283,7 +283,9 @@ those operations take no format. Rules a caller needs:
   back as plain text. `hudu_read` (`articles.get` / `getContext` / `resolve`) and
   `hudu_get_article_context` then set `markdown_lossy: true` (with `markdown_lossy_codes`, the SDK's
   `diffArticleRoundTrip` content-loss codes) and add one sentence to the result text; fetch the stored
-  HTML with `hudu_fetch_many` (`resource: "articles"`) to see the full body. Callouts, accordions, task
+  HTML with `hudu_fetch_many` (`{items:[{resource:"articles", id}]}`) to see the full body. The read is one
+  fetch with HTML forced and converted locally (so there is no second request); a caller's own
+  `opts.format: "html"` returns the stored HTML untouched with no flag. Callouts, accordions, task
   lists and Mermaid round-trip cleanly and are never flagged; a lossless read is unchanged.
 
 ## SDK behaviour (0.12.0)
