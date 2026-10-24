@@ -260,17 +260,11 @@ describe('dispatch cannot be redirected', () => {
     asset_layouts: { operation: 'asset_layouts.update', input: { id: 1, data: { name: 'pwned' } }, confirm: 'asset_layouts.update' },
   } as const;
 
-  it.each(Object.keys(redirects) as (keyof typeof redirects)[])('ignores a top-level operation selector and nested invoke input on %s', async (resource) => {
+  it.each(Object.keys(redirects) as (keyof typeof redirects)[])('refuses a top-level operation selector and nested invoke input on %s, before any request', async (resource) => {
     const session = await connect(() => pages[resource](1));
     const result = await session.call('hudu_list', { resource, ...(resource === 'asset_layouts' ? {} : { page_size: 1 }), ...redirects[resource] });
-    // The call succeeds as a plain list: the extra keys never reach the SDK call.
-    expect(result.isError).toBeUndefined();
-    expect(result.structuredContent.count).toBe(1);
-    expect(session.urls).toHaveLength(1);
-    const url = session.urls[0]!;
-    expect(url).toContain(`/${resource}?`);
-    expect(new RegExp(`/${resource}/\\d+`).test(url)).toBe(false);
-    expect(url).not.toMatch(/delete|update|operation/);
+    expect(result.isError).toBe(true);
+    expect(session.urls).toEqual([]);
     await session.close();
   });
 
@@ -279,6 +273,14 @@ describe('dispatch cannot be redirected', () => {
     const result = await session.call('hudu_list', { resource, filters: { operation: redirects[resource].operation } });
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0].text).code).toBe('CONFIG_ERROR');
+    expect(session.urls).toEqual([]);
+    await session.close();
+  });
+
+  it('refuses the 0.2.x flat filter shape instead of stripping it into an account-wide read', async () => {
+    const session = await connect(() => assetsPage(1));
+    const result = await session.call('hudu_list', { resource: 'assets', company_id: 5 });
+    expect(result.isError).toBe(true);
     expect(session.urls).toEqual([]);
     await session.close();
   });

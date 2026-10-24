@@ -248,7 +248,8 @@ export function registerListTools(server: McpServer, ctx: ToolContext): void {
         '. A filter the resource does not accept is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor’s own size, returned whole, has_more is conservative (true for any non-empty page), stop when a page comes back empty. ' +
         'Prefer hudu_search or hudu_resolve_any to identify one record, and the *_context / hudu_get_asset_layout reads to read one in full. This is the ungated path for these reads; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.' +
         ARTICLE_FORMAT_NOTE,
-      inputSchema: z.object({
+      // strict: a stray top-level filter (the 0.2.x flat shape) must be refused, never stripped into an account-wide read.
+      inputSchema: z.strictObject({
         resource: z.enum(LIST_RESOURCE_NAMES).describe('Which collection to list.'),
         page: LIST_PAGE,
         page_size: z.number().int().min(1).max(MAX_LIMIT).optional().describe(`Rows per page (1-${MAX_LIMIT}, default ${DEFAULT_LIMIT}); refused for asset_layouts, never clamped.`),

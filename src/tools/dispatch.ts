@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { getCapability } from 'node-hudu/capabilities';
 import { dispatchOperation, META_TOOLS } from 'node-hudu/mcp';
-import { assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
+import { assertNeverReachablePermitted, assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
 import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent } from './results.js';
@@ -49,6 +49,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           // `asset_passwords.get` is an ordinary read that returns `password` and `otp_secret` in
           // plaintext, so nothing above this line would stop it.
           assertSecretReadPermitted(operation, config, log);
+          assertNeverReachablePermitted(operation, log);
 
           // The search resource policy is a READ-edge authority like the write policy: `effect dispatcher`
           // reaches the search and resolve helpers directly, so each must honour the same resource

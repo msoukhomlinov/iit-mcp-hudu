@@ -56,6 +56,13 @@ const NEVER_REACHABLE: Readonly<Record<string, string>> = {
   'asset_passwords.createShare': 'refused: needs the SDK reveal capability, which this server never grants',
 };
 
+/** Refuse an operation this server never runs, before any request (the SDK's own `reveal` refusal stays as a second line). */
+export function assertNeverReachablePermitted(operation: string, log: Logger): void {
+  if (!(operation in NEVER_REACHABLE)) return;
+  log.warn('operation refused: never reachable on this server', { operation });
+  throw new PolicyDeniedError(`${operation} ${NEVER_REACHABLE[operation]}.`, { operation, retryable: false, suggestedAction: 'This server never runs this operation; do not retry it.' });
+}
+
 /** Whether this deployment permits reads that can return a plaintext credential. */
 export function secretReadsPermitted(config: Config): boolean {
   return config.HUDU_SECRET_READS === 'allow';

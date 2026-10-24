@@ -23,6 +23,7 @@
 - Breaking (metadata): served tool definitions no longer carry `_meta` (`backingOperation`, `sensitive`, `requiresApproval`, ...).
 - Served surface after these: 19 tools / 38.5 KB write-enabled, 17 tools / 33.2 KB read-only (`tools/list`), down from 22 / 50.1 KB and 20 / 43.7 KB on node-hudu 0.16.0.
 - Breaking: `HUDU_READ_ONLY` is removed. `HUDU_WRITE_POLICY` (`deny` default | `allow_list` | `all`) is the single switch; `deny` registers no `hudu_write` / `hudu_delete` tool. Allowing a write also allows the writes it delegates to (`articles.patchSection` -> `articles.update`).
+- Upgrade hazard: on 0.2.3 an UNSET `HUDU_READ_ONLY` meant read-only (it defaulted to true). In 0.3.0 only `HUDU_WRITE_POLICY` decides, so a deployment that sets `HUDU_WRITE_POLICY=allow_list` or `all` and never set `HUDU_READ_ONLY` now gets `hudu_write` / `hudu_delete` (boot cannot warn: the variable is unset). Check `HUDU_WRITE_POLICY` before upgrading; the default `deny` is unchanged.
 - Breaking: `HUDU_CACHE_PRESET`, `HUDU_COOLDOWN`, `HUDU_TIMEOUT_MS` and `HUDU_SEARCH_MAX_INDEX_PAGES` are removed; the defaults (cache on, cooldown on, 30 s deadline, SDK default index pages) are fixed. A stale removed variable fails boot, so a leftover `HUDU_READ_ONLY=true` can never be ignored silently: delete it and set `HUDU_WRITE_POLICY`.
-- `hudu_get_article_context` returns Markdown; `hudu_read`, `hudu_write`, `hudu_list_articles` and `hudu_fetch_many` descriptions state which paths speak Markdown and which carry stored HTML.
+- `hudu_get_article_context` returns Markdown; `hudu_read`, `hudu_write`, `hudu_list` and `hudu_fetch_many` descriptions state which paths speak Markdown and which carry stored HTML.
 - Tests: Markdown read and write loss-guard coverage through the dispatchers.

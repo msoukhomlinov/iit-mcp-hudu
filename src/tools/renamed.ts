@@ -20,7 +20,7 @@ export function answerRenamedTools(server: McpServer): void {
       if (resource === undefined) return handler(req, ctx);
       const filters = Object.fromEntries(Object.entries(req.params?.arguments ?? {}).filter(([k]) => !['page', 'page_size'].includes(k)));
       return errorContent(configError(
-        `${req.params?.name} was replaced by hudu_list in server 0.3.0. Call hudu_list with {"resource":"${resource}","page":N,"page_size":N,"filters":{...}}; your ${Object.keys(filters).length ? `filters (${Object.keys(filters).join(', ')}) move` : 'filters move'} inside "filters".`,
+        `${req.params?.name} was replaced by hudu_list in server 0.3.0. Call hudu_list with {"resource":"${resource}","page":N,${resource === 'asset_layouts' ? '' : '"page_size":N,'}"filters":{...}}; your ${Object.keys(filters).length ? `filters (${Object.keys(filters).join(', ')}) move` : 'filters move'} inside "filters".`,
       ));
     });
 }

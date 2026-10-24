@@ -263,7 +263,7 @@ caller-named origins — a security property, not a deployment preference.
 `hudu_read` and `hudu_write` pass `contentFormat: 'markdown'` to the SDK, and `hudu_get_article_context`
 asks for Markdown, so single-article bodies (`articles.get`, `articles.getContext`, `articles.resolve`,
 `create`, `update`) are returned and accepted as Markdown. Hudu callouts (`> [!INFO]`), accordions, task
-lists and Mermaid fences (stored as the editor-native `<pre class="language-mermaid">` form) round-trip as the dialect documents. Rows from `hudu_list_articles`,
+lists and Mermaid fences (stored as the editor-native `<pre class="language-mermaid">` form) round-trip as the dialect documents. Rows from `hudu_list` (articles),
 `hudu_fetch_many`, `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
 those operations take no format. Rules a caller needs:
 

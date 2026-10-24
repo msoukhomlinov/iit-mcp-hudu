@@ -91,3 +91,14 @@ describe('discovery names only tools this server serves', () => {
     await session.close();
   });
 });
+
+describe('createShare is refused by this server before any request', () => {
+  it('under all + allow, even if the SDK client were revealing', async () => {
+    const session = await connect(() => json(SHARE), { HUDU_WRITE_POLICY: 'all', HUDU_SECRET_READS: 'allow' });
+    const result = await session.call('hudu_write', { operation: 'asset_passwords.createShare', input: { passwordId: 7, data: { expire_in: 60 } }, dry_run: false });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result)).toContain('never grants');
+    expect(session.urls).toEqual([]);
+    await session.close();
+  });
+});
