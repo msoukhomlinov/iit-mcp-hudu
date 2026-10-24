@@ -232,7 +232,7 @@ export function searchToolDescription(ctx: ToolContext): string {
 export function searchQueryDescription(ctx: ToolContext): string {
   const { indexSearchable, toolDefaultTier } = ctx;
   const base =
-    'mode="search" only, and REQUIRED there: omitting it is a CONFIG_ERROR naming mode:"help" (it never falls back to help). Partial words are tolerated; article BODY content is searched. Hudu\'s own search differs by resource. Companies, websites, passwords and assets match the words in order with gaps allowed, so reordering words can miss a record ("acme corp" finds "Acme Corp Pty", "corp acme" may not). Users, groups and password folders match the whole query as one exact phrase, so use one word. Some instances answer from a fuzzy index that returns records matching only some of the words. Indexed articles and assets score each word independently (match.coverage). On a multi-word query, when the full phrase finds nothing, the tool retries the individual words and ranks partial matches lower; match.coverage shows how good a match is. For an exact lookup, search one distinctive word.';
+    'mode="search" only, and REQUIRED there: omitting it is a CONFIG_ERROR naming mode:"help" (it never falls back to help). Partial words are tolerated; article BODY content is searched. Per-resource matching rules and multi-word behaviour: mode="help", topic="query".';
   if (!indexSearchable) {
     return base.replace(
       'article BODY content is searched.',

@@ -689,6 +689,27 @@ describe('article writes: Markdown versus block HTML', () => {
     }
   });
 
+  it('Mermaid round-trips through the bare editor-native form (node-hudu 0.16)', async () => {
+    const fence = '```mermaid\ngraph TD; A-->B\n```';
+    const write = await connect(stored);
+    try {
+      await write.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: fence } }, dry_run: false });
+      const html = put(write);
+      expect(html).toContain('<pre class=\\"language-mermaid\\"><code class=\\"language-mermaid\\">');
+      expect(html).not.toContain('data-mermaid-id');
+    } finally {
+      await write.close();
+    }
+    const html = '<pre class="language-mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>';
+    const read = await connect(() => Response.json({ article: { id: 22, name: 't', content: html } }));
+    try {
+      const result = await read.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.structuredContent.result.content).toBe(fence);
+    } finally {
+      await read.close();
+    }
+  });
+
   it('any other body is parsed as Markdown', async () => {
     const session = await connect(stored);
     try {
