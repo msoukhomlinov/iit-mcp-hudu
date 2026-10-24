@@ -154,12 +154,15 @@ describe('hudu_list_operations advertises the dedicated tool on the mapped rows'
     // client advancing by offset sees each remaining row exactly once and `matched` never moves.
     const session = await connect();
     const first = await session.call('hudu_list_operations', { unexposed_only: true, limit: 20 });
-    const second = await session.call('hudu_list_operations', { unexposed_only: true, limit: 20, offset: first.structuredContent.rows.length });
     expect(first.structuredContent.matched).toBe(SDK_UNEXPOSED - RE_LABELLED);
-    expect(second.structuredContent.matched).toBe(first.structuredContent.matched);
     expect(first.structuredContent.has_more).toBe(true);
-    expect(second.structuredContent.has_more).toBe(false);
-    const ops = [...first.structuredContent.rows, ...second.structuredContent.rows].map((r: Json) => r.op);
+    // Page until has_more is false: the set size is the SDK's, not a fixed two pages.
+    const ops: string[] = first.structuredContent.rows.map((r: Json) => r.op);
+    for (let page = first; page.structuredContent.has_more; ) {
+      page = await session.call('hudu_list_operations', { unexposed_only: true, limit: 20, offset: ops.length });
+      expect(page.structuredContent.matched).toBe(first.structuredContent.matched);
+      ops.push(...page.structuredContent.rows.map((r: Json) => r.op));
+    }
     expect(ops).toHaveLength(first.structuredContent.matched);
     expect(new Set(ops).size).toBe(ops.length);
     await session.close();

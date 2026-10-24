@@ -56,9 +56,10 @@ describe('meta discovery and credential tool surface', () => {
     // the row by identity below, so a different row changing could not keep this delta honest.
     // 0.13.2 -> 0.14.0: +2 rows (articles.getSection a read, reachable under deny; articles.patchSection
     // a write, refused by deny). Moved with the SDK's plan hash in src/tools.ts.
+    // 0.14.0 -> 0.16.0: 230 -> 236 rows (articles.pin/unpin, asset_passwords share ops x4).
     expect(CATALOG.some((row) => row.op === 'operations.fetchMany')).toBe(true);
     expect(result.structuredContent.reachable_operations).toBe(89);
-    expect(result.structuredContent.unreachable_operations).toBe(141);
+    expect(result.structuredContent.unreachable_operations).toBe(147);
     await session.close();
   });
 
@@ -70,8 +71,8 @@ describe('meta discovery and credential tool surface', () => {
     // `all` opens the write surface but not the credential one: the reachable
     // asset_passwords/password_folders rows stay refused under the secret-read default.
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
-    expect(result.structuredContent.reachable_operations).toBe(167);
-    expect(result.structuredContent.unreachable_operations).toBe(63);
+    expect(result.structuredContent.reachable_operations).toBe(169);
+    expect(result.structuredContent.unreachable_operations).toBe(67);
     await session.close();
   });
 
@@ -81,7 +82,7 @@ describe('meta discovery and credential tool surface', () => {
     const result = await session.call('hudu_list_operations', { effect: 'destructive', limit: 100 });
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
     // 0.13.2 -> 0.14.0: +2 (articles.getSection, articles.patchSection).
-    expect(result.structuredContent.reachable_operations).toBe(182);
+    expect(result.structuredContent.reachable_operations).toBe(188);
     expect(result.structuredContent.unreachable_operations).toBe(48);
     await session.close();
   });

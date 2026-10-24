@@ -53,11 +53,12 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         const resources = opts?.resources ?? searchableResources;
         const limit = opts?.limit ?? DEFAULT_LIMIT;
         const resolved = await ops.resolveAny(identifier, { resources: resources as KnowledgeResource[], limit });
+        const refused = resolved.unauthorized ?? [];
         return ok(
-          resolved.truncated.length
-            ? `Found ${resolved.hits.length} candidate(s); these resources hit their scan cap and are undecided: ${resolved.truncated.join(', ')}.`
-            : `Found ${resolved.hits.length} candidate(s).`,
-          { hits: resolved.hits, total: resolved.hits.length, truncated: resolved.truncated, scanned: resolved.scanned },
+          `Found ${resolved.hits.length} candidate(s).` +
+            (resolved.truncated.length ? ` These resources hit their scan cap and are undecided: ${resolved.truncated.join(', ')}.` : '') +
+            (refused.length ? ` The credential may not read ${refused.join(', ')}: an empty result there is not "no match".` : ''),
+          { hits: resolved.hits, total: resolved.hits.length, truncated: resolved.truncated, scanned: resolved.scanned, unauthorized: refused },
         );
       } catch (err) {
         return resolveErrorContent(err);
@@ -92,10 +93,14 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Get Company Context',
       description: TOOL_DESCRIPTIONS['hudu_get_company_context'] +
-        ' Context depends on the resources available to this deployment; a refused credential answers UNAUTHORIZED (401, "Bad credentials") like every other tool, and any other failure keeps its real code — never partial results.',
+        ' Context depends on the resources available to this deployment; a refused credential answers UNAUTHORIZED (401, "Bad credentials") like every other tool unless the refused sub-list is left out with opts.skip, and any other failure keeps its real code — never partial results.',
       inputSchema: z.object({
         id: z.number().int().positive().describe('Numeric company id.'),
-        opts: z.object({ limit: LIMIT, expand: EXPAND }).optional().describe('Optional read options: limit bounds the rows, expand returns full typed records.'),
+        opts: z.object({
+          limit: LIMIT,
+          expand: EXPAND,
+          skip: z.array(z.enum(['assets', 'articles', 'websites', 'asset_passwords'])).optional().describe('Sub-lists to leave out (no request is made for them); pass ["asset_passwords"] when the key cannot read credentials.'),
+        }).optional().describe('Optional read options: limit bounds the rows, expand returns full typed records, skip omits sub-lists.'),
       }),
       outputSchema: CONTEXT_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -107,11 +112,13 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         // The SDK overloads `expand` on the literal `true`, so the flag has to branch rather than
         // ride along in an options bag — the same shape the reference server uses.
         const limit = opts?.limit ?? DEFAULT_LIMIT;
+        const skip = opts?.skip;
         const raw = opts?.expand
-          ? await hudu.companies.getContext(id, { limit, expand: true })
-          : await hudu.companies.getContext(id, { limit });
+          ? await hudu.companies.getContext(id, { limit, expand: true, skip })
+          : await hudu.companies.getContext(id, { limit, skip });
         const context = redactCompanyContextCredentials(raw, 'companies.getContext', config, log);
-        return ok(`Context for company ${id}: each sub-list bounded to ${limit}.`, { context });
+        const skipped = (raw as { skipped?: string[] }).skipped;
+        return ok(`Context for company ${id}: each sub-list bounded to ${limit}${skipped?.length ? `; skipped ${skipped.join(', ')}` : ''}.`, { context, ...(skipped ? { skipped } : {}) });
       } catch (err) {
         return contextErrorContent(err);
       }

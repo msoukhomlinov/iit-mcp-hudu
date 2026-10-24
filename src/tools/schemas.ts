@@ -126,6 +126,7 @@ export const HITS_OUTPUT = z.object({
   total: z.number(),
   truncated: z.array(z.string()),
   scanned: z.number(),
+  unauthorized: z.array(z.string()).optional(),
 });
 
 /**
@@ -139,7 +140,7 @@ export const SEARCH_OUTPUT = z.union([
 ]);
 
 /** A bundled context read (`getContext`). */
-export const CONTEXT_OUTPUT = z.object({ context: z.unknown() });
+export const CONTEXT_OUTPUT = z.object({ context: z.unknown(), skipped: z.array(z.string()).optional() });
 
 /** A catalog page (`hudu_list_operations`): counts plus the rows the filters matched. */
 export const CATALOG_OUTPUT = z.object({

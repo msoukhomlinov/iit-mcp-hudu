@@ -210,7 +210,7 @@ export function searchToolDescription(ctx: ToolContext): string {
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
   if (fullSet && toolDefaultTier === 'index') return base;
   const defaultSentence =
-    'As a TOOL it defaults to tier "index" (build or await the body index), so the answer is complete rather than body-blind.';
+    'As a tool it defaults to tier "index" (builds/awaits the body index), so results are body-complete.';
   const replacement = !indexSearchable
     ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
     : toolDefaultTier === 'auto'
@@ -223,6 +223,8 @@ export function searchToolDescription(ctx: ToolContext): string {
       `ranked, fuzzy search over the resources this deployment may read: ${searchableResources.join(', ')}.`,
     );
   }
+  // Fail loudly, not silently: a missed anchor would advertise a default tier this deployment refuses.
+  if (!out.includes(defaultSentence)) throw new Error('hudu_search description: SDK default-tier sentence changed; update defaultSentence');
   return out.replace(defaultSentence, replacement);
 }
 
