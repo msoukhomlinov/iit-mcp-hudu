@@ -40,9 +40,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       // Derived from the curated manifest annotations (readOnlyHint / destructiveHint /
       // idempotentHint / openWorldHint); the SDK's ToolAnnotations type has exactly those keys.
       annotations: { readOnlyHint: true, openWorldHint: true },
-      // Not part of ToolAnnotations: the gateway-side flags the manifest also states in the
-      // description. Keep them on the tool so a gateway can gate approval without reading prose.
-      _meta: { backingOperation: 'operations.resolveAny', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       const { identifier, opts } = args;
@@ -77,7 +74,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'api_info.resolve', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       try {
@@ -104,7 +100,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: CONTEXT_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'companies.getContext', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       const { id, opts } = args;
@@ -138,7 +133,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: CONTEXT_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'articles.getContext', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       try {
@@ -164,7 +158,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: CONTEXT_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'assets.getContext', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       const { identifier, opts } = args;
@@ -192,7 +185,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'asset_layouts.resolve', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       try {
@@ -219,7 +211,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'asset_passwords.findBySlug', sensitive: true, requiresApproval: false },
     },
     async (args) => {
       try {
@@ -248,7 +239,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'websites.findBySlug', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       try {
@@ -273,7 +263,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'folders.resolve', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       try {
@@ -298,7 +287,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'password_folders.resolve', sensitive: true, requiresApproval: false },
     },
     async (args) => {
       try {
@@ -324,7 +312,6 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: ONE_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'groups.resolve', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       try {

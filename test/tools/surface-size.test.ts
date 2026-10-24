@@ -8,9 +8,9 @@ import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured 2026-10-24 after the $schema/maximum strip, SDK field text and shorter search query: 46,284 / 40,788 (incl. the Markdown authoring line).
-const BUDGET_ALL = 46_500;
-const BUDGET_DENY = 41_000;
+// Measured 2026-10-24 after dropping _meta and merging the four hudu_list_* tools into hudu_list: 38,500 / 33,242.
+const BUDGET_ALL = 38_700;
+const BUDGET_DENY = 33_400;
 
 const bytes = async (policy: 'all' | 'deny') => {
   const session = await connect(undefined, { HUDU_WRITE_POLICY: policy });
@@ -22,12 +22,12 @@ const bytes = async (policy: 'all' | 'deny') => {
 describe('served tools/list size', () => {
   it('write-enabled profile stays within budget', async () => {
     const { count, size } = await bytes('all');
-    expect(count).toBe(22);
+    expect(count).toBe(19);
     expect(size).toBeLessThanOrEqual(BUDGET_ALL);
   });
   it('read-only profile stays within budget', async () => {
     const { count, size } = await bytes('deny');
-    expect(count).toBe(20);
+    expect(count).toBe(17);
     expect(size).toBeLessThanOrEqual(BUDGET_DENY);
   });
 });

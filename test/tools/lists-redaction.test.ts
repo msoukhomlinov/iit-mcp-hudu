@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const REDACTED_FIELD_VALUE = '[REDACTED]';
 import { connect } from '../helpers/mcp-session.js';
+type Json = Record<string, any>;
+/** Old flat call shape -> the merged tool: page/page_size stay top-level, everything else is a filter. */
+const callList = (session: { call(name: string, args: Json): Promise<Json> }, resource: string, args: Json = {}) => {
+  const { page, page_size, ...filters } = args;
+  return session.call('hudu_list', { resource, ...(page !== undefined ? { page } : {}), ...(page_size !== undefined ? { page_size } : {}), ...(Object.keys(filters).length ? { filters } : {}) });
+};
+
 afterEach(() => vi.unstubAllGlobals());
 
 /** Distinctive enough that a leak into any response or log is unmistakable. */
@@ -44,7 +51,7 @@ function assetsWithSecret(layoutStatus = 200) {
 describe('hudu_list_assets secret-read policy', () => {
   it('redacts Password/ConfidentialText field values under HUDU_SECRET_READS=deny', async () => {
     const session = await connect(assetsWithSecret());
-    const result = await session.call('hudu_list_assets', { page_size: 3 });
+    const result = await callList(session, 'assets', { page_size: 3 });
 
     expect(result.isError).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain(SECRET_PROBE);
@@ -57,7 +64,7 @@ describe('hudu_list_assets secret-read policy', () => {
 
   it('fails closed when the layout cannot be read', async () => {
     const session = await connect(assetsWithSecret(500));
-    const result = await session.call('hudu_list_assets', { page_size: 3 });
+    const result = await callList(session, 'assets', { page_size: 3 });
 
     expect(result.isError).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain(SECRET_PROBE);
@@ -67,7 +74,7 @@ describe('hudu_list_assets secret-read policy', () => {
 
   it('keeps SDK masking under HUDU_SECRET_READS=allow', async () => {
     const session = await connect(assetsWithSecret(), { HUDU_SECRET_READS: 'allow' });
-    const result = await session.call('hudu_list_assets', { page_size: 3 });
+    const result = await callList(session, 'assets', { page_size: 3 });
 
     expect(result.structuredContent.rows[0].fields[0].value).toBe(REDACTED_FIELD_VALUE);
     await session.close();
@@ -114,7 +121,7 @@ function assetsAcrossLayouts() {
 describe('hudu_list_assets redacts the bounded page, not the whole response', () => {
   it('reads only the requested page\u2019s layouts when the account-wide response spans layouts', async () => {
     const session = await connect(assetsAcrossLayouts());
-    const result = await session.call('hudu_list_assets', { page: 2, page_size: 2 });
+    const result = await callList(session, 'assets', { page: 2, page_size: 2 });
 
     expect(result.isError).toBeUndefined();
     // Page 2 is assets 3-4, not a repeat of page 1.

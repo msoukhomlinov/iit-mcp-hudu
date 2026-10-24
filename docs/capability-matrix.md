@@ -21,10 +21,7 @@
 | hudu.folder.get | hudu_get_folder | read | no | available |
 | hudu.password-folder.get | hudu_get_password_folder | read | no | available |
 | hudu.group.get | hudu_get_group | read | no | available |
-| hudu.company.list | hudu_list_companies | read | no | available |
-| hudu.article.list | hudu_list_articles | read | no | available |
-| hudu.asset.list | hudu_list_assets | read | no | available |
-| hudu.asset-layout.list | hudu_list_asset_layouts | read | no | available |
+| hudu.records.list | hudu_list | read | no | available |
 | hudu.batch.fetch-many | hudu_fetch_many | read | yes | available |
 
 `hudu_write` and `hudu_delete` exist only when `HUDU_WRITE_POLICY` is `allow_list` or `all`.

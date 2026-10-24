@@ -1,6 +1,6 @@
 /**
- * tools/lists.ts — the four dedicated bounded list reads: `hudu_list_companies`,
- * `hudu_list_articles`, `hudu_list_assets` and `hudu_list_asset_layouts`.
+ * tools/lists.ts — the dedicated bounded list read `hudu_list(resource)` over companies, articles,
+ * assets and asset layouts (one tool since 0.3.0; it replaced four `hudu_list_*` tools to cut the served surface).
  *
  * Each tool wraps exactly ONE fixed registry operation (`companies.list` / `articles.list` /
  * `assets.listAcrossCompanies` / `asset_layouts.list`), takes exactly ONE page, and accepts no
@@ -43,20 +43,18 @@ import { configError } from 'node-hudu/mcp';
 import { assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import type { ToolContext } from './context.js';
 import { ARTICLE_FORMAT_NOTE, errorContent, createResultBuilders } from './results.js';
-import { LIST_OUTPUT, LIST_PAGE, LIST_PAGE_SIZE } from './schemas.js';
+import { LIST_OUTPUT, LIST_PAGE, MAX_LIMIT, DEFAULT_LIMIT } from './schemas.js';
 
-/**
- * The four dedicated read tools this module registers.
- *
- * Exported so the surface test derives its expected set instead of retyping names: a renamed tool
- * fails the test rather than silently changing what the server advertises.
- */
-export const LIST_TOOLS = [
-  'hudu_list_companies',
-  'hudu_list_articles',
-  'hudu_list_assets',
-  'hudu_list_asset_layouts',
-] as const;
+/** The one dedicated list tool this module registers (exported so tests derive the served set). */
+export const LIST_TOOLS = ['hudu_list'] as const;
+
+/** The tool names `hudu_list` replaced; a call to one gets a clear pointer instead of "not found". */
+export const RENAMED_LIST_TOOLS = {
+  hudu_list_companies: 'companies',
+  hudu_list_articles: 'articles',
+  hudu_list_assets: 'assets',
+  hudu_list_asset_layouts: 'asset_layouts',
+} as const;
 
 /** One SDK page, structurally — the shape `listPages` yields. */
 interface BoundedPage<T> {
@@ -160,201 +158,138 @@ function assertNonSearchableListReadPermitted(operation: string, ctx: ToolContex
   assertSecretReadPermitted(operation, config, log);
 }
 
-/** Register `hudu_list_companies`, `hudu_list_articles`, `hudu_list_assets` and `hudu_list_asset_layouts`, in that order. */
+
+const S = z.string();
+const D = (t: z.ZodType, d: string) => t.optional().describe(d);
+const ID = z.number().int().positive();
+
+/**
+ * One list resource: its fixed backing operation, whether `HUDU_SEARCH_RESOURCES` gates it, whether
+ * the vendor honours `page_size`, and the exact filter set it accepts. A filter outside that set is
+ * refused with the accepted names, never dropped: a silently-stripped `company_id` would turn a
+ * company-scoped request into an account-wide one.
+ */
+export const LIST_RESOURCES = {
+  companies: {
+    operation: 'companies.list',
+    searchable: true,
+    pageSize: true,
+    label: 'company',
+    filters: z.strictObject({
+      name: D(S, 'Exact or partial company name.'), phone_number: D(S, 'Company phone number.'), website: D(S, 'Company website.'),
+      city: D(S, 'Company city.'), id_number: D(S, 'Company id number.'), state: D(S, 'Company state.'),
+      slug: D(S, 'Exact company slug.'), search: D(S, 'Free-text search within companies.'),
+      id_in_integration: D(S, 'Vendor-side integration id.'), updated_at: D(S, 'ISO 8601; only companies updated at or after it.'),
+    }),
+  },
+  articles: {
+    operation: 'articles.list',
+    searchable: true,
+    pageSize: true,
+    label: 'article',
+    filters: z.strictObject({
+      name: D(S, 'Exact or partial article name.'), company_id: D(ID, 'Only articles belonging to this company id.'),
+      draft: D(z.boolean(), 'true for drafts, false for published articles.'), enable_sharing: D(z.boolean(), 'Only articles with sharing enabled/disabled.'),
+      slug: D(S, 'Exact article slug.'), search: D(S, 'Free-text search within articles.'), updated_at: D(S, 'ISO 8601; only articles updated at or after it.'),
+    }),
+  },
+  assets: {
+    operation: 'assets.listAcrossCompanies',
+    searchable: true,
+    pageSize: true,
+    label: 'asset',
+    filters: z.strictObject({
+      company_id: D(ID, 'Only assets belonging to this company id.'), id: D(ID, 'Exact asset id.'), name: D(S, 'Exact or partial asset name.'),
+      primary_serial: D(S, 'Asset primary serial.'), asset_layout_id: D(ID, 'Only assets using this asset layout id.'),
+      archived: D(z.boolean(), 'true for archived assets, false for active ones.'), slug: D(S, 'Exact asset slug.'),
+      search: D(S, 'Free-text search within assets.'), updated_at: D(S, 'ISO 8601; only assets updated at or after it.'),
+    }),
+  },
+  asset_layouts: {
+    operation: 'asset_layouts.list',
+    searchable: false,
+    pageSize: false,
+    label: 'asset layout',
+    filters: z.strictObject({
+      name: D(S, 'Exact or partial asset layout name.'), slug: D(S, 'Exact asset layout slug.'),
+      active: D(z.boolean(), 'true for active layouts, false for archived ones.'), updated_at: D(S, 'ISO 8601; only layouts updated at or after it.'),
+    }),
+  },
+} as const;
+
+export type ListResource = keyof typeof LIST_RESOURCES;
+const LIST_RESOURCE_NAMES = Object.keys(LIST_RESOURCES) as [ListResource, ...ListResource[]];
+
+/** The accepted filter names of one resource, for refusals and for `hudu_describe_operation`. */
+export const listFilterNames = (resource: ListResource): string[] => Object.keys(LIST_RESOURCES[resource].filters.shape);
+
+/** Register `hudu_list`. */
 export function registerListTools(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
   const { hudu } = ctx;
+  type Params = Record<string, unknown> & { page: number };
+  const pages = (resource: ListResource, params: Params): AsyncIterable<BoundedPage<unknown>> => {
+    switch (resource) {
+      case 'companies': return hudu.companies.listPages(params as never);
+      case 'articles': return hudu.articles.listPages(params as never);
+      case 'assets': return hudu.assets.listAcrossCompaniesPages(params as never);
+      case 'asset_layouts': return hudu.assetLayouts.listPages(params as never);
+    }
+  };
 
   server.registerTool(
-    'hudu_list_companies',
+    'hudu_list',
     {
-      title: 'List Companies',
+      title: 'List Records',
       description:
-        'List ONE bounded page of companies, backed by the fixed operation companies.list. Returns at most page_size rows plus whether more exist; it never pages through the tenant. This tool takes no operation argument and cannot be redirected to a write. Prefer hudu_search or hudu_resolve_any to identify a single company, and hudu_get_company_context to read one. This is the ungated path for the companies.list read; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.',
+        'List ONE bounded page of companies, articles, assets (across all companies) or asset_layouts, backed by the fixed operations companies.list / articles.list / assets.listAcrossCompanies / asset_layouts.list. Returns at most page_size rows plus whether more exist; it never pages through the tenant. This tool takes no operation argument and cannot be redirected to a write. ' +
+        'Filters go in `filters`; each resource accepts only its own: ' +
+        LIST_RESOURCE_NAMES.map((r) => `${r}: ${listFilterNames(r).join(', ')}`).join('; ') +
+        '. A filter the resource does not accept is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor’s own size, returned whole, has_more is conservative (true for any non-empty page), stop when a page comes back empty. ' +
+        'Prefer hudu_search or hudu_resolve_any to identify one record, and the *_context / hudu_get_asset_layout reads to read one in full. This is the ungated path for these reads; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.' +
+        ARTICLE_FORMAT_NOTE,
       inputSchema: z.object({
+        resource: z.enum(LIST_RESOURCE_NAMES).describe('Which collection to list.'),
         page: LIST_PAGE,
-        page_size: LIST_PAGE_SIZE,
-        name: z.string().optional().describe('Exact or partial company name.'),
-        phone_number: z.string().optional().describe('Company phone number.'),
-        website: z.string().optional().describe('Company website.'),
-        city: z.string().optional().describe('Company city.'),
-        id_number: z.string().optional().describe('Company id number.'),
-        state: z.string().optional().describe('Company state.'),
-        slug: z.string().optional().describe('Exact company slug.'),
-        search: z.string().optional().describe('Free-text search within companies.'),
-        id_in_integration: z.string().optional().describe('Vendor-side integration id.'),
-        updated_at: z.string().optional().describe('ISO 8601; only companies updated at or after it.'),
+        page_size: z.number().int().min(1).max(MAX_LIMIT).optional().describe(`Rows per page (1-${MAX_LIMIT}, default ${DEFAULT_LIMIT}); refused for asset_layouts, never clamped.`),
+        filters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe('Resource-specific filters (see the tool description).'),
       }),
       outputSchema: LIST_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'companies.list', sensitive: false, requiresApproval: false },
     },
     async (args) => {
-      const { page, page_size, ...filters } = args;
+      const { resource, page, page_size, filters } = args;
       try {
-        assertListReadPermitted('companies.list', 'companies', ctx);
-        const answered = await firstPage(
-          hudu.companies.listPages({ ...filters, page, page_size }),
-        );
-        if (answered === null) {
-          return ok('No companies matched.', { rows: [], page, page_size, has_more: false, count: 0 });
+        const spec = LIST_RESOURCES[resource];
+        const operation = spec.operation;
+        const parsed = spec.filters.safeParse(filters ?? {});
+        if (!parsed.success) {
+          throw configError(`hudu_list: invalid filters for ${resource}; accepted: ${listFilterNames(resource).join(', ')}. ${parsed.error.issues.map((i) => i.message).join('; ')}`);
         }
-        const bounded = boundPage(answered, page_size, page, isNonPaginated('companies.list'));
-        return ok(
-          `${bounded.rows.length} company row(s) on page ${page} (page_size ${page_size}); ${bounded.hasMore ? 'more pages exist' : 'no more pages'}${bounded.note}.`,
-          {
-            rows: bounded.rows,
-            page,
-            page_size: answered.page_size,
-            has_more: bounded.hasMore,
-            count: bounded.rows.length,
-          },
-        );
-      } catch (err) {
-        return errorContent(err);
-      }
-    },
-  );
+        if (!spec.pageSize && page_size !== undefined) {
+          throw configError(`hudu_list: ${resource} takes no page_size (the vendor ignores it); omit it and walk page.`);
+        }
+        if (spec.searchable) assertListReadPermitted(operation, resource, ctx);
+        else assertNonSearchableListReadPermitted(operation, ctx);
 
-  server.registerTool(
-    'hudu_list_articles',
-    {
-      title: 'List Articles',
-      description:
-        'List ONE bounded page of knowledge-base articles, backed by the fixed operation articles.list. Returns at most page_size rows plus whether more exist; it never pages through the tenant. This tool takes no operation argument and cannot be redirected to a write. Prefer hudu_search to find an article by text, and hudu_get_article_context to read one. This is the ungated path for the articles.list read; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.' + ARTICLE_FORMAT_NOTE,
-      inputSchema: z.object({
-        page: LIST_PAGE,
-        page_size: LIST_PAGE_SIZE,
-        name: z.string().optional().describe('Exact or partial article name.'),
-        company_id: z.number().int().positive().optional().describe('Only articles belonging to this company id.'),
-        draft: z.boolean().optional().describe('true for drafts, false for published articles.'),
-        enable_sharing: z.boolean().optional().describe('Only articles with sharing enabled/disabled.'),
-        slug: z.string().optional().describe('Exact article slug.'),
-        search: z.string().optional().describe('Free-text search within articles.'),
-        updated_at: z.string().optional().describe('ISO 8601; only articles updated at or after it.'),
-      }),
-      outputSchema: LIST_OUTPUT,
-      annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'articles.list', sensitive: false, requiresApproval: false },
-    },
-    async (args) => {
-      const { page, page_size, ...filters } = args;
-      try {
-        assertListReadPermitted('articles.list', 'articles', ctx);
-        const answered = await firstPage(
-          hudu.articles.listPages({ ...filters, page, page_size }),
-        );
-        if (answered === null) {
-          return ok('No articles matched.', { rows: [], page, page_size, has_more: false, count: 0 });
+        if (!spec.pageSize) {
+          // No `page_size` and no client-side cap: `/asset_layouts` ignores `page_size`, so any bound
+          // smaller than the vendor page would truncate page N while `page` advanced to the vendor's
+          // N+1, leaving the skipped rows unreachable. The page is returned whole.
+          const answered = await firstPage(pages(resource, { ...parsed.data, page }));
+          if (answered === null) return ok('No asset layouts matched.', { rows: [], page, page_size: 0, has_more: false, count: 0 });
+          return ok(
+            `${answered.items.length} asset layout row(s) on page ${page}; ${answered.hasMore ? 'more pages may exist' : 'no more pages'}.`,
+            { rows: answered.items, page, page_size: answered.page_size, has_more: answered.hasMore, count: answered.items.length },
+          );
         }
-        const bounded = boundPage(answered, page_size, page, isNonPaginated('articles.list'));
+        const size = page_size ?? DEFAULT_LIMIT;
+        const answered = await firstPage(pages(resource, { ...parsed.data, page, page_size: size }));
+        if (answered === null) return ok(`No ${resource} matched.`, { rows: [], page, page_size: size, has_more: false, count: 0 });
+        const bounded = boundPage(answered, size, page, isNonPaginated(operation));
         return ok(
-          `${bounded.rows.length} article row(s) on page ${page} (page_size ${page_size}); ${bounded.hasMore ? 'more pages exist' : 'no more pages'}${bounded.note}.`,
-          {
-            rows: bounded.rows,
-            page,
-            page_size: answered.page_size,
-            has_more: bounded.hasMore,
-            count: bounded.rows.length,
-          },
-        );
-      } catch (err) {
-        return errorContent(err);
-      }
-    },
-  );
-
-  server.registerTool(
-    'hudu_list_assets',
-    {
-      title: 'List Assets',
-      description:
-        'List ONE bounded page of assets across all companies, backed by the fixed operation assets.listAcrossCompanies. Returns at most page_size rows plus whether more exist; it never pages through the tenant. The operation is page-paginated by the vendor (page and page_size are sent upstream), so later pages are reachable by raising page. This tool takes no operation argument and cannot be redirected to a write. Filter by company_id, primary_serial, asset_layout_id or search. Prefer hudu_get_asset_context to read one asset in full, and hudu_search to find one by text. This is the ungated path for both assets.listAcrossCompanies and the company-scoped assets.list read (filter by company_id); use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.',
-      inputSchema: z.object({
-        page: LIST_PAGE,
-        page_size: LIST_PAGE_SIZE,
-        company_id: z.number().int().positive().optional().describe('Only assets belonging to this company id.'),
-        id: z.number().int().positive().optional().describe('Exact asset id.'),
-        name: z.string().optional().describe('Exact or partial asset name.'),
-        primary_serial: z.string().optional().describe('Asset primary serial.'),
-        asset_layout_id: z.number().int().positive().optional().describe('Only assets using this asset layout id.'),
-        archived: z.boolean().optional().describe('true for archived assets, false for active ones.'),
-        slug: z.string().optional().describe('Exact asset slug.'),
-        search: z.string().optional().describe('Free-text search within assets.'),
-        updated_at: z.string().optional().describe('ISO 8601; only assets updated at or after it.'),
-      }),
-      outputSchema: LIST_OUTPUT,
-      annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'assets.listAcrossCompanies', sensitive: false, requiresApproval: false },
-    },
-    async (args) => {
-      const { page, page_size, ...filters } = args;
-      try {
-        assertListReadPermitted('assets.listAcrossCompanies', 'assets', ctx);
-        const answered = await firstPage(
-          hudu.assets.listAcrossCompaniesPages({ ...filters, page, page_size }),
-        );
-        if (answered === null) {
-          return ok('No assets matched.', { rows: [], page, page_size, has_more: false, count: 0 });
-        }
-        const bounded = boundPage(answered, page_size, page, isNonPaginated('assets.listAcrossCompanies'));
-        const rows = bounded.rows;
-        return ok(
-          `${rows.length} asset row(s) on page ${page} (page_size ${page_size}); ${bounded.hasMore ? 'more pages exist' : 'no more pages'}${bounded.note}.`,
-          {
-            rows,
-            page,
-            page_size: answered.page_size,
-            has_more: bounded.hasMore,
-            count: rows.length,
-          },
-        );
-      } catch (err) {
-        return errorContent(err);
-      }
-    },
-  );
-
-  server.registerTool(
-    'hudu_list_asset_layouts',
-    {
-      title: 'List Asset Layouts',
-      description:
-        'List ONE bounded page of asset layouts, backed by the fixed operation asset_layouts.list. The vendor endpoint honours page but ignores page_size, so a page is the vendor’s own size and is returned whole; page N is always the vendor’s Nth page, so walking page never skips rows. has_more is conservative (true for any non-empty page); stop when a page comes back empty. This tool takes no operation argument and cannot be redirected to a write. Use the name or slug filter to find a layout; asset_layouts is not searchable, so hudu_search cannot return one. Prefer hudu_get_asset_layout to read one layout in full by name or slug. This is the ungated path for the asset_layouts.list read; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.',
-      inputSchema: z.object({
-        page: LIST_PAGE,
-        name: z.string().optional().describe('Exact or partial asset layout name.'),
-        slug: z.string().optional().describe('Exact asset layout slug.'),
-        active: z.boolean().optional().describe('true for active layouts, false for archived ones.'),
-        updated_at: z.string().optional().describe('ISO 8601; only layouts updated at or after it.'),
-      }),
-      outputSchema: LIST_OUTPUT,
-      annotations: { readOnlyHint: true, openWorldHint: true },
-      _meta: { backingOperation: 'asset_layouts.list', sensitive: false, requiresApproval: false },
-    },
-    async (args) => {
-      const { page, ...filters } = args;
-      try {
-        assertNonSearchableListReadPermitted('asset_layouts.list', ctx);
-        // No `page_size` and no client-side cap: `/asset_layouts` ignores `page_size`, so any bound
-        // smaller than the vendor page would truncate page N while `page` advanced to the vendor's
-        // N+1, leaving the skipped rows unreachable. The page is returned whole —
-        // one vendor page is the bound — so page N stays contiguous.
-        const answered = await firstPage(hudu.assetLayouts.listPages({ ...filters, page }));
-        if (answered === null) {
-          return ok('No asset layouts matched.', { rows: [], page, page_size: 0, has_more: false, count: 0 });
-        }
-        const rows = answered.items;
-        return ok(
-          `${rows.length} asset layout row(s) on page ${page}; ${answered.hasMore ? 'more pages may exist' : 'no more pages'}.`,
-          {
-            rows,
-            page,
-            // The SDK's own page size for the vendor response; the page is returned whole.
-            page_size: answered.page_size,
-            has_more: answered.hasMore,
-            count: rows.length,
-          },
+          `${bounded.rows.length} ${spec.label} row(s) on page ${page} (page_size ${size}); ${bounded.hasMore ? 'more pages exist' : 'no more pages'}${bounded.note}.`,
+          { rows: bounded.rows, page, page_size: answered.page_size, has_more: bounded.hasMore, count: bounded.rows.length },
         );
       } catch (err) {
         return errorContent(err);

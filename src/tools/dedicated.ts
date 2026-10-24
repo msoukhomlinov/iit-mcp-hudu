@@ -35,6 +35,8 @@
  * discovery advertises.
  */
 import { CATALOG, CORE_TOOLS, catalogPage, MAX_CATALOG_LIMIT } from 'node-hudu/mcp';
+import { LIST_RESOURCES, listFilterNames } from './lists.js';
+import type { ListResource } from './lists.js';
 import type { CatalogPageOptions, CatalogRow, describeOperation } from 'node-hudu/mcp';
 
 /** A page of the generated catalog, as `catalogPage` returns it. */
@@ -60,63 +62,12 @@ type Described = ReturnType<typeof describeOperation>;
  * drop, turning a company-scoped request into an account-wide one.
  */
 export const DEDICATED_READ_TOOLS = {
-  hudu_list_companies: {
-    backingOperation: 'companies.list',
-    covers: ['companies.list'],
-    toolArguments: [
-      'page',
-      'page_size',
-      'name',
-      'phone_number',
-      'website',
-      'city',
-      'id_number',
-      'state',
-      'slug',
-      'search',
-      'id_in_integration',
-      'updated_at',
-    ],
-  },
-  hudu_list_articles: {
-    backingOperation: 'articles.list',
-    covers: ['articles.list'],
-    toolArguments: [
-      'page',
-      'page_size',
-      'name',
-      'company_id',
-      'draft',
-      'enable_sharing',
-      'slug',
-      'search',
-      'updated_at',
-    ],
-  },
-  hudu_list_assets: {
-    backingOperation: 'assets.listAcrossCompanies',
-    covers: ['assets.listAcrossCompanies'],
-    toolArguments: [
-      'page',
-      'page_size',
-      'company_id',
-      'id',
-      'name',
-      'primary_serial',
-      'asset_layout_id',
-      'archived',
-      'slug',
-      'search',
-      'updated_at',
-    ],
-  },
-  hudu_list_asset_layouts: {
-    backingOperation: 'asset_layouts.list',
-    covers: ['asset_layouts.list'],
-    toolArguments: ['page', 'name', 'slug', 'active', 'updated_at'],
+  hudu_list: {
+    // The registry operations `hudu_list(resource)` serves, keyed to the resource it takes.
+    covers: ['companies.list', 'articles.list', 'assets.listAcrossCompanies', 'asset_layouts.list'],
+    toolArguments: ['resource', 'page', 'page_size', 'filters'],
   },
   hudu_fetch_many: {
-    backingOperation: 'operations.fetchMany',
     covers: ['operations.fetchMany'],
     toolArguments: ['items'],
   },
@@ -152,9 +103,8 @@ function dedicatedToolFor(operation: string): DedicatedReadTool | undefined {
  * advertise the tool for it. `asset_layouts` has no searchable gate and is always callable, and
  * `operations` (the batch read) is not a search scope either.
  */
-export function dedicatedToolAdvertised(tool: DedicatedReadTool, searchableResources: readonly string[]): boolean {
-  const backingOperation = DEDICATED_READ_TOOLS[tool].backingOperation;
-  const resource = backingOperation.slice(0, backingOperation.indexOf('.'));
+export function dedicatedToolAdvertised(operation: string, searchableResources: readonly string[]): boolean {
+  const resource = operation.slice(0, operation.indexOf('.'));
   return !SEARCH_GATED_RESOURCES.has(resource) || searchableResources.includes(resource);
 }
 
@@ -169,14 +119,14 @@ export function dedicatedToolAdvertised(tool: DedicatedReadTool, searchableResou
 function reLabelledUnexposed(searchableResources: readonly string[]): number {
   return CATALOG.filter((row) => {
     const tool = row.reachable === true && row.tool === null ? dedicatedToolFor(row.op) : undefined;
-    return tool !== undefined && dedicatedToolAdvertised(tool, searchableResources);
+    return tool !== undefined && dedicatedToolAdvertised(row.op, searchableResources);
   }).length;
 }
 
 /** Re-label one reachable row with its dedicated tool, when this deployment can call it. */
 function relabelRow(row: CatalogRow, searchableResources: readonly string[]): CatalogRow {
   const tool = dedicatedToolFor(row.op);
-  if (tool === undefined || !dedicatedToolAdvertised(tool, searchableResources)) return row;
+  if (tool === undefined || !dedicatedToolAdvertised(row.op, searchableResources)) return row;
   // `reason` exists only on rows without a tool of their own; this row now has one.
   return { ...row, tool, reachable: true, reason: undefined };
 }
@@ -217,7 +167,7 @@ export function applyDedicatedToolCatalog(
     });
     for (const row of walked.rows) {
       const tool = dedicatedToolFor(row.op);
-      if (tool === undefined || !dedicatedToolAdvertised(tool, searchableResources)) corrected.push(row);
+      if (tool === undefined || !dedicatedToolAdvertised(row.op, searchableResources)) corrected.push(row);
     }
     if (!walked.has_more) break;
   }
@@ -246,13 +196,15 @@ export function applyDedicatedToolCatalog(
  */
 export function applyDedicatedToolDescribe(described: Described, searchableResources: readonly string[]): Described {
   const tool = dedicatedToolFor(described.op);
-  if (tool === undefined || !dedicatedToolAdvertised(tool, searchableResources)) {
+  if (tool === undefined || !dedicatedToolAdvertised(described.op, searchableResources)) {
     return described;
   }
-  const accepted = DEDICATED_READ_TOOLS[tool].toolArguments as readonly string[];
-  const input_schema = Object.fromEntries(
-    Object.entries(described.input_schema).filter(([field]) => accepted.includes(field)),
-  );
+  const input_schema =
+    tool === 'hudu_list'
+      ? listInputSchema(described.op)
+      : Object.fromEntries(
+          Object.entries(described.input_schema).filter(([field]) => (DEDICATED_READ_TOOLS[tool].toolArguments as readonly string[]).includes(field)),
+        );
   return {
     ...described,
     reachable: true,
@@ -282,4 +234,16 @@ export function nullUnservedToolCatalog(page: CatalogPage): CatalogPage {
 
 export function nullUnservedToolDescribe(described: Described): Described {
   return served(described.exposed_tool) ? described : { ...described, exposed_tool: null };
+}
+
+/** The `hudu_list` arguments for one covered operation, in the registry's describe shape. */
+function listInputSchema(operation: string): Described['input_schema'] {
+  const resource = (Object.keys(LIST_RESOURCES) as ListResource[]).find((r) => LIST_RESOURCES[r].operation === operation)!;
+  const field = (name: string, type: string, required: boolean, extra: object = {}) => [name, { name, type, required, ...extra }] as const;
+  return Object.fromEntries([
+    field('resource', 'string', true, { enum: [resource] }),
+    field('page', 'integer', false),
+    ...(LIST_RESOURCES[resource].pageSize ? [field('page_size', 'integer', false)] : []),
+    field('filters', 'object', false, { description: `Accepted keys: ${listFilterNames(resource).join(', ')}.` }),
+  ]) as Described['input_schema'];
 }

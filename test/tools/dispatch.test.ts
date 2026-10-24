@@ -750,7 +750,7 @@ describe('article writes: Markdown versus block HTML', () => {
     const session = await connect();
     try {
       const tools = await session.list();
-      for (const name of ['hudu_write', 'hudu_read', 'hudu_list_articles', 'hudu_fetch_many']) {
+      for (const name of ['hudu_write', 'hudu_read', 'hudu_list', 'hudu_fetch_many']) {
         expect(tools.find((t) => t.name === name)?.description, name).toContain('Article bodies:');
       }
       for (const t of tools.filter((x) => x.name.startsWith('hudu_') && ['hudu_read', 'hudu_write', 'hudu_delete'].includes(x.name))) {

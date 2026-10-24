@@ -3,27 +3,30 @@
 MCP server for Hudu IT documentation, built on the [`node-hudu`](https://www.npmjs.com/package/node-hudu) SDK.
 
 ## Tool surface
+17 tools by default: `hudu_list_operations`, `hudu_describe_operation`, `hudu_read`,
+`hudu_fetch_many`, twelve core reads, and `hudu_list`. Setting `HUDU_WRITE_POLICY` `allow_list` or
+`all` adds `hudu_write` and `hudu_delete` (19 tools). Each dispatcher uses a separate SDK client in
+its matching mode; names, annotations and the dispatcher field text are the SDK's curated metadata.
+SDK enforcement rejects cross-effect calls before any request. The old `hudu_invoke`,
+`hudu_catalog` and `hudu_describe` names are removed; consumers must resync their tool catalog.
 
-20 tools by default: `hudu_list_operations`, `hudu_describe_operation`, `hudu_read`,
-`hudu_fetch_many`, twelve core reads, and four bounded list reads. Setting
-`HUDU_WRITE_POLICY` to `allow_list` or `all` adds `hudu_write` and `hudu_delete` (22 tools). Each dispatcher uses a
-separate SDK client in its matching mode,
-with names, annotations and operation enums from the SDK's curated metadata. SDK enforcement
-rejects cross-effect calls before requests. The old `hudu_invoke`, `hudu_catalog` and
-`hudu_describe` names are removed; consumers must resync their tool catalog.
-
-The four list tools each wrap exactly ONE fixed registry operation (`companies.list` /
-`articles.list` / `assets.listAcrossCompanies` / `asset_layouts.list`), take exactly one page and
-accept no operation selector or nested invocation, so an ungated Reader can page companies,
-articles, assets or asset layouts without using a registry dispatcher and without exposing the write
-surface. The first three take `page` / `page_size` (capped at 100); `hudu_list_asset_layouts` takes
-`page` only, because `/asset_layouts` ignores `page_size` — a caller bound would truncate a vendor
-page and skip rows as `page` advanced, so the tool returns the vendor page whole and page N is
-always the vendor's Nth page. For the searchable resources (`companies` / `articles` /
-`assets`) a resource excluded by `HUDU_SEARCH_RESOURCES` is refused by the list tool too, before any
-request; `asset_layouts` is not searchable (the SDK declares no vendor text filter for it), so
-`hudu_list_asset_layouts` follows the same reachability as the existing ungated
-`hudu_get_asset_layout` tool.
+`hudu_list(resource)` replaces the four `hudu_list_companies` / `hudu_list_articles` /
+`hudu_list_assets` / `hudu_list_asset_layouts` tools of 0.2.x (a call to an old name answers with a
+pointer to `hudu_list`). `resource` selects one of four fixed registry operations (`companies.list` /
+`articles.list` / `assets.listAcrossCompanies` / `asset_layouts.list`); the tool takes exactly one
+page and accepts no operation selector or nested invocation, so an ungated reader can page these
+collections without the registry dispatcher and without exposing the write surface. Filters go in
+`filters`; each resource accepts only its own set, and any other key is refused naming the accepted
+ones (never dropped, which would turn a company-scoped request into an account-wide one). Companies,
+articles and assets take `page` / `page_size` (capped at 100); `asset_layouts` takes `page` only,
+because `/asset_layouts` ignores `page_size`: a caller bound would truncate the vendor page and skip
+rows as `page` advanced, so the tool returns the vendor page whole and page N is always the
+vendor's Nth page. For searchable resources (`companies` / `articles` / `assets`) a resource
+excluded by `HUDU_SEARCH_RESOURCES` is refused by the list tool too, before any request;
+`asset_layouts` is not searchable (the SDK declares no vendor text filter for it), so it follows the
+same reachability as the existing ungated `hudu_get_asset_layout` tool. The tool set is the SDK's
+`CORE_TOOLS` plus `hudu_list`, which is this server's own; a future SDK upgrade must not re-add the
+four old names.
 
 These tools run on node-hudu 0.16.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 

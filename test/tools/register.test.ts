@@ -25,7 +25,7 @@ function propertyNames(schema: any, out: string[] = []): string[] {
 }
 
 describe('tool contract', () => {
-  it('registers exactly the CORE profile plus the four dedicated list reads', async () => {
+  it('registers exactly the CORE profile plus the one dedicated list read', async () => {
     const session = await connect();
     const names = (await session.list()).map((t) => t.name);
     // Set equality, not a count: a swapped name would pass a length check. LIST_TOOLS is derived
@@ -35,7 +35,7 @@ describe('tool contract', () => {
     // and both paths apply the secret-read policy to the batch's items.
     const expected = [...CORE_TOOLS, ...LIST_TOOLS];
     expect([...names].sort()).toEqual([...expected].sort());
-    expect(names).toHaveLength(22);
+    expect(names).toHaveLength(19);
     await session.close();
   });
 
@@ -80,7 +80,7 @@ it('omits mutation tools when write policy is deny', async () => {
     expect(tools.map((tool) => tool.name)).not.toContain('hudu_invoke');
     // hudu_fetch_many is a read: read-only mode keeps it.
     expect(tools.map((tool) => tool.name)).toContain('hudu_fetch_many');
-    expect(tools).toHaveLength(20);
+    expect(tools).toHaveLength(17);
     for (const name of ['hudu_write', 'hudu_delete', 'hudu_invoke']) {
       expect((await session.call(name, { operation: 'companies.delete', input: { id: 1 } })).code).toBe(-32602);
     }

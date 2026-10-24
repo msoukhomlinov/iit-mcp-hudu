@@ -16,6 +16,7 @@ import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
 import { setCredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
+import { answerRenamedTools } from './renamed.js';
 import { slimToolSchemas } from './slim.js';
 
 /** Identity this server reports in `initialize`. The version is this repo's, not the SDK's. */
@@ -476,6 +477,7 @@ export function createMcpServerFactory(config: Config, log: Logger): McpServerFa
     const { client: hudu, origin: huduOrigin } = resolve(read);
     const mutationClients = mutations ? { write: resolve(mutations.write).client, delete: resolve(mutations.delete).client } : undefined;
     const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION, title: 'Hudu MCP Server' });
+    answerRenamedTools(server);
     slimToolSchemas(server);
     registerTools(server, { hudu, huduOrigin, config, log, ...(mutationClients ? { mutationClients } : {}) });
     return server;

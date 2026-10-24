@@ -125,7 +125,7 @@ describe('meta discovery and credential tool surface', () => {
       // read; only a deny policy omits the two mutation tools.
       const expected = [...CORE_TOOLS, ...LIST_TOOLS].filter((t) => policy !== 'deny' || !['hudu_write', 'hudu_delete'].includes(t));
       expect([...names].sort(), policy).toEqual(expected.sort());
-      expect(names, policy).toHaveLength(policy === 'deny' ? 20 : 22);
+      expect(names, policy).toHaveLength(policy === 'deny' ? 17 : 19);
       await session.close();
     }
   });

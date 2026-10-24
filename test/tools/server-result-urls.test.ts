@@ -56,7 +56,7 @@ it('normalizes list output and preserves credential redaction', async () => {
   const s = await connect(() => Response.json({ companies: [{ id: 1, name: 'Intellect IT',
     knowledge_base_url: '/kba?company_id=1', password: 'never-emit-this', otp_seed: 'never-emit-seed' }] }));
   try {
-    const r = await s.call('hudu_list_companies', { expand: true });
+    const r = await s.call('hudu_list', { resource: 'companies' });
     expect(r.isError).toBeUndefined();
     expect(r.structuredContent.rows[0].knowledge_base_url).toBe('https://hudu.invalid/kba?company_id=1');
     expect(JSON.stringify(r)).not.toContain('never-emit');

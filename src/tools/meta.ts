@@ -33,7 +33,6 @@ export function registerMetaTools(server: McpServer, ctx: ToolContext): void {
       }),
       outputSchema: CATALOG_OUTPUT,
 
-      _meta: { backingOperation: '— (serves the whole registry)', dryRunAffordance: 'dry_run', registryWide: true },
     },
     async (args) => {
       try {
@@ -63,7 +62,6 @@ export function registerMetaTools(server: McpServer, ctx: ToolContext): void {
       // field-by-field here would drift the moment the SDK adds one.
       outputSchema: z.looseObject({ op: z.string() }),
 
-      _meta: { backingOperation: '— (serves the whole registry)', dryRunAffordance: 'dry_run', registryWide: true },
     },
     async (args) => {
       try {

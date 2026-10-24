@@ -86,7 +86,6 @@ export function registerFetchManyTool(server: McpServer, ctx: ToolContext): void
       description: metaSpec('hudu_fetch_many').description + ARTICLE_FORMAT_NOTE,
       inputSchema: FETCH_MANY_INPUT,
       outputSchema: FETCH_MANY_OUTPUT,
-      _meta: { backingOperation: 'operations.fetchMany', sensitive: false, requiresApproval: false },
     },
     async (args) => {
       try {

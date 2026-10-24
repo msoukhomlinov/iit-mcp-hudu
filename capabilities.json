@@ -178,40 +178,10 @@
       }
     },
     {
-      "id": "hudu.company.list",
-      "description": "List ONE bounded page of companies, backed by the fixed operation companies.list.",
+      "id": "hudu.records.list",
+      "description": "List ONE bounded page of companies, articles, assets or asset layouts (resource argument), backed by the fixed list operations; one page, no operation selector.",
       "mcpPrimitive": "tool",
-      "toolName": "hudu_list_companies",
-      "type": "read",
-      "annotations": {
-        "readOnly": true
-      }
-    },
-    {
-      "id": "hudu.article.list",
-      "description": "List ONE bounded page of knowledge-base articles, backed by the fixed operation articles.list.",
-      "mcpPrimitive": "tool",
-      "toolName": "hudu_list_articles",
-      "type": "read",
-      "annotations": {
-        "readOnly": true
-      }
-    },
-    {
-      "id": "hudu.asset.list",
-      "description": "List ONE bounded page of assets across all companies, backed by the fixed operation assets.listAcrossCompanies.",
-      "mcpPrimitive": "tool",
-      "toolName": "hudu_list_assets",
-      "type": "read",
-      "annotations": {
-        "readOnly": true
-      }
-    },
-    {
-      "id": "hudu.asset-layout.list",
-      "description": "List ONE bounded page of asset layouts, backed by the fixed operation asset_layouts.list.",
-      "mcpPrimitive": "tool",
-      "toolName": "hudu_list_asset_layouts",
+      "toolName": "hudu_list",
       "type": "read",
       "annotations": {
         "readOnly": true
@@ -219,7 +189,7 @@
     },
     {
       "id": "hudu.batch.fetch-many",
-      "description": "Fetch up to 20 single records across MIXED resources in ONE call \u2014 the batch form of the single-record reads (it collapses N sequential hudu_read calls into one).",
+      "description": "Fetch up to 20 single records across MIXED resources in ONE call — the batch form of the single-record reads (it collapses N sequential hudu_read calls into one).",
       "mcpPrimitive": "tool",
       "toolName": "hudu_fetch_many",
       "type": "read",

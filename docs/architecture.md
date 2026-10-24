@@ -9,7 +9,7 @@
 
 ## 2. Tool surface
 
-22 tools when writes are enabled, 20 when `HUDU_WRITE_POLICY=deny`. See `docs/capability-matrix.md`.
+19 tools when writes are enabled, 17 when `HUDU_WRITE_POLICY=deny`. See `docs/capability-matrix.md`.
 
 - Generic layer: `hudu_list_operations`, `hudu_describe_operation`, `hudu_read`, `hudu_write`, `hudu_delete` reach the whole SDK registry by canonical key with slim, closed schemas.
 - Dedicated tools exist only where a model would otherwise pay for a long path: context composites, search, resolve, bounded lists, slug lookups, `hudu_fetch_many`.

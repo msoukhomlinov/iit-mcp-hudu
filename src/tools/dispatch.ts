@@ -38,7 +38,6 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
         }),
         outputSchema: INVOKE_OUTPUT,
         annotations: spec.annotations,
-        _meta: { backingOperation: '— (whole registry, by canonical key)', dryRunAffordance: 'dry_run', registryWide: true },
       },
       async (args) => {
         const { operation, input, dry_run, confirm } = args;
