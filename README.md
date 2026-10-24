@@ -189,6 +189,10 @@ Writes default to dry-run previews; execution requires `dry_run:false`, and dest
 operations additionally require exact `confirm`. A confirmation string is not human consent.
 Discovery reports deployment-policy refusals as unreachable.
 
+`HUDU_READ_ONLY=true` is a hard override of the write policy: no `hudu_write` / `hudu_delete` tool is
+registered and every mutation is refused, whatever `HUDU_WRITE_POLICY` and `HUDU_WRITE_ALLOW` say. Unset or
+`false` leaves `HUDU_WRITE_POLICY` in charge (default `deny`). The effective policy is logged once at boot.
+
 `HUDU_WRITE_POLICY` stays a **deployment-wide** decision, not a per-caller one. Per-caller
 credentials make each caller's Hudu role an external authority too, but that authority is not ours
 to trust and cannot be allowed to widen this server's surface: the server-side policy is the floor,

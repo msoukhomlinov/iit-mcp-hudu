@@ -307,8 +307,8 @@ describe('write policy config', () => {
 });
 
 describe('removed variables', () => {
-  it('fails boot on any 0.3.0-removed variable, so a stale HUDU_READ_ONLY=true is never ignored', () => {
-    for (const name of ['HUDU_READ_ONLY', 'HUDU_CACHE_PRESET', 'HUDU_COOLDOWN', 'HUDU_TIMEOUT_MS', 'HUDU_SEARCH_MAX_INDEX_PAGES']) {
+  it('fails boot on any 0.3.0-removed variable, so a stale tuning knob is never ignored', () => {
+    for (const name of ['HUDU_CACHE_PRESET', 'HUDU_COOLDOWN', 'HUDU_TIMEOUT_MS', 'HUDU_SEARCH_MAX_INDEX_PAGES']) {
       expect(() => loadConfig({ ...valid, HUDU_WRITE_POLICY: 'all', [name]: 'true' })).toThrow(new RegExp(name));
     }
   });

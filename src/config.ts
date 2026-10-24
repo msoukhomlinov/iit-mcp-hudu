@@ -169,6 +169,12 @@ const schema = z
      */
     HUDU_WRITE_POLICY: z.enum(WRITE_POLICIES).default('deny'),
     /**
+     * Hard override. `true` means no `hudu_write` / `hudu_delete` tool and no write or destructive
+     * operation, whatever `HUDU_WRITE_POLICY` / `HUDU_WRITE_ALLOW` say (see {@link applyReadOnly}).
+     * Unset or `false` leaves `HUDU_WRITE_POLICY` in charge (its default is `deny`).
+     */
+    HUDU_READ_ONLY: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
+    /**
      * The operation keys `HUDU_WRITE_POLICY=allow_list` permits. Read only under `allow_list`;
      * ignored under `deny`/`all`. Exposed as the parsed array so no consumer re-splits the string.
      */
@@ -357,19 +363,28 @@ export type Config = z.infer<typeof schema>;
  * @throws {ConfigError} when any variable is missing or malformed. The message lists every problem
  *   at once — a boot loop that surfaces one missing variable per restart wastes real minutes.
  */
-/** Variables removed in 0.3.0. A stale one must fail boot: HUDU_READ_ONLY=true was a kill switch that would otherwise be ignored silently. */
-const REMOVED_VARS = ['HUDU_READ_ONLY', 'HUDU_CACHE_PRESET', 'HUDU_COOLDOWN', 'HUDU_TIMEOUT_MS', 'HUDU_SEARCH_MAX_INDEX_PAGES'] as const;
+/** Variables removed in 0.3.0. A stale one must fail boot rather than be ignored silently. */
+const REMOVED_VARS = ['HUDU_CACHE_PRESET', 'HUDU_COOLDOWN', 'HUDU_TIMEOUT_MS', 'HUDU_SEARCH_MAX_INDEX_PAGES'] as const;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const stale = REMOVED_VARS.filter((name) => env[name] !== undefined);
   if (stale.length > 0) {
-    throw new ConfigError(`Invalid configuration:\n  ${stale.join(', ')}: removed in 0.3.0; delete it. HUDU_WRITE_POLICY (deny | allow_list | all) is now the only write switch.`);
+    throw new ConfigError(`Invalid configuration:\n  ${stale.join(', ')}: removed in 0.3.0; delete it. HUDU_WRITE_POLICY (deny | allow_list | all) governs writes, with HUDU_READ_ONLY=true as a hard override.`);
   }
   const parsed = schema.safeParse(env);
   if (parsed.success) return parsed.data;
 
   const problems = parsed.error.issues.map((i) => `  ${i.path.join('.') || '(config)'}: ${i.message}`);
   throw new ConfigError(`Invalid configuration:\n${problems.join('\n')}`);
+}
+
+/**
+ * The configuration the server actually runs with: `HUDU_READ_ONLY=true` forces the policy to
+ * `deny` (no write or delete tool is registered and every write is refused), whatever
+ * `HUDU_WRITE_POLICY` / `HUDU_WRITE_ALLOW` say. Otherwise the config is returned unchanged.
+ */
+export function applyReadOnly(config: Config): Config {
+  return config.HUDU_READ_ONLY ? { ...config, HUDU_WRITE_POLICY: 'deny', HUDU_WRITE_ALLOW: [] } : config;
 }
 
 /** Thrown only by {@link loadConfig}. Never carries a credential value — only variable names. */

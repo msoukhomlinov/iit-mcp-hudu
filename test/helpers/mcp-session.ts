@@ -28,6 +28,7 @@ export const config: Config = {
   // `all` path; the policy tests override it per-session.
   HUDU_WRITE_POLICY: 'all',
   HUDU_WRITE_ALLOW: [],
+  HUDU_READ_ONLY: false,
   HUDU_SECRET_READS: 'deny',
 };
 

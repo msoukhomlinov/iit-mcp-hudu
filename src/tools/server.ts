@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 import { HuduClient } from 'node-hudu';
 import { AuthError, HuduConfigError } from 'node-hudu';
 import type { AuthStrategy, HuduConfig } from 'node-hudu';
-import type { Config } from '../config.js';
+import { applyReadOnly, type Config } from '../config.js';
 import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
@@ -360,7 +360,9 @@ export const boundAuditQuery = (query: Record<string, unknown>): Record<string, 
  * hook. Without the hook there is no record of what a model actually asked Hudu for — the tool call
  * is visible to the MCP client, but the requests it turned into are not (design spec §5.6).
  */
-export function createMcpServerFactory(config: Config, log: Logger): McpServerFactory {
+export function createMcpServerFactory(requested: Config, log: Logger): McpServerFactory {
+  // HUDU_READ_ONLY=true is a hard override of the write policy; everything below sees the effective config.
+  const config = applyReadOnly(requested);
   // Under `http` the origin is per-request; the placeholder exists only so the credential-less
   // clients can be constructed. It is a reserved RFC 6761 domain that nothing in the real world
   // resolves — if any code path ever dialed it, the failure would be unmistakable — and its label
