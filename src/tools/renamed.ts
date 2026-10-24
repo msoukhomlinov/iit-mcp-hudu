@@ -6,7 +6,8 @@
  */
 import type { McpServer } from '@modelcontextprotocol/server';
 import { configError } from 'node-hudu/mcp';
-import { RENAMED_LIST_TOOLS } from './lists.js';
+import { RENAMED_LIST_TOOLS, listFilterNames } from './lists.js';
+import type { ListResource } from './lists.js';
 import { errorContent } from './results.js';
 
 type Req = { params?: { name?: string; arguments?: Record<string, unknown> } };
@@ -18,9 +19,8 @@ export function answerRenamedTools(server: McpServer): void {
     set(method, method !== 'tools/call' ? handler : (req, ctx) => {
       const resource = (RENAMED_LIST_TOOLS as Record<string, string>)[req.params?.name ?? ''];
       if (resource === undefined) return handler(req, ctx);
-      const filters = Object.fromEntries(Object.entries(req.params?.arguments ?? {}).filter(([k]) => !['page', 'page_size'].includes(k)));
       return errorContent(configError(
-        `${req.params?.name} was replaced by hudu_list in server 0.3.0. Call hudu_list with {"resource":"${resource}","page":N,${resource === 'asset_layouts' ? '' : '"page_size":N,'}"filters":{...}}; your ${Object.keys(filters).length ? `filters (${Object.keys(filters).join(', ')}) move` : 'filters move'} inside "filters".`,
+        `${req.params?.name} was replaced by hudu_list: call it with resource "${resource}" and put filters in "filters". Accepted: ${listFilterNames(resource as ListResource).join(', ')}${resource === 'asset_layouts' ? '; no page_size' : ''}.`,
       ));
     });
 }

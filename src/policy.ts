@@ -15,7 +15,7 @@ import type { catalogPage, describeOperation, CatalogRow } from 'node-hudu/mcp';
 import { getCapability } from 'node-hudu/capabilities';
 import type { CapabilityRecord } from 'node-hudu/capabilities';
 import { PolicyDeniedError } from 'node-hudu/errors';
-import type { Config } from './config.js';
+import { applyReadOnly, type Config } from './config.js';
 import type { Logger } from './logger.js';
 
 /** A page of the generated catalog, as `catalogPage` returns it. */
@@ -104,7 +104,7 @@ function refusalReason(operation: string, record: CapabilityRecord | undefined, 
     return 'refused by HUDU_SECRET_READS=deny';
   }
   if (!policyAllows(operation, record, config)) {
-    return `refused by HUDU_WRITE_POLICY=${config.HUDU_WRITE_POLICY}`;
+    return config.HUDU_READ_ONLY ? 'refused by HUDU_READ_ONLY=true' : `refused by HUDU_WRITE_POLICY=${config.HUDU_WRITE_POLICY}`;
   }
   return null;
 }
@@ -133,6 +133,9 @@ export function assertSecretReadPermitted(operation: string, config: Config, log
 
 /** The one-line reason a refused call carries, in the SDK's `POLICY_DENIED` policy vocabulary. */
 export function policyRefusalMessage(operation: string, effect: string, config: Config): string {
+  if (config.HUDU_READ_ONLY) {
+    return `hudu_read / hudu_write / hudu_delete: ${operation} (${effect}) is refused by HUDU_READ_ONLY=true; this deployment does not permit writes. Reads are unaffected.`;
+  }
   if (config.HUDU_WRITE_POLICY === 'allow_list') {
     return `hudu_read / hudu_write / hudu_delete: ${operation} (${effect}) is refused by HUDU_WRITE_POLICY=allow_list; this deployment permits only: ${config.HUDU_WRITE_ALLOW.join(', ')}. Reads are unaffected.`;
   }
@@ -212,4 +215,19 @@ export function applyDescribePolicy(
   const reason = described.reachable ? refusalReason(operation, record, config) : null;
   if (reason !== null) return { ...described, reachable: false, why_not: reason };
   return described;
+}
+
+/**
+ * Log the effective write policy once at boot. `warn` whenever writes are enabled (so
+ * LOG_LEVEL=warn still records it), and a second `warn` when HUDU_READ_ONLY is unset while writes
+ * are on, because 0.2.x treated an unset HUDU_READ_ONLY as read-only.
+ */
+export function logEffectiveWritePolicy(config: Config, log: Logger, env: NodeJS.ProcessEnv): void {
+  const effective = applyReadOnly(config).HUDU_WRITE_POLICY;
+  const fields = { read_only: config.HUDU_READ_ONLY, requested: config.HUDU_WRITE_POLICY, effective };
+  if (effective === 'deny') log.info('effective write policy', fields);
+  else log.warn('effective write policy: writes are enabled', fields);
+  if (env.HUDU_READ_ONLY === undefined && effective !== 'deny') {
+    log.warn('HUDU_READ_ONLY is unset and writes are enabled: 0.2.x treated an unset HUDU_READ_ONLY as read-only; set HUDU_READ_ONLY=true to force read-only');
+  }
 }

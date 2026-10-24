@@ -323,6 +323,9 @@ describe('dispatch cannot be redirected', () => {
     const text = JSON.stringify(result);
     expect(text).toContain('hudu_list');
     expect(text).toMatch(/resource.{1,12}companies/);
+    // The pointer names only the filters the new resource accepts (not every old flat argument).
+    expect(text).toContain('Accepted:');
+    expect(text).toContain('phone_number');
     expect(text).toContain('search');
     expect(session.urls).toEqual([]);
     await session.close();

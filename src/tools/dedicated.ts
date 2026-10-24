@@ -45,21 +45,20 @@ type CatalogPage = ReturnType<typeof catalogPage>;
 type Described = ReturnType<typeof describeOperation>;
 
 /**
- * The dedicated ungated read tools (the four bounded list reads plus the 0.12.0 batch read), each
- * with the operation it is backed by, the registry reads it covers, and the arguments it
- * accepts.
+ * The dedicated ungated read tools (`hudu_list` over four registry list reads, plus the batch read
+ * `hudu_fetch_many`): the registry operations each covers and the arguments it accepts.
  *
- * `backingOperation` mirrors the tool's own `_meta.backingOperation`; `covers` names every registry
- * operation the same bounded, ungated read serves **with an argument surface the tool honors**; and
- * `toolArguments` is the tool's own top-level argument set, so `hudu_describe_operation` can present the
- * schema a caller actually calls the tool with rather than the operation's (which may carry an
- * argument the tool would silently strip — `include` for `assets.listAcrossCompanies`). A drift test
- * derives all three from `tools/list`, so a rename or a re-pointed backing operation fails rather
- * than silently under- or over-advertising the ungated path.
+ * `covers` names every registry operation the same bounded, ungated read serves **with an argument
+ * surface the tool honors**; `toolArguments` is the tool's own top-level argument set, so
+ * `hudu_describe_operation` presents the schema a caller actually calls the tool with rather than
+ * the operation's (which may carry an argument the tool would refuse, such as `include` for
+ * `assets.listAcrossCompanies`). A drift test compares `toolArguments` with `tools/list` and
+ * `covers` with the SDK registry, so a rename or a re-pointed operation fails rather than silently
+ * under- or over-advertising the ungated path.
  *
- * `assets.list` is deliberately NOT covered even though `hudu_list_assets` reaches the same rows:
- * its registry arguments are `{ companyId, params }`, a nested shape the tool's flat schema would
- * drop, turning a company-scoped request into an account-wide one.
+ * `assets.list` is deliberately NOT covered even though `hudu_list` reaches the same rows: its
+ * registry arguments are `{ companyId, params }`, a nested shape the tool's flat filters would not
+ * carry, turning a company-scoped request into an account-wide one.
  */
 export const DEDICATED_READ_TOOLS = {
   hudu_list: {

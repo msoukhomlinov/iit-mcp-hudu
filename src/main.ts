@@ -7,7 +7,8 @@
  */
 import { createRequire } from 'node:module';
 import { createMcpHandler } from '@modelcontextprotocol/server';
-import { ConfigError, applyReadOnly, loadConfig } from './config.js';
+import { ConfigError, loadConfig } from './config.js';
+import { logEffectiveWritePolicy } from './policy.js';
 import { runDoctor } from './doctor.js';
 import { createLogger } from './logger.js';
 import { installHttpLifecycle } from './lifecycle.js';
@@ -87,11 +88,7 @@ function main(): void {
   }
 
   const log = createLogger(config.LOG_LEVEL);
-  log.info('effective write policy', {
-    read_only: config.HUDU_READ_ONLY,
-    requested: config.HUDU_WRITE_POLICY,
-    effective: applyReadOnly(config).HUDU_WRITE_POLICY,
-  });
+  logEffectiveWritePolicy(config, log, process.env);
 
   if (
     config.MCP_TRANSPORT === 'http'

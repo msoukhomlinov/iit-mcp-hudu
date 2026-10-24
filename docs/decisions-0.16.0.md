@@ -41,3 +41,7 @@ Both profiles are now under 40,000 B (write by 1,500 B). `surface_audit.py` (inc
 `hudu_list(resource)` replaces `hudu_list_companies` / `_articles` / `_assets` / `_asset_layouts` (breaking). Filters move inside `filters`; a filter the resource does not accept is refused naming the accepted ones; `asset_layouts` refuses `page_size`. A call to an old name answers with a pointer to `hudu_list` (`src/tools/renamed.ts`; the old names are never listed, so they cost no served bytes). This is surface size only: #22 (full-record results per call) is a separate change and is not folded in.
 
 This server registers the SDK `CORE_TOOLS` plus `hudu_list`, which the SDK does not know; the README records that a future SDK upgrade must not re-add the four old names.
+
+## Follow-ups not done
+
+- Optional review notes left open: `articles.get` Markdown path and the write/delete allow-list dependency follow-ups (one-level `withWriteDependencies`) are unchanged; both fail closed.
