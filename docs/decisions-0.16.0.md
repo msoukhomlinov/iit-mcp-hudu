@@ -24,10 +24,20 @@ Milestone 2 (live unknowns on a non-production Hudu) and milestone 3 (prototype)
 | Images as `/public_photo` references | Skip: no consumer demand; the SDK does not serve them. |
 | Archive flag instead of delete | Skip: `articles.archive` already exists in the registry and is reachable through `hudu_write`; deletion stays `hudu_delete` with `confirm`. |
 
-## Served-surface size (issue #24 F): still open
+## Served-surface size (issue #24 F): met
 
-Measured with node-hudu 0.16.0 (compact `tools/list` UTF-8 bytes, write-enabled / read-only): 50,070 / 43,714 before any change; 46,261 / 40,767 after the low-loss levers (`$schema` and safe-integer `maximum` stripped, SDK dispatcher field text, shorter `hudu_search` query and article-format text). Measured, not landed: operation `enum` to plain string would give 42,467 / 38,845 (-3,817 / -1,922). The 40 KB target is therefore met by neither profile's low-loss set alone; the write profile needs at least one structural lever beyond the enum change (merging the four `hudu_list_*` tools is the next candidate, about 5-6 KB by estimate, to be designed together with #22 but not folded into it: surface size and per-call result size are separate problems).
+Measured with node-hudu 0.16.0 (compact `tools/list` UTF-8 bytes; write-enabled / read-only):
 
-`_meta` (`backingOperation`, `sensitive`, `requiresApproval`, `registryWide`, `dryRunAffordance`) is NOT dropped. In this repo only our own tests read it (`dedicated.test.ts` derives its drift check from `backingOperation`); whether an external gateway or client reads it cannot be verified from here. Dropping it (about 2.2 KB, wire-only) needs that confirmation first.
+| Step | Write-enabled | Read-only |
+|---|---|---|
+| Baseline (0.16.0, no change) | 50,070 | 43,714 |
+| Low-loss levers (`$schema`, safe-integer `maximum`, SDK dispatcher field text, shorter `hudu_search` query and format note) | 46,261 | 40,767 |
+| Drop served `_meta` + merge the four `hudu_list_*` tools into `hudu_list(resource)` | 38,500 | 33,242 |
 
-This server registers exactly the SDK `CORE_TOOLS` plus the four dedicated list tools, so no divergence from the SDK's list exists to record in the README yet; if a lever removes a tool, record it there.
+Both profiles are now under 40,000 B (write by 1,500 B). `surface_audit.py` (incl. instructions): 38,480 / 33,224 B, 19 / 17 tools. Measured, not landed: operation `enum` to plain string (-3,817 / -1,922 B on the 46,261 / 40,767 baseline) is the next lever if more headroom is needed; moving thin resolve/find tools to the discoverable tier needs a node-hudu CORE rule change and an SDK release first, so it is not started here.
+
+`_meta` (`backingOperation`, `sensitive`, `requiresApproval`, `registryWide`, `dryRunAffordance`) is dropped from every served tool definition (owner confirmed nothing external reads it). The drift check in `dedicated.test.ts` now reads the SDK registry instead.
+
+`hudu_list(resource)` replaces `hudu_list_companies` / `_articles` / `_assets` / `_asset_layouts` (breaking). Filters move inside `filters`; a filter the resource does not accept is refused naming the accepted ones; `asset_layouts` refuses `page_size`. A call to an old name answers with a pointer to `hudu_list` (`src/tools/renamed.ts`; the old names are never listed, so they cost no served bytes). This is surface size only: #22 (full-record results per call) is a separate change and is not folded in.
+
+This server registers the SDK `CORE_TOOLS` plus `hudu_list`, which the SDK does not know; the README records that a future SDK upgrade must not re-add the four old names.
