@@ -159,7 +159,7 @@ const schema = z
      * resources THIS credential can read so the tool never advertises a guaranteed-empty search and
      * a model never spends a turn on a resource the key is not allowed to read. Every name is
      * validated against the SDK's searchable set at boot, so a typo fails the container instead of a
-     * call weeks later. Applies to `hudu_search` only; the dedicated resolve tools are unaffected.
+     * call weeks later. Applies to `hudu_search`, `hudu_resolve_any` and the same operations through `hudu_read`; the dedicated per-resource resolve tools are unaffected.
      */
     HUDU_SEARCH_RESOURCES: z.string().optional().transform(parseSearchResources),
     /**

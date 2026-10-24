@@ -25,7 +25,7 @@ request; `asset_layouts` is not searchable (the SDK declares no vendor text filt
 `hudu_list_asset_layouts` follows the same reachability as the existing ungated
 `hudu_get_asset_layout` tool.
 
-These tools run on node-hudu 0.13.2; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
+These tools run on node-hudu 0.14.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -121,7 +121,7 @@ whose envelope names a shape anomaly (`credentialShape: "anomalous"`) points bac
 The server enforces the shape itself, so a bad load cannot reach the wire even if `doctor` is
 skipped: a malformed `HUDU_API_KEY` fails boot; a malformed `X-Hudu-Api-Key` header is refused
 before any client is built, with the typed `CREDENTIAL_MALFORMED` envelope (value-free, and
-`retryable: false`). Neither path dials. Since node-hudu 0.13.2 the SDK enforces credential shape
+`retryable: false`). Neither path dials. Since node-hudu 0.14.0 the SDK enforces credential shape
 itself too — refusing a contaminated value at client construction and attaching a value-free shape
 diagnostic to a refused credential — and this server consumes that diagnostic directly on a 401;
 the server's own gate stays as the boundary guard, a superset of the SDK's checks.
@@ -334,7 +334,7 @@ pnpm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.13.2`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.14.0`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `pnpm install --frozen-lockfile`.
 
 ## Deployment

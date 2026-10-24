@@ -5,6 +5,7 @@
 import { McpServer, type McpRequestContext, type McpServerFactory } from '@modelcontextprotocol/server';
 import { createHash } from 'node:crypto';
 import { CAPABILITY_NAMES, getCapability } from 'node-hudu/capabilities';
+import { createRequire } from 'node:module';
 import { HuduClient } from 'node-hudu';
 import { AuthError, HuduConfigError } from 'node-hudu';
 import type { AuthStrategy, HuduConfig } from 'node-hudu';
@@ -18,7 +19,7 @@ import { registerTools } from './register.js';
 
 /** Identity this server reports in `initialize`. The version is this repo's, not the SDK's. */
 const SERVER_NAME = 'iit-mcp-hudu';
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = (createRequire(import.meta.url)('../../package.json') as { version: string }).version;
 
 /**
  * The maximum number of per-(origin, credential) scoped clients kept warm in one process.

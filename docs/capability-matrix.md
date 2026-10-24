@@ -43,9 +43,7 @@ The registry is node-hudu 0.14.0: 230 operations. Reachability under a given pol
 
 ## Intentionally Omitted
 
-| Operation | Reason |
-|---|---|
-| asset_passwords.* and password_folders.* reads | Refused by default (`HUDU_SECRET_READS=deny`): they return plaintext secrets. Opt-in only. |
+None. Reads that return plaintext secrets (`asset_passwords.*`, `password_folders.*`, including `hudu_find_asset_passwords_by_slug` and `hudu_get_password_folder`) are exposed but refused by default (`HUDU_SECRET_READS=deny`); they are policy-gated, not omitted.
 
 ## Blocked Capabilities
 

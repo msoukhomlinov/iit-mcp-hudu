@@ -1,10 +1,8 @@
 node_modules
 dist
 coverage
-.git
-.env
-.env.*
-!.env.example
+# every dotfile and dot directory (.git, .env*, .run, .remember, .squad, .claude, .mcp.json): nothing here needs one
+.*
 docs
 test
 *.md

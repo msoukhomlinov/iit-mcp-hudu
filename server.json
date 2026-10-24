@@ -2,7 +2,7 @@
   "name": "iit-mcp-hudu",
   "version": "0.3.0",
   "description": "MCP server for Hudu IT documentation, powered by the node-hudu SDK",
-  "mcpProtocolBaseline": "2026-07-28",
+  "mcpProtocolBaseline": "2025-11-25",
   "transports": {
     "streamableHttp": {
       "endpoint": "/"
