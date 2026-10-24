@@ -11,7 +11,7 @@
 - **Write posture:** read-only by default. `HUDU_WRITE_POLICY` (`deny` | `allow_list` | `all`) is the single switch; `deny` registers no `hudu_write` / `hudu_delete`. Writes are dry-run unless `dry_run:false`; destructive operations also need an exact `confirm`. Plaintext credential reads are a separate switch, `HUDU_SECRET_READS`, default `deny`.
 - **Article bodies:** Markdown (node-hudu 0.14 dialect) on single-article reads and on writes; list, search and batch rows stay stored HTML.
 - **Observability:** structured JSON logging only (`src/logger.ts`); no metrics or tracing package.
-- **CI pipeline:** YES (`.github/workflows/ci.yml`: install, typecheck, lint, test). Publishing to npm is manual.
+- **CI pipeline:** YES (`.github/workflows/ci.yml`: install, build, typecheck, lint, test, `pnpm audit --prod`, then a container build and smoke job). Publishing to npm is manual.
 - **API docs supplied:** YES, through the SDK capability registry (230 operations at node-hudu 0.14.0).
 - **Vendor-specific MCP extensions:** NO.
 - **Tenancy:** multi-tenant under http (origin and key per request); single-tenant under stdio.

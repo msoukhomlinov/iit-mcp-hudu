@@ -10,6 +10,9 @@ import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBui
 import { INVOKE_OUTPUT } from './schemas.js';
 import { FETCH_MANY_OPERATION, applyFetchManyPolicyToInvoke, SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
 
+/** The SDK's curated text cites its own tracker ("(issues #70/#72)"); that is noise to a model and an internal reference. */
+const stripIssueRefs = (text: string): string => text.replace(/\s*\(issues? #\d+(?:[/, ]+#?\d+)*\)/g, '');
+
 export function registerDispatchTools(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
   const { config, log } = ctx;
@@ -25,7 +28,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
       spec.name,
       {
         title: spec.title,
-        description: mode === 'delete' ? spec.description : spec.description + ARTICLE_FORMAT_NOTE,
+        description: stripIssueRefs(spec.description) + (mode === 'delete' ? '' : ARTICLE_FORMAT_NOTE),
         inputSchema: z.strictObject({
           operation: z.enum(operations).describe('Canonical operation key (see hudu_list_operations). Exact registry key, never a tool name.'),
           input: z.record(z.string(), z.unknown()).optional().describe('The operation arguments as one object; validated against the registry record before any request. The field contract is closed: an unknown top-level field is a typed CONFIG_ERROR naming the accepted fields, which hudu_describe_operation serves as input_contract.'),

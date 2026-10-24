@@ -210,3 +210,14 @@ describe('C2: `doctor` subcommand', () => {
     expect(stderr).not.toContain('serving');
   });
 });
+
+describe('CLI flags answer without configuration', () => {
+  it('--version prints the package version and --help prints usage, with no credentials in the environment', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { readFileSync } = await import('node:fs');
+    const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+    const run = (flag: string) => execFileSync('node', ['--import', 'tsx', 'src/main.ts', flag], { env: { PATH: process.env.PATH }, encoding: 'utf8' });
+    expect(run('--version').trim()).toBe(version);
+    expect(run('--help')).toContain('iit-mcp-hudu doctor');
+  });
+});

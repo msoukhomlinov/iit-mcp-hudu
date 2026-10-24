@@ -27,3 +27,31 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run lint
       - run: pnpm test
+      - run: pnpm audit --prod
+
+  container:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t iit-mcp-hudu:ci .
+
+      - name: Smoke the built image
+        run: |
+          set -eu
+          # No package manager in the runtime image.
+          if docker run --rm --entrypoint sh iit-mcp-hudu:ci -c 'command -v npm || command -v npx || command -v corepack || command -v yarn || command -v pnpm'; then
+            echo "package manager found in runtime image" >&2; exit 1
+          fi
+          # Fail fast naming the missing env.
+          docker run --rm iit-mcp-hudu:ci 2>&1 | grep -q HUDU_API_KEY
+          # Non-default port, liveness, and the origin guard (bad origin refused).
+          docker run -d --name smoke -p 9191:9191 -e PORT=9191 -e MCP_TRANSPORT=http -e HUDU_ALLOWED_BASE_HOSTS=good.example.com iit-mcp-hudu:ci
+          for i in $(seq 1 20); do curl -fs localhost:9191/healthz >/dev/null && break; sleep 1; done
+          curl -fs localhost:9191/healthz >/dev/null
+          curl -s -X POST localhost:9191/ -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -H 'x-hudu-api-key: k1234567890abcdef' -H 'x-hudu-base-url: https://evil.example.org' \
+            -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"hudu_get_api_info","arguments":{}}}' | grep -q 'host not allowed'
+          docker rm -f smoke

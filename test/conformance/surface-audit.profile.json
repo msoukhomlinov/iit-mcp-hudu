@@ -4,10 +4,33 @@
     "dist/main.js"
   ],
   "node_repo": ".",
-  "audit_line_pattern": "",
-  "internal_patterns": [],
+  "audit_line_pattern": "\"msg\":\"hudu request\"",
+  "internal_patterns": [
+    "\\bissues? #\\d+",
+    "\\(#\\d+",
+    "\\bINT-\\d+",
+    "(?i)paperclip",
+    "(?i)iit-mcp-hudu-private"
+  ],
   "max_surface_bytes": 56000,
   "max_tools": 22,
-  "surface_calls": [],
+  "surface_calls": [
+    {
+      "tool": "hudu_list_operations",
+      "params": {}
+    },
+    {
+      "tool": "hudu_describe_operation",
+      "params": {
+        "operation": "articles.patchSection"
+      }
+    },
+    {
+      "tool": "hudu_describe_operation",
+      "params": {
+        "operation": "operations.searchKnowledge"
+      }
+    }
+  ],
   "credentials_source": "test/conformance/surface-audit.placeholder.env"
 }

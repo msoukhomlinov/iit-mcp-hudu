@@ -42,4 +42,4 @@ Environment only, validated once at boot (`src/config.ts`); an invalid or stale 
 
 ## 8. Deployment
 
-Multi-stage Docker image, non-root runtime, liveness-only healthcheck. CI runs install, typecheck, lint and test.
+Multi-stage Docker image, non-root runtime, liveness-only healthcheck. CI runs install, build, typecheck, lint, test and a production audit, then builds the image and smokes it (no package manager, fail-fast boot, non-default port, origin guard).
