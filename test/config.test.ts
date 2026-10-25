@@ -39,6 +39,35 @@ describe('loadConfig', () => {
     }
   });
 
+  it('defaults the search tier policy to unset, so each transport keeps its own default', () => {
+    expect(loadConfig(valid).HUDU_SEARCH_TIER_POLICY).toBeUndefined();
+    expect(loadConfig({ ...valid, HUDU_SEARCH_TIER_POLICY: 'vendor' }).HUDU_SEARCH_TIER_POLICY).toBe('vendor');
+  });
+
+  it('fails boot on a search tier policy it does not implement', () => {
+    try {
+      loadConfig({ ...valid, HUDU_SEARCH_TIER_POLICY: 'blocking' });
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).toContain('HUDU_SEARCH_TIER_POLICY');
+      expect(msg).toContain('auto');
+    }
+  });
+
+  it('validates the body-index TTL as a positive whole number of milliseconds', () => {
+    expect(loadConfig(valid).HUDU_SEARCH_INDEX_TTL).toBeUndefined();
+    expect(loadConfig({ ...valid, HUDU_SEARCH_INDEX_TTL: '60000' }).HUDU_SEARCH_INDEX_TTL).toBe(60000);
+    for (const raw of ['0', '-1', '1000.5', 'ten']) {
+      try {
+        loadConfig({ ...valid, HUDU_SEARCH_INDEX_TTL: raw });
+        expect.unreachable(`HUDU_SEARCH_INDEX_TTL=${raw} should have thrown`);
+      } catch (e) {
+        expect((e as Error).message).toContain('HUDU_SEARCH_INDEX_TTL');
+      }
+    }
+  });
+
   it('accepts http transport with no server-held Hudu config at all', () => {
     // Under `http` the origin and the credential both arrive per request, so a server with no
     // tenant-shaped environment at all is the valid shape.

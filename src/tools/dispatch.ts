@@ -1,18 +1,18 @@
 /** Register the SDK-governed read, write and delete dispatchers. */
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
+import type { KnowledgeResource } from 'node-hudu';
 import { getCapability } from 'node-hudu/capabilities';
 import { dispatchOperation, META_TOOLS } from 'node-hudu/mcp';
 import { writeToolRegistered, assertNeverReachablePermitted, assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
+import { toolDescription } from './tool-prose.js';
 import { lossyNote, takeContentLoss } from './article-loss.js';
-import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
+import { contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
 import { INVOKE_OUTPUT } from './schemas.js';
+import { SEARCH_DEFAULT_LIMIT, awaitWithProgress, cancelledSearchContent, progressTokenOf, signalOf } from './search.js';
 import { FETCH_MANY_OPERATION, applyFetchManyPolicyToInvoke, SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
-
-/** The SDK's curated text cites its own tracker ("(issues #70/#72)"); that is noise to a model and an internal reference. */
-const stripIssueRefs = (text: string): string => text.replace(/\s*\(issues? #\d+(?:[/, ]+#?\d+)*\)/g, '');
 
 export function registerDispatchTools(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
@@ -31,7 +31,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
       spec.name,
       {
         title: spec.title,
-        description: stripIssueRefs(spec.description) + (mode === 'delete' ? '' : ARTICLE_FORMAT_NOTE),
+        description: toolDescription(spec.name),
         inputSchema: z.strictObject({
           operation: z.enum(operations).describe(field('operation')),
           input: z.record(z.string(), z.unknown()).optional().describe(field('input')),
@@ -40,7 +40,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
         outputSchema: INVOKE_OUTPUT,
         annotations: spec.annotations,
       },
-      async (args) => {
+      async (args, req) => {
         const { operation, input, dry_run, confirm } = args;
         // True once control reaches the SDK dispatcher: every policy gate above it refuses before any
         // request, so those refusals never clear. Past this point a validation refusal also clears;
@@ -61,9 +61,15 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           // scope as its tool rather than bypassing the narrowed schema. `operations.fetchMany` is
           // the same kind of read edge, through items: its key is not a secret operation, so the
           // assert above passes it, and only the item-level check closes the credential-read gap.
+          const searchPolicy = operation === SEARCH_KNOWLEDGE_OPERATION ? applySearchPolicyToInvoke(ctx, input ?? {}) : undefined;
+          const tierOverridden = searchPolicy?.tierOverridden === true;
+          // The ORIGINAL input opts, before policy replaced tier/refresh: these are the fields the
+          // caller actually sent, so `meta.policyOverride.stripped` names exactly those.
+          const rawOpts = (input !== undefined && typeof input.opts === 'object' && input.opts !== null ? (input.opts as { tier?: unknown; refresh?: unknown }) : {});
+          const stripped = (['tier', 'refresh'] as const).filter((field) => rawOpts[field] !== undefined);
           const bag =
-            operation === SEARCH_KNOWLEDGE_OPERATION
-              ? applySearchPolicyToInvoke(ctx, input ?? {})
+            searchPolicy !== undefined
+              ? searchPolicy.bag
               : operation === RESOLVE_ANY_OPERATION
                 ? applyResolvePolicyToInvoke(ctx, input ?? {})
                 : operation === SEARCH_ACROSS_OPERATION
@@ -83,8 +89,45 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           const opts: { dryRun?: boolean; confirm?: string; contentFormat: 'markdown' } = { contentFormat: 'markdown' };
           if (typeof dry_run === 'boolean') opts.dryRun = dry_run;
           if (typeof confirm === 'string') opts.confirm = confirm;
+          // `operations.searchKnowledge` can WAIT on a corpus-wide body-index walk: tier:"index" or
+          // refresh:true under stdio, and an http deployment whose tier policy is "index". That wait
+          // is no different from the one `hudu_search` makes, so it gets the same progress ticks and
+          // the same honest cancelled answer — a silent wait reads as a hang. The 2 s first tick
+          // keeps a fast call silent.
+          const searchOpts = (operation === SEARCH_KNOWLEDGE_OPERATION ? (bag.opts ?? {}) : {}) as { tier?: unknown; refresh?: unknown; scope?: unknown; limit?: unknown };
+          const searchWaits = operation === SEARCH_KNOWLEDGE_OPERATION && (searchOpts.tier === 'index' || searchOpts.refresh === true);
+          // The abort check precedes the work: the SDK walk is not abortable, so a request that is
+          // already gone must not start one (its answer then reports a cold index truthfully).
+          if (searchWaits && signalOf(req)?.aborted === true) {
+            const cancelled = cancelledSearchContent({
+              query: typeof (bag as { query?: unknown }).query === 'string' ? (bag as { query: string }).query : '',
+              scope: (Array.isArray(searchOpts.scope) ? searchOpts.scope : ctx.defaultSearchScope) as KnowledgeResource[],
+              limit: typeof searchOpts.limit === 'number' ? searchOpts.limit : SEARCH_DEFAULT_LIMIT,
+              elapsedMs: 0,
+              waited: false,
+              transport: config.MCP_TRANSPORT,
+            });
+            return ok(cancelled.text, { simulated: false, operation, result: cancelled.data });
+          }
           dispatched = true;
-          let result = await dispatchOperation(client, effect, operation, bag, opts);
+          let result;
+          if (searchWaits) {
+            const awaited = await awaitWithProgress(req, progressTokenOf(req), dispatchOperation(client, effect, operation, bag, opts), log);
+            if (awaited.aborted) {
+              const cancelled = cancelledSearchContent({
+                query: typeof (bag as { query?: unknown }).query === 'string' ? (bag as { query: string }).query : '',
+                scope: (Array.isArray(searchOpts.scope) ? searchOpts.scope : ctx.defaultSearchScope) as KnowledgeResource[],
+                limit: typeof searchOpts.limit === 'number' ? searchOpts.limit : SEARCH_DEFAULT_LIMIT,
+                elapsedMs: awaited.elapsedMs,
+                waited: awaited.waited,
+                transport: config.MCP_TRANSPORT,
+              });
+              return ok(cancelled.text, { simulated: false, operation, result: cancelled.data });
+            }
+            result = awaited.value;
+          } else {
+            result = await dispatchOperation(client, effect, operation, bag, opts);
+          }
           // After the SDK's own input validation, so bad input stays CONFIG_ERROR. The refusing
           // placeholder never dials, so nothing reached Hudu; the engine swallows its error into a
           // 0-hit result (searchKnowledge, an isolating searchAcrossResources) or per-item rows
@@ -112,9 +155,17 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
               // and the narrowed hudu_search schema must not be bypassable into the old behaviour.
               if (credentialRefused(meta, (result as { hits?: readonly unknown[] }).hits)) return unauthorizedContent();
               const failures = sanitizeSearchFailures(meta.failed ?? meta.errors);
+              // A tier/refresh the deployment policy overrode is announced in its own field, never
+              // silently swapped and never mixed into `reasons` (which names BOUNDS that bit).
               result = {
                 ...(result as Record<string, unknown>),
-                meta: { ...meta, errors: failures, failed: failures, index: sanitizeIndexMeta(meta.index) },
+                meta: {
+                  ...meta,
+                  ...(tierOverridden ? { policyOverride: { stripped, appliedTier: (bag.opts as { tier?: unknown } | undefined)?.tier } } : {}),
+                  errors: failures,
+                  failed: failures,
+                  index: sanitizeIndexMeta(meta.index),
+                },
               };
             }
           }
@@ -128,7 +179,8 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           }
           const simulated = result !== null && typeof result === 'object' && (result as { simulated?: unknown }).simulated === true;
           // A Markdown article read that lost content says so; a lossless read is byte-identical to before.
-          return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + (lossy.length ? lossyNote(lossy, operation) : ''), {
+          const overrideNote = tierOverridden ? ` The ${stripped.join('/')} field(s) this call carried were overridden by the server search tier policy.` : '';
+          return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + overrideNote + (lossy.length ? lossyNote(lossy, operation) : ''), {
             simulated,
             operation,
             result: result ?? null,

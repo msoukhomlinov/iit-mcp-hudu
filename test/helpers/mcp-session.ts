@@ -36,7 +36,10 @@ export type Json = Record<string, any>;
 
 export interface Session {
   list(): Promise<Json[]>;
-  call(name: string, args: Json): Promise<Json>;
+  /** @param meta the `tools/call` `_meta` bag (a `progressToken` here opts into progress notifications). */
+  call(name: string, args: Json, meta?: Json): Promise<Json>;
+  /** Every notification the server sent (no JSON-RPC id): progress and the rest. */
+  notifications(): Json[];
   /** Every URL the SDK actually requested. A write that slipped the governor would show up here. */
   urls: string[];
   /** HTTP method of each request, parallel to `urls`. */
@@ -91,10 +94,13 @@ export async function connect(respond?: (url: string) => Response, override: Par
 
   return {
     list: async () => (await rpc('tools/list', {})).result.tools,
-    call: async (name, args) => {
-      const reply = await rpc('tools/call', { name, arguments: args });
+    call: async (name, args, meta) => {
+      const params: Json = { name, arguments: args };
+      if (meta !== undefined) params._meta = meta;
+      const reply = await rpc('tools/call', params);
       return reply.result ?? reply.error;
     },
+    notifications: () => sent.filter((m) => m.id === undefined && typeof m.method === 'string'),
     urls,
     methods,
     bodies,
@@ -121,7 +127,7 @@ export async function connect(respond?: (url: string) => Response, override: Par
  */
 export async function connectForRequest(
   apiKey: string | undefined,
-  respond: (key: string | null) => Response,
+  respond: (key: string | null, url: string) => Response | Promise<Response>,
   logs: Json[] = [],
   override: Partial<Config> = {},
   base: string | null = 'https://hudu.invalid',
@@ -155,7 +161,9 @@ export async function connectForRequest(
   vi.stubGlobal('fetch', async (url: unknown, init?: RequestInit) => {
     urls.push(String(url));
     const key = new Headers(init?.headers).get('x-api-key');
-    return respond(key);
+    // The URL rides along so a test can make ONE kind of request (the index walk) hang while the
+    // vendor tier answers: the incident is a walk that never returns, not a fast empty corpus.
+    return respond(key, String(url));
   });
 
   let id = 0;
@@ -171,10 +179,13 @@ export async function connectForRequest(
   await transport.onmessage({ jsonrpc: '2.0', method: 'notifications/initialized' });
   return {
     list: async () => (await rpc('tools/list', {})).result.tools,
-    call: async (name, args) => {
-      const reply = await rpc('tools/call', { name, arguments: args });
+    call: async (name, args, meta) => {
+      const params: Json = { name, arguments: args };
+      if (meta !== undefined) params._meta = meta;
+      const reply = await rpc('tools/call', params);
       return reply.result ?? reply.error;
     },
+    notifications: () => sent.filter((m) => m.id === undefined && typeof m.method === 'string'),
     urls,
     logs,
     close: () => server.close(),

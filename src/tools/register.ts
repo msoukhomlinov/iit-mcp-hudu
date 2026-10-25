@@ -48,16 +48,25 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
    * outlast the consumer's call timeout (some clients enforce 60s). A cold scope therefore defaults to
    * `"auto"`: the SDK answers from Hudu search immediately and builds the body index in the
    * background, so a later search from the same caller is index-backed while the first is not. A
-   * caller that wants a complete first answer can still pass `tier:"index"` explicitly and wait.
+   * `stdio` caller that wants a complete first answer can still pass `tier:"index"` explicitly and
+   * wait; under `http` no such field is served (see {@link searchTierIsPolicy}).
    * When the corpus is excluded no index path may run, so the default is `"vendor"`.
+   *
+   * `HUDU_SEARCH_TIER_POLICY` overrides the transport default, because whether a call may wait for a
+   * walk is a budget only the deployer can judge. It cannot override the corpus gate: an index walk
+   * over an excluded resource is never policy-clean.
    */
   const toolDefaultTier: 'auto' | 'vendor' | 'index' = indexSearchable
-    ? config.MCP_TRANSPORT === 'http'
-      ? 'auto'
-      : 'index'
+    ? (config.HUDU_SEARCH_TIER_POLICY ?? (config.MCP_TRANSPORT === 'http' ? 'auto' : 'index'))
     : 'vendor';
+  /**
+   * Under `http` the tier is policy, not a call parameter: the served schema offers neither `tier`
+   * nor `refresh`, and every search path uses {@link toolDefaultTier}. Under `stdio` the caller keeps
+   * both fields, unchanged — one long-lived credential owns one warmed index.
+   */
+  const searchTierIsPolicy = config.MCP_TRANSPORT === 'http';
 
-  const ctx: ToolContext = { ...deps, hudu, config, log, ops, searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier };
+  const ctx: ToolContext = { ...deps, hudu, config, log, ops, searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy };
 
   registerMetaTools(server, ctx);
   registerSearchTool(server, ctx);

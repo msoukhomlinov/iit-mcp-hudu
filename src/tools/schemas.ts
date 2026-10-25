@@ -39,23 +39,23 @@ export const LIMIT = z
   .min(1)
   .max(MAX_LIMIT)
   .default(DEFAULT_LIMIT)
-  .describe('Maximum rows returned (1-100, default 25). A larger value throws CONFIG_ERROR - the SDK never silently clamps.');
+  .describe('1-100 rows, default 25; larger is a CONFIG_ERROR.');
 
-export const EXPAND = z
-  .boolean()
-  .default(false)
-  .describe('Return the full typed records instead of the compact summaries (default false).');
+/** The full typed record instead of the compact projection: named once, served by every reader. */
+export const EXPAND = z.boolean().default(false).describe('Full records, not compact summaries.');
 
 /** Accepts a bare id/name/slug or the identifier object the resource documents. */
 export const IDENTIFIER = z.union([
   z.number().int().positive(),
   z.string().min(1),
+  // The object form's five keys are named here rather than described one by one: the member set is
+  // the contract, and five one-line descriptions rode on every tool that carries this union.
   z.object({
-    id: z.number().int().positive().optional().describe('Numeric id - the direct fetch.'),
-    name: z.string().optional().describe('Exact name.'),
-    slug: z.string().optional().describe('Exact slug.'),
-    external_id: z.string().optional().describe('Vendor-side external id.'),
-    domain: z.string().optional().describe('Domain, for resources that have one.'),
+    id: z.number().int().positive().optional(),
+    name: z.string().optional(),
+    slug: z.string().optional(),
+    external_id: z.string().optional(),
+    domain: z.string().optional(),
   }),
 ]);
 
@@ -132,6 +132,19 @@ export const HITS_OUTPUT = z.object({
 /**
  * `hudu_search` returns ONE shape per mode, each echoing the mode that ran, so a response can never
  * be misread as another mode's.
+ */
+/**
+ * `hudu_search` returns ONE shape per mode, each echoing the mode that ran, so a response can never
+ * be misread as another mode's.
+ *
+ * `meta` stays `z.unknown()` ON PURPOSE (#50 review 7, measured): this union is served inside the
+ * `hudu_search` entry of `tools/list`, and pinning the SDK's document vocabulary — the closed
+ * `degraded.reason` / `index.state` / `index.staleness` unions plus every published field — costs
+ * about 1.1 KB there. `hudu_search` has 228 B of headroom under its 2,900 B ceiling in the binding
+ * configuration, so a validation-only schema would break the served-surface gate it is not part of.
+ * The meta vocabulary is enforced where it is PUBLISHED, by the tests — not by this outputSchema: `test/tools/search-progress.test.ts`
+ * pins every meta field of a real answer AND of the cancelled one, including the closed
+ * `degraded.reason` union, and the SDK owns the type. A reader looking for the meta guarantee should look there, not here.
  */
 export const SEARCH_OUTPUT = z.union([
   z.object({ mode: z.literal('search'), query: z.string(), hits: ROWS, meta: z.unknown() }),

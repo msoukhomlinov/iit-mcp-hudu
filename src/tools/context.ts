@@ -27,4 +27,11 @@ export interface ToolContext extends ToolDeps {
   defaultSearchScope: string[];
   indexSearchable: boolean;
   toolDefaultTier: 'auto' | 'vendor' | 'index';
+  /**
+   * Whether the search tier is this deployment's policy rather than a per-call parameter.
+   *
+   * True under `http`: the served `hudu_search` schema offers neither `tier` nor `refresh`, and
+   * every search path uses {@link toolDefaultTier}, so no caller can ask for a blocking walk.
+   */
+  searchTierIsPolicy: boolean;
 }

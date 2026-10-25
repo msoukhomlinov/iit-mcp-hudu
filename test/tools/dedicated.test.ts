@@ -71,6 +71,25 @@ describe('hudu_describe_operation steers a mapped read to its ungated tool', () 
     await session.close();
   });
 
+  it('keeps the resource -> operation mapping on the on-demand surfaces', async () => {
+    // #52 keeps the long tail out of the served prose, so the mapping lives in
+    // `hudu_describe_operation`: the operation names the tool that exposes it, and its contract names
+    // the resource it lists. A caller can still derive every pair without the shared prose.
+    const session = await connect();
+    const mapping = {
+      companies: 'companies.list',
+      articles: 'articles.list',
+      assets: 'assets.listAcrossCompanies',
+      asset_layouts: 'asset_layouts.list',
+    } as const;
+    for (const [resource, operation] of Object.entries(mapping)) {
+      const described = await session.call('hudu_describe_operation', { operation });
+      expect(described.structuredContent.exposed_tool, operation).toBe('hudu_list');
+      expect(JSON.stringify(described.structuredContent.input_schema), operation).toContain(resource);
+    }
+    await session.close();
+  });
+
   it('presents the dedicated tool schema, not the operation schema', async () => {
     // assets.listAcrossCompanies accepts `include`; hudu_list does not. The describe must
     // present the tool's arguments so a caller cannot supply one the tool would refuse.

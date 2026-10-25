@@ -40,6 +40,20 @@ export type WritePolicy = (typeof WRITE_POLICIES)[number];
 export const SECRET_READ_POLICIES = ['deny', 'allow'] as const;
 export type SecretReadPolicy = (typeof SECRET_READ_POLICIES)[number];
 
+/**
+ * The deployment's authority over the body-index tier `hudu_search` uses.
+ *
+ * The tier decides whether a call may WAIT for a corpus-wide index walk. That is a budget question
+ * the calling model cannot observe — it knows neither the index's warmth nor the walk's duration —
+ * so it is deployment policy, not a request parameter: `auto` answers from Hudu search now and
+ * builds the body index in the background, `index` may wait for a complete body-index answer, and
+ * `vendor` never builds an index at all. Unset means the transport default: `index` under `stdio`
+ * (one long-lived credential, one warmed index) and `auto` under `http` (every caller's scope
+ * starts cold, and a cold walk can outlast the consumer's call timeout).
+ */
+export const SEARCH_TIER_POLICIES = ['auto', 'index', 'vendor'] as const;
+export type SearchTierPolicy = (typeof SEARCH_TIER_POLICIES)[number];
+
 /** Parse `HUDU_WRITE_ALLOW` once, here, so every consumer reads the same list. */
 function parseAllowList(raw: string | undefined): string[] {
   return (raw ?? '')
@@ -162,6 +176,18 @@ const schema = z
      * call weeks later. Applies to `hudu_search`, `hudu_resolve_any` and the same operations through `hudu_read`; the dedicated per-resource resolve tools are unaffected.
      */
     HUDU_SEARCH_RESOURCES: z.string().optional().transform(parseSearchResources),
+    /**
+     * The tier `hudu_search` uses when the caller names none — see {@link SEARCH_TIER_POLICIES}.
+     * Unset keeps the transport default (`index` under stdio, `auto` under http); `vendor` is
+     * forced when `HUDU_SEARCH_RESOURCES` excludes the corpus the index walks.
+     */
+    HUDU_SEARCH_TIER_POLICY: z.enum(SEARCH_TIER_POLICIES).optional(),
+    /**
+     * The in-memory body index's TTL in milliseconds (the SDK's `search.indexTtlMs`, default
+     * 10 minutes). After it, an answer is marked stale and the next search rebuilds in the
+     * background; a shorter value trades vendor-tier reads for fresher bodies.
+     */
+    HUDU_SEARCH_INDEX_TTL: z.coerce.number().int().positive().optional(),
     /**
      * The single switch for mutation. `deny` (the default) registers no `hudu_write` / `hudu_delete`
      * tool at all; `allow_list` and `all` register them and gate every call. Read effects are never

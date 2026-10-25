@@ -261,11 +261,99 @@ the schema never advertises a guaranteed-empty read. A per-resource read failure
 thrown by the resolve fan-out, are reported as unavailable — never with Hudu's own authorization
 message, which is a fact about the calling credential, not the caller's query.
 
-Under `http` each caller's search scope starts cold, so `hudu_search` defaults to `tier:"auto"`
-rather than `"index"`: it answers from Hudu search immediately and builds the body index in the
-background, so a caller's later search is body-aware without the first one awaiting a corpus-wide
-walk (some clients enforce a 60s call timeout). Under `stdio` the one long-lived index stays warm and the
-default is `"index"`. Pass `tier:"index"` explicitly for a complete first answer.
+Under `http` each caller's search scope starts cold, so `hudu_search` uses `tier:"auto"` rather than
+`"index"`: it answers from Hudu search immediately and builds the body index in the background, so a
+caller's later search is body-aware without the first one awaiting a corpus-wide walk. The tier
+decides whether a call may *wait*, and the calling model can observe neither the index's warmth nor
+the walk's duration, so under `http` the tier is deployment policy, not a call parameter: the served
+schema offers neither `tier` nor `refresh`, and a request that still sends either is answered by the
+policy path, which records the stripped fields in `meta.policyOverride`. That path returns
+immediately only when the resolved policy is `auto` or `vendor`:
+with `HUDU_SEARCH_TIER_POLICY=index` an `http` call still waits for a complete body-index answer,
+which is exactly that knob's documented purpose. `meta.index` reports the index state (`state`: `cold`,
+`refreshing`, `partial`, `warm`), and `meta.degraded` says when the answer was body-blind. Under
+`stdio` the one long-lived index stays warm, both fields stay in the schema, and the default is
+`"index"`; a caller there can still pass `tier:"index"` for a complete first answer.
+
+`HUDU_SEARCH_TIER_POLICY=auto|index|vendor` sets that policy explicitly (default `auto` under
+`http`, `index` under `stdio`): `vendor` forces the vendor tier and never builds a body index,
+`index` lets a call wait for a complete body-index answer. When `HUDU_SEARCH_RESOURCES` excludes
+articles or assets the policy is `vendor` and no index path runs, whatever the variable says.
+`HUDU_SEARCH_INDEX_TTL` (milliseconds, default `600000`) is the body index's freshness window. What
+the SDK does past it — answer from the stale index while rebuilding in the background — is
+UNVERIFIED here: this repo sets the knob (a test asserts it reaches the client) but has not measured
+the stale-rebuild behaviour.
+
+A request cancelled while a call waits on a body-index build answers instead of throwing.
+`meta.degraded.reason` stays `body-not-indexed` (the SDK's closed union), `meta.cancelled` records
+`{ during: "index-build", waited }` as a deliberate SERVER extension (the SDK's meta has no
+cancellation field; it travels in the open `meta` object beside the SDK vocabulary, and
+`meta.policyOverride` is the same kind of extension on the http path), and `meta.reasons` stays empty because no bound bit — the answer
+was cancelled, not bounded. Its `meta.index.state` is `cold` or `refreshing`; `cold` here means no
+generation was observed by THIS call, not that the process has no warm index (under `stdio` a warm
+index is possible, and this answer does not claim otherwise). The served `hudu_search` outputSchema
+types `meta` as an open object on purpose (a closed union costs about 1.1 KB against ~233 B of
+surface headroom); the meta vocabulary is enforced by the tests that publish it
+(`test/tools/search-progress.test.ts`), not by the outputSchema.
+
+The body index is bounded by TWO caps derived from the same heap estimate: a text budget and a
+document cap. The text budget is a SIXTEENTH of the process's V8 heap ceiling, clamped to 8-64 MiB;
+the document cap is one document per KiB of that budget (`maxDocs`), clamped to 1,500-50,000. Both
+travel the SDK's `search` options, so neither is an env knob. The divisor moved from 10 to 16 in
+round 11 because the tenth left no usable production margin (the arithmetic below).
+
+Where the sixteenth comes from, and what the "4x" is a ratio of. The #51 crash trace is a 512 MiB
+container running the OLD behaviour — the SDK-default 64 MiB text budget — which peaked at ~252 MB
+of heap and died with `Reached heap limit` mid-search. It measured the ~90 MB baseline heap and about
+4 bytes of index structures per byte of text ACTUALLY HELD, not per byte of budget: that index held
+~41 MB of text out of its 64 MiB budget, and the peak reconciles as ~90 + 4 x 41 = ~254 MB. Read
+against the budget instead of the held text the same ratio would predict 90 + 4 x 64 = ~346 MB, which
+the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) now gets a 16 MiB pool and
+2 MiB per scoped client. A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
+the real SDK client under a ~262 MB V8 ceiling (an uncommitted one-off probe; `--max-semi-space-size=1`
+brings V8's reported limit to ~262 MB, while `--max-old-space-size=259` alone reports ~451 MB in
+Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
+64 MiB / 50,000 settings peaked at ~147 MiB. Both survived. That probe's baseline is lower than the
+server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% container-to-heap ratio; the MEASURED ratio for the 512 MiB container is ~50.6% (259 MB) — gets a 51 MiB pool and 6 MiB per scoped client; a 1024 MB heap ceiling is what reaches the 64 MiB cap.
+
+The document cap exists because the text budget bounds index TEXT only: a document whose text was
+evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
+reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
+container indexes up to 2,048 documents per scoped client (16,384 for the stdio pool), a 1 GiB
+container's ~816 MB ceiling (assumed ~80%) 6,144 per client (50,000 for the pool), and only a 1024 MB ceiling 8,192. The per-document cost is an ESTIMATE (~1 KB of record
+plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
+peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
+`maxDocs` bounds the RETAINED index, not the build-time peak; the peak during a walk is bounded by
+the heap ceiling and the text budget's eviction, not by `maxDocs`. A capped index reports index state
+`partial`, exactly as it already does when the text budget bites. All ~3,300 articles of the
+production tenant fit at the 1 GiB figure; which documents the cap truncates first on a small heap is
+INFERRED, not measured: title-only assets are the expected first loss, because they cost a record
+without carrying text. The measured end-to-end walk kept 16,384 of 28,300 documents and never
+observed which ones went first.
+
+BEFORE THE DIVISOR CHANGE. The round-10 end-to-end run measured the real server (`dist/main.js`) under
+a 259 MiB V8 ceiling: peak heapUsed 187.96 MB with a 24.6 MB baseline, so the INDEX STRUCTURES cost
+~163 MB. Production's baseline is ~90 MB, so the honest production peak was 163 + 90 = ~253 MB
+against 259 MiB — ~98%, about 6 MB of headroom. That leaves no usable margin. The round-10 README
+instead added 90 MB to a standalone-walk figure and reported ~233 MB; that understated the risk.
+
+AFTER THE DIVISOR CHANGE (one sixteenth, this round's measurement). The same SHAPE of probe — the
+built server under `node --max-old-space-size=259 --max-semi-space-size=1 --import <uncommitted
+heap-sampler.mjs> dist/main.js`, stdio against a stub tenant of 25,000 assets (250 pages x 100 rows) and 3,300 articles
+with HTML bodies, `hudu_search` with `tier:"index"` and `refresh:true` — peaked at 118.51 MB
+heapUsed against a 27.57 MB base, so the structures cost ~90.93 MB. The process survived (exit 0)
+and the call took 11.62 s. The index retained 16,384 documents (articles 3,300, assets 13,084) and
+reported state `partial`; bodiesEvicted was 0. PRODUCTION EXTRAPOLATION: 90.93 + 90 = ~180.93 MB,
+~70% of the 259 MiB ceiling and ~26 MB below the 207 MB (80%) target. MEASURED PROBE PEAK: 118.51 MB,
+~45.8% of the 259 MiB ceiling. The target is met. The fraction shipped is one sixteenth. The
+probe scripts were removed from the tree after measuring (the review asked for no ad-hoc probes in
+the repo), and the stub was recreated for this round, so the before/after delta also reflects stub
+differences and is not a controlled A/B;
+the production extrapolation uses this round's measured structures. The stub corpus is synthetic,
+its bodies are smaller than production's, and its ~27.6 MB baseline is lower than the ~90 MB
+production baseline, so the production figure is an extrapolation. bodiesEvicted 0 means this run
+did not exercise eviction. Issue #51's trace remains the only PRODUCTION measurement (~252 MB peak
+on the old 64 MiB profile).
 
 The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for

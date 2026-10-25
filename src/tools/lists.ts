@@ -43,6 +43,7 @@ import { getCapability } from 'node-hudu/capabilities';
 import { configError } from 'node-hudu/mcp';
 import { assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import type { ToolContext } from './context.js';
+import { toolDescription } from './tool-prose.js';
 import { errorContent, createResultBuilders } from './results.js';
 import { EXPAND, LIST_OUTPUT, LIST_PAGE, MAX_LIMIT, DEFAULT_LIMIT } from './schemas.js';
 
@@ -260,6 +261,11 @@ const LIST_RESOURCE_NAMES = Object.keys(LIST_RESOURCES) as [ListResource, ...Lis
 /** The accepted filter names of one resource, for refusals and for `hudu_describe_operation`. */
 export const listFilterNames = (resource: ListResource): string[] => Object.keys(LIST_RESOURCES[resource].filters.shape);
 
+/** Every resource's filter names, derived: the served `filters` description must not be a retyped list. */
+export const LIST_FILTER_LIST = (Object.keys(LIST_RESOURCES) as ListResource[])
+  .map((resource) => `${resource}: ${listFilterNames(resource).join(', ')}`)
+  .join('; ');
+
 /** Register `hudu_list`. */
 export function registerListTools(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
@@ -278,20 +284,17 @@ export function registerListTools(server: McpServer, ctx: ToolContext): void {
     'hudu_list',
     {
       title: 'List Records',
-      description:
-        'List ONE bounded page of companies, articles, assets (across all companies) or asset_layouts, backed by the fixed operations companies.list / articles.list / assets.listAcrossCompanies / asset_layouts.list. Returns at most page_size rows plus whether more exist; it never pages through the tenant. This tool takes no operation argument and cannot be redirected to a write. ' +
-        'Filters go in `filters`; each resource accepts only its own: ' +
-        LIST_RESOURCE_NAMES.map((r) => `${r}: ${listFilterNames(r).join(', ')}`).join('; ') +
-        '. Rows are compact summaries (id, name, scalars, url, created_at, updated_at; no custom fields/bodies); expand: true: full records. A filter the resource does not accept is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor’s own size, returned whole, has_more is conservative (true for any non-empty page), stop when a page comes back empty. ' +
-        'Prefer hudu_search or hudu_resolve_any to identify one record, and the *_context / hudu_get_asset_layout reads to read one in full. This is the ungated path for these reads; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.' +
-        ' Article bodies: compact article rows carry none; expand: true returns stored HTML (hudu_get_article_context reads Markdown).',
+      description: toolDescription('hudu_list'),
       // strict: a stray top-level filter (the 0.2.x flat shape) must be refused, never stripped into an account-wide read.
       inputSchema: z.strictObject({
         resource: z.enum(LIST_RESOURCE_NAMES).describe('Which collection to list.'),
         page: LIST_PAGE,
         page_size: z.number().int().min(1).max(MAX_LIMIT).optional().describe(`Rows per page (1-${MAX_LIMIT}, default ${DEFAULT_LIMIT}); refused for asset_layouts, never clamped.`),
         expand: EXPAND,
-        filters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe('Resource-specific filters (see the tool description).'),
+        filters: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .optional()
+          .describe(`Resource-specific, closed per resource: ${LIST_FILTER_LIST}. A filter outside its resource's set is refused naming the accepted ones.`),
       }),
       outputSchema: LIST_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },

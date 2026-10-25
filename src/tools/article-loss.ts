@@ -44,6 +44,18 @@ export function takeContentLoss(operation: string, result: unknown): { result: u
   return { result: stripped, codes: [...codes].sort() };
 }
 
+/**
+ * The recovery hint every discovery surface for an article body read must carry: where the stored
+ * HTML is. It rides the RESULT text of a lossy read ({@link lossyNote}) and the
+ * `hudu_describe_operation` text of the article reads, so a caller that never triggered a loss can
+ * still learn the recovery before it needs it.
+ */
+export const FETCH_MANY_RECOVERY_HINT =
+  'A markdown_lossy read is incomplete: fetch the stored HTML with hudu_fetch_many {items:[{resource:"articles", id}]} to see all of it.';
+
+/** The operations whose article body is converted from stored HTML to Markdown. */
+export const ARTICLE_BODY_READS: ReadonlySet<string> = new Set(Object.keys(RECORD_PATHS));
+
 /** The one short sentence appended to the result text when a read lost content. */
 export const lossyNote = (codes: readonly string[], operation?: string): string =>
   ` markdown_lossy: true (${codes.join(', ')}): ${operation === 'articles.getSection' ? 'the Markdown read of this article is incomplete (the loss may be in another section)' : 'the Markdown body is incomplete'}; fetch the stored HTML with hudu_fetch_many {items:[{resource:"articles", id}]} to see all of it.`;

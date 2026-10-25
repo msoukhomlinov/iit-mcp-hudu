@@ -2,8 +2,9 @@
  * tools/search-prose.ts — the policy-adjusted search prose: tool and field descriptions, help text,
  * and the `operations.searchKnowledge` rows `hudu_describe_operation` and `hudu_list_operations` serve.
  */
-import { SEARCH_MODES, SEARCH_RESOURCES, TOOL_DESCRIPTIONS } from 'node-hudu/mcp';
+import { SEARCH_MODES, SEARCH_RESOURCES } from 'node-hudu/mcp';
 import type { ToolContext } from './context.js';
+import { toolDescription } from './tool-prose.js';
 import { SEARCH_ACROSS_OPERATION, effectiveAcrossResources, SDK_SEARCHABLE, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION } from './search-policy.js';
 
 /**
@@ -93,11 +94,18 @@ function narrowedSearchSummary(ctx: ToolContext): string {
  * never computes, so the correction applies to every deployment, full set included.
  */
 export function adjustHelpText(ctx: ToolContext, text: string): string {
-  const { defaultSearchScope, indexSearchable, toolDefaultTier } = ctx;
-  const tier = !indexSearchable
-    ? 'tool default "vendor"; "index", "auto" and refresh are refused because HUDU_SEARCH_RESOURCES excludes articles or assets.'
-    : toolDefaultTier === 'auto'
+  const { defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
+  // Order matters: under `http` no tier field is served at all, so a refusal naming "index", "auto"
+  // and refresh would describe a schema that does not exist there. The deployment policy comes
+  // first; the corpus refusal applies only where the caller holds the field.
+  const tier = searchTierIsPolicy
+    ? `tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter.`
+    : !indexSearchable
+      ? 'tool default "vendor"; "index", "auto" and refresh are refused because HUDU_SEARCH_RESOURCES excludes articles or assets.'
+      : toolDefaultTier === 'auto'
       ? 'tool default "auto" (answers from Hudu search now; builds the body index in the background so a later search is body-aware); "index" waits for a complete body-index answer before returning.'
+      : toolDefaultTier === 'vendor'
+      ? 'tool default "vendor" (HUDU_SEARCH_TIER_POLICY: answers come from Hudu search alone, so no body index is built or awaited); "index" waits for one, "auto" builds it in the background.'
       : 'tool default "index" (complete answer); "auto" = the SDK default.';
   let adjusted = text
     .replace('default ["articles","assets"].', `default ${JSON.stringify(defaultSearchScope)}.`)
@@ -110,6 +118,28 @@ export function adjustHelpText(ctx: ToolContext, text: string): string {
       .replace(SEARCH_DEFAULT_INDEX_SENTENCE, SEARCH_DEFAULT_VENDOR_SENTENCE);
   }
   adjusted = adjusted.replace(`\n  ${CREDENTIAL_REDACTION_LINE}`, credentialRedactionLine(ctx));
+  // Two tool-choice hints the compact served descriptions dropped. They are NOT field guidance, so
+  // they belong on this on-demand surface (help costs nothing on `tools/list`) rather than in a
+  // schema: which tool pages a collection, and which paths find a record id. The describe surface
+  // already steers the four mapped list reads to `hudu_list`; this states it for the caller who
+  // reads help instead.
+  adjusted +=
+    '\n\n  TOOL CHOICE: hudu_list pages companies, articles, assets or asset_layouts and is the ungated' +
+    ' path for those reads (hudu_read is the gated escape hatch). To find a record id, use hudu_search or' +
+    ' hudu_read <resource>.resolve; hudu_get_article_context takes an article id, not a slug.';
+  // The article-format rule the tool descriptions no longer carry: the write-side passthrough is a
+  // fact a caller needs BEFORE it writes, and help is the surface with room for it. Byte-for-byte
+  // surface cost on `tools/list` is zero, which is why the rule lives here.
+  adjusted +=
+    '\n\n  ARTICLE FORMAT: a write whose content opens with block HTML (<p>, <div>, <h1>-<h6>, <table>, <ul>/<ol>, <pre>, <blockquote>, <hr>) is sent as HTML instead of being parsed as Markdown.' +
+    ' Re-read the stored article with articles.get before editing it.';
+  // `refresh` is a stdio-only field: it rebuilds this process's local body index, not anything in
+  // Hudu. Help is the one surface where the cost can be stated in full.
+  if (!searchTierIsPolicy && indexSearchable) {
+    adjusted +=
+      '\n\n  refresh=true rebuilds THIS SERVER\'S local body index before answering. It changes nothing in Hudu,' +
+      ' can take minutes (the walk is corpus-wide), and is a stdio-only field.';
+  }
   // The SDK's multi-word paragraph names every resource, so a narrowed deployment may not keep it
   // verbatim. The full set is true as written, so it is left alone (byte-for-byte, as always here).
   const searchableSet = new Set(ctx.searchableResources);
@@ -204,45 +234,72 @@ export function adjustedSearchModes(ctx: ToolContext) {
  * sentences the policy falsifies are rewritten; the drift test asserts the rewrite lands.
  */
 export function searchToolDescription(ctx: ToolContext): string {
-  const { searchableResources, indexSearchable, toolDefaultTier } = ctx;
-  const base = TOOL_DESCRIPTIONS['hudu_search'];
+  const { searchableResources, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
+  const base = toolDescription('hudu_search');
   const searchableSet = new Set(searchableResources);
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
-  if (fullSet && toolDefaultTier === 'index') return base;
-  const defaultSentence =
-    'As a tool it defaults to tier "index" (builds/awaits the body index), so results are body-complete.';
-  const replacement = !indexSearchable
-    ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
-    : toolDefaultTier === 'auto'
-      ? 'As a TOOL it defaults to tier "auto": it answers from Hudu search now and builds the body index in the background, so a later search is body-aware rather than body-blind. Pass tier:"index" to wait for a complete first answer.'
+  // The early return is the "nothing to rewrite" case, and server-side policy is never nothing:
+  // under `http` with HUDU_SEARCH_TIER_POLICY=index on a full corpus the base text would say the
+  // TIER is a caller choice ("As a tool it defaults to tier \"index\""), while the field is not
+  // served at all. Policy wins over the byte saving (#50 review 7).
+  if (fullSet && toolDefaultTier === 'index' && !searchTierIsPolicy) return base;
+  const defaultSentence = 'defaults to tier "index": body-complete.';
+  // Same order as the help text: under `http` the tier field is not served, so the corpus refusal
+  // (which names refused field values) would describe a schema the caller never sees.
+  const replacement = searchTierIsPolicy
+    ? serverPolicyTierSentence(ctx)
+    : !indexSearchable
+      ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
+      : toolDefaultTier === 'auto'
+      ? 'defaults to tier "auto": answers now, warms the index; "index" waits.'
+      : toolDefaultTier === 'vendor'
+      ? 'defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY); "index"/refresh:true uses the body index.'
       : defaultSentence;
   let out = base;
   if (!fullSet) {
-    out = out.replace(
-      'ranked, fuzzy search over article TITLE and BODY content, asset names, custom-field VALUES and identifiers, plus company/user/group/website names.',
-      `ranked, fuzzy search over the resources this deployment may read: ${searchableResources.join(', ')}.`,
-    );
+    // Fail loudly: a stale anchor would keep advertising a search set this deployment refuses.
+    const scopeAnchor = 'ranked fuzzy search over article TITLE and BODY, asset names, fields, identifiers.';
+    if (!out.includes(scopeAnchor)) throw new Error('hudu_search description: SDK scope sentence changed; update scopeAnchor');
+    out = out.replace(scopeAnchor, `ranked fuzzy search over resources this deployment may read: ${searchableResources.join(', ')}.`);
   }
   // Fail loudly, not silently: a missed anchor would advertise a default tier this deployment refuses.
   if (!out.includes(defaultSentence)) throw new Error('hudu_search description: SDK default-tier sentence changed; update defaultSentence');
   return out.replace(defaultSentence, replacement);
 }
 
+/**
+ * The `hudu_search` tier sentence for a deployment that sets the tier server-side (`http`).
+ *
+ * The field is not in the served schema there, so the description may not invite a caller to pass
+ * one: it describes what the deployment does with the tier it resolved.
+ */
+function serverPolicyTierSentence(ctx: ToolContext): string {
+  const { toolDefaultTier } = ctx;
+  if (toolDefaultTier === 'index') {
+    return 'Tier is set server-side to "index": a call waits for a complete body-index answer.';
+  }
+  if (toolDefaultTier === 'vendor') {
+    return 'Tier is set server-side to "vendor": every call answers immediately and no body index is built.';
+  }
+  return 'Tier is set server-side to "auto": it answers now and warms the body index in the background, so a later search is body-aware; a body-blind answer says so in meta.degraded.';
+}
+
 /** The `query` field description, adjusted so it does not promise a body search it cannot run. */
 export function searchQueryDescription(ctx: ToolContext): string {
   const { indexSearchable, toolDefaultTier } = ctx;
-  const base =
-    'mode="search" only, and REQUIRED there: omitting it is a CONFIG_ERROR naming mode:"help" (it never falls back to help). Partial words are tolerated; article BODY content is searched. Per-resource matching rules and multi-word behaviour: mode="help", topic="query".';
+  const base = 'REQUIRED for mode="search". Partial words fine; article BODY is searched. Multi-word rules: topic="query" (mode="help").';
   if (!indexSearchable) {
+    // Fail loudly: a missed anchor would advertise a body search this deployment cannot run.
+    if (!base.includes('article BODY is searched.')) throw new Error('searchQueryDescription: base sentence changed; update the anchors');
     return base.replace(
-      'article BODY content is searched.',
-      'article body content is NOT searched on this deployment (the body index is unavailable); titles, names and field values are.',
+      'article BODY is searched.',
+      'article BODY is NOT searched on this deployment (the body index is unavailable); titles, names and field values are.',
     );
   }
   if (toolDefaultTier === 'auto') {
     return base.replace(
-      'article BODY content is searched.',
-      'article BODY content is searched once the body index has warmed (the tool builds it in the background); the first search may be body-blind.',
+      'article BODY is searched.',
+      'article BODY is searched once the index warms.',
     );
   }
   return base;
@@ -282,7 +339,7 @@ function narrowedSearchProse(ctx: ToolContext) {
 export function applySearchDescribePolicy<
   T extends { op: string; input_schema: Readonly<Record<string, unknown>>; usage: string | null; purpose: string | null; preferred_when: string | null },
 >(ctx: ToolContext, described: T): T {
-  const { searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier } = ctx;
+  const { searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   if (described.op !== SEARCH_KNOWLEDGE_OPERATION) return described;
   const narrowed = searchPolicyNarrowed(ctx);
   // The tier default also differs under `http` even when nothing is narrowed, so the discovery
@@ -299,9 +356,13 @@ export function applySearchDescribePolicy<
     ?.replace('scope defaults to articles and assets', `scope defaults to ${JSON.stringify(defaultSearchScope)}`)
     .replace(
       'it defaults to tier "index" when called as the MCP tool (the SDK default stays lazy)',
-      !indexSearchable
-        ? 'this deployment excludes articles or assets, so it defaults to tier "vendor" and refuses "index", "auto" and refresh'
-        : toolDefaultTier === 'auto'
+      // Policy first, as in the help text: under `http` the field is not served, so naming refused
+      // values would describe a schema this caller never sees.
+      searchTierIsPolicy
+        ? `the tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter`
+        : !indexSearchable
+          ? 'this deployment excludes articles or assets, so it defaults to tier "vendor" and refuses "index", "auto" and refresh'
+          : toolDefaultTier === 'auto'
           ? 'it defaults to tier "auto" when called as the MCP tool: it answers from Hudu search now and builds the body index in the background (pass tier:"index" to wait for a complete first answer; the SDK default stays lazy)'
           : 'it defaults to tier "index" when called as the MCP tool (the SDK default stays lazy)',
     );

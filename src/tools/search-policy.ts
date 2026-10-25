@@ -139,6 +139,13 @@ export function credentialRefused(meta: { resources?: unknown; failed?: unknown;
  * The SDK records the raw build error in `meta.index.lastBuildError` (and in `meta.errors`); on a
  * 401 it names the credential's missing scope. Sanitizing `errors`/`failed` alone would leave the
  * nested copy untouched, so the whole `index` block is passed through the same reducer.
+ *
+ * `lastBuildError` is the only `KnowledgeIndexMeta` field that can echo upstream detail. The rest
+ * of the type is closed vocabulary, ISO timestamps or counts (`state`, `staleness`, `builtAt`,
+ * `ageMs`, `docs`, `indexChangedSinceScore`, `lastFullAt`, `lastCompleteFullAt`, `fullWalkDue`).
+ * Per-resource `errors`/`failed` are sanitized at their own call sites. Extending this reducer to
+ * the closed fields would sanitize numbers and enums, not internal detail; it would not weaken
+ * credential redaction, but it would add no protection either.
  */
 export function sanitizeIndexMeta<T>(index: T): T {
   if (index === null || typeof index !== 'object') return index;
@@ -146,6 +153,12 @@ export function sanitizeIndexMeta<T>(index: T): T {
   if (raw === null || raw === undefined) return index;
   return { ...(index as Record<string, unknown>), lastBuildError: sanitizeSearchFailures([raw])[0] ?? null } as T;
 }
+
+/**
+ * The policy's verdict: the bag to dispatch, plus whether deployment policy overrode a tier or
+ * refresh the caller supplied (so the dispatcher can say so in `meta.reasons` and the response text).
+ */
+export type SearchInvokePolicy = { bag: Record<string, unknown>; tierOverridden: boolean };
 
 /**
  * The search policy applied to a raw `hudu_read / hudu_write / hudu_delete` of `operations.searchKnowledge`.
@@ -156,13 +169,13 @@ export function sanitizeIndexMeta<T>(index: T): T {
  * the deployment's effective set BEFORE any request, and return the bag with an omitted scope
  * resolved to the deployment default rather than the SDK's articles+assets.
  */
-export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string, unknown>): Record<string, unknown> {
-  const { searchableResources, defaultSearchScope, indexSearchable } = ctx;
+export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string, unknown>): SearchInvokePolicy {
+  const { searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   const raw = input.opts;
   // Only `undefined` selects defaults. A non-object container (null, array, string, …) is left
   // untouched so the SDK's inputSchema refuses it before any request, rather than being replaced
   // with a valid object and searching resources the caller never named.
-  if (raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw))) return input;
+  if (raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw))) return { bag: input, tierOverridden: false };
   const opts = (raw ?? {}) as Record<string, unknown>;
   // Only `undefined` selects the deployment default. Any other non-array value is left untouched
   // so the SDK's own inputSchema validation refuses it before any request — never silently
@@ -176,6 +189,16 @@ export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string
       );
     }
   }
+  // Under `http` the tier is deployment policy, so this path takes the same non-blocking route as
+  // `hudu_search`: a caller-supplied `tier` or `refresh` cannot make the call wait for a walk. That
+  // override is REPORTED, never silent: the dispatcher appends `tier-policy-override` to
+  // `meta.reasons` and a clause to the response text.
+  if (searchTierIsPolicy) {
+    return {
+      bag: { ...input, opts: { ...opts, scope, tier: toolDefaultTier, refresh: false } },
+      tierOverridden: opts.tier !== undefined || opts.refresh !== undefined,
+    };
+  }
   if (!indexSearchable) {
     if (opts.tier === 'index' || opts.tier === 'auto' || opts.refresh === true) {
       throw configError(
@@ -185,9 +208,9 @@ export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string
     // The SDK's default tier is "auto", which on a cold client starts a background corpus-wide
     // index warm and requests the excluded endpoint. An omitted tier becomes "vendor".
     const tier = opts.tier === undefined ? { tier: 'vendor' } : {};
-    return { ...input, opts: { ...opts, scope, ...tier } };
+    return { bag: { ...input, opts: { ...opts, scope, ...tier } }, tierOverridden: false };
   }
-  return { ...input, opts: { ...opts, scope } };
+  return { bag: { ...input, opts: { ...opts, scope } }, tierOverridden: false };
 }
 
 /**
