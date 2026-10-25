@@ -25,7 +25,12 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         identifier: IDENTIFIER,
         opts: z
           .object({
-            resources: z.array(resourceEnum(searchableResources)).optional().describe('Default: the searchable set.'),
+            resources: z
+              .array(resourceEnum(searchableResources))
+              .optional()
+              .describe(
+                `Default: ${searchableResources.join(', ')}; a resource outside HUDU_SEARCH_RESOURCES is refused before any request.`,
+              ),
             limit: LIMIT,
           })
           .optional(),

@@ -14,7 +14,7 @@
 
 const DESCRIPTIONS: Record<string, string> = {
   hudu_search:
-    "Search Hudu first. mode=\"search\" (default); \"help\"/\"resources\" explain it.\nmode=\"search\": ranked, fuzzy search over article TITLE and BODY, asset names, custom-field VALUES, identifiers and company/user/group/website names. As a tool it defaults to tier \"index\" (builds/awaits the body index), so results are body-complete.\nEmpty: read meta.degraded; an unhonoured field is CONFIG_ERROR.",
+    "Search Hudu first; see mode=\"help\".\nmode=\"search\": ranked, fuzzy search over article TITLE and BODY, asset names, custom-field VALUES, identifiers and record names. As a tool it defaults to tier \"index\", so results are body-complete.\nEmpty: read meta.degraded; an unhonoured field is CONFIG_ERROR.",
   hudu_read:
     "Execute READ operations only, by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. Results mask credentials and custom fields. Article bodies: single-article reads are Markdown, other rows stored HTML; a lossy read sets markdown_lossy.",
   hudu_write:
@@ -22,9 +22,9 @@ const DESCRIPTIONS: Record<string, string> = {
   hudu_delete:
     "Execute a DESTRUCTIVE operation by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. dry_run:true previews without deleting; confirm is the SDK confirmation string, not human consent.",
   hudu_list:
-    "List ONE bounded page of companies, articles, assets (all companies) or asset_layouts. It takes no operation argument, so it cannot become a write, and never pages the tenant. Each collection accepts only its own filters; another is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor's own size, returned whole, has_more is conservative (true for any non-empty page) — stop when a page comes back empty. Article bodies: compact rows carry none; expand:true returns stored HTML. Prefer it, or hudu_search, over hudu_read.",
+    "List ONE bounded page of companies, articles, assets (all companies) or asset_layouts. It takes no operation argument: it cannot become a write and never pages the tenant. Each collection accepts only its own filters; another is refused naming them. asset_layouts takes no page_size (the vendor ignores it): has_more is conservative (true for any non-empty page) — stop when a page comes back empty. Article bodies: compact rows carry none; expand:true returns stored HTML.",
   hudu_list_operations:
-    "List SDK operations with the tool exposing each, its effect, dry-run/confirm need and required arguments. This server is a curated SUBSET: hudu_describe_operation gives one operation's contract, hudu_read/hudu_write/hudu_delete run it. Bounded 1-100 rows (default 40), offset pages; the catalog is ~10k tokens, so filter or page.",
+    "List SDK operations with the tool exposing each, its effect, dry-run/confirm need and required arguments. This server is a curated SUBSET: hudu_describe_operation gives one operation's contract, hudu_read/hudu_write/hudu_delete run it. Bounded 1-100 rows (default 40), offset pages; the catalog is large, so filter or page.",
   hudu_describe_operation:
     "Full input contract, effect, dry-run support, errors and usage for ONE operation, by exact catalog key (never a tool name); an unknown key is CONFIG_ERROR naming the nearest.",
   hudu_resolve_any:

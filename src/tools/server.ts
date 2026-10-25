@@ -15,7 +15,7 @@ import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
-import { SCOPED_INDEX_BUDGET_DIVISOR, indexTextBudgetBytes, scopedIndexTextBudgetBytes } from '../search-budget.js';
+import { SCOPED_INDEX_BUDGET_DIVISOR, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } from '../search-budget.js';
 import { runWithCredentialShapeView, type CredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 import { answerRenamedTools } from './renamed.js';
@@ -410,6 +410,9 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
   // says what it is, since the parent client's log and audit lines carry this origin.
   const HTTP_PLACEHOLDER_ORIGIN = 'https://no-hudu-origin.invalid';
   const heapLimitBytes = getHeapStatistics().heap_size_limit;
+  // The process-wide body-index text pool, and the doc cap derived from that same pool (search-budget.ts).
+  const poolTextBytes = indexTextBudgetBytes(heapLimitBytes);
+  const poolMaxDocs = scopedIndexMaxDocs(poolTextBytes);
   const options: HuduConfig = {
     baseUrl: config.MCP_TRANSPORT === 'http' ? HTTP_PLACEHOLDER_ORIGIN : config.HUDU_BASE_URL!,
     logger: log,
@@ -447,7 +450,12 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // its own index. The parent client keeps the pool because under `stdio` it is the only client.
     // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
     search: {
-      maxIndexTextBytes: indexTextBudgetBytes(heapLimitBytes),
+      maxIndexTextBytes: poolTextBytes,
+      // The doc cap comes from the SAME pool: the text budget bounds extracted text only, while a
+      // document whose text it evicted keeps its record and postings, and the SDK's own default is
+      // 50,000 documents. One document per KiB of text budget, so the two caps grow together and a
+      // document past the cap is simply not indexed (`index-partial`, as when the text budget bites).
+      maxDocs: poolMaxDocs,
       ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL }),
     },
     timeoutMs: 30000,
@@ -480,7 +488,8 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // so handing each the whole pool would let the process hold 8x the text it was sized for (#51).
     // Only the per-(origin, credential) clients are divided — the parent keeps the pool, because
     // under `stdio` it is the only client and a deeper index is the point of serving that way.
-    const scopedSearch = { ...options.search, maxIndexTextBytes: scopedIndexTextBudgetBytes(heapLimitBytes) };
+    const scopedTextBytes = scopedIndexTextBudgetBytes(heapLimitBytes);
+    const scopedSearch = { ...options.search, maxIndexTextBytes: scopedTextBytes, maxDocs: scopedIndexMaxDocs(scopedTextBytes) };
     const parent = config.MCP_TRANSPORT === 'stdio'
       ? new HuduClient({ ...scopedOptions, apiKey: config.HUDU_API_KEY! })
       : new HuduClient({ ...scopedOptions, auth: NO_SERVER_CREDENTIAL });

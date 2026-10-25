@@ -230,8 +230,7 @@ export function searchToolDescription(ctx: ToolContext): string {
   const searchableSet = new Set(searchableResources);
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
   if (fullSet && toolDefaultTier === 'index') return base;
-  const defaultSentence =
-    'As a tool it defaults to tier "index" (builds/awaits the body index), so results are body-complete.';
+  const defaultSentence = 'As a tool it defaults to tier "index", so results are body-complete.';
   // Same order as the help text: under `http` the tier field is not served, so the corpus refusal
   // (which names refused field values) would describe a schema the caller never sees.
   const replacement = searchTierIsPolicy
@@ -239,14 +238,14 @@ export function searchToolDescription(ctx: ToolContext): string {
     : !indexSearchable
       ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
       : toolDefaultTier === 'auto'
-      ? 'As a TOOL it defaults to tier "auto": it answers now and builds the body index in the background, so a later search is body-aware. Pass tier:"index" to wait.'
+      ? 'As a TOOL it defaults to tier "auto": answers now, warms the index for later calls; "index" waits.'
       : toolDefaultTier === 'vendor'
-      ? 'As a TOOL it defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY): no body index is built or awaited unless you pass tier:"index" or refresh:true.'
+      ? 'As a TOOL it defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY); tier:"index" or refresh:true uses the body index.'
       : defaultSentence;
   let out = base;
   if (!fullSet) {
     // Fail loudly: a stale anchor would keep advertising a search set this deployment refuses.
-    const scopeAnchor = 'ranked, fuzzy search over article TITLE and BODY, asset names, custom-field VALUES, identifiers and company/user/group/website names.';
+    const scopeAnchor = 'ranked, fuzzy search over article TITLE and BODY, asset names, custom-field VALUES, identifiers and record names.';
     if (!out.includes(scopeAnchor)) throw new Error('hudu_search description: SDK scope sentence changed; update scopeAnchor');
     out = out.replace(scopeAnchor, `ranked, fuzzy search over the resources this deployment may read: ${searchableResources.join(', ')}.`);
   }
@@ -287,7 +286,7 @@ export function searchQueryDescription(ctx: ToolContext): string {
   if (toolDefaultTier === 'auto') {
     return base.replace(
       'article BODY is searched.',
-      'article BODY is searched once the background index warms; early calls may be blind.',
+      'article BODY is searched once the index warms.',
     );
   }
   return base;

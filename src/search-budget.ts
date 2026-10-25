@@ -23,11 +23,16 @@ export const SCOPED_INDEX_BUDGET_DIVISOR = 8;
  * A tenth of the heap, rounded down to whole MiB and clamped to 8-64 MiB. ESTIMATE, not a proof
  * that a build cannot exhaust the heap: the ~4x structure-to-text ratio and the ~90 MB baseline
  * heap come from issue #51's crash trace, which measured the OLD behaviour — a 512 MiB container
- * that peaked at ~252 MB heap with the SDK-default 64 MiB text budget and crashed. That 64 MiB
- * profile is the only measurement: the peak under THIS budget (about 25 MiB on a 512 MiB heap) has
- * not been measured, so it stays an open follow-up. On the estimate a 10% share keeps a small
- * container under its ceiling, and the SDK reports `index-partial` honestly when the budget bites,
- * so a short index degrades the answer instead of crashing the process.
+ * that peaked at ~252 MB heap and crashed.
+ *
+ * What the 4x is a ratio OF: structures per byte of text ACTUALLY HELD, not per byte of budget.
+ * That index held ~41 MB of text out of its 64 MiB budget, and the measured peak reconciles as
+ * ~90 MB baseline + 4 x 41 MB = ~254 MB. Read against the budget instead of the held text it
+ * would predict 90 + 4 x 64 = ~346 MB, which the trace never saw — hence "held", not "budget".
+ * The peak under THIS budget (about 25 MiB of text on a 512 MiB heap, so ~190 MB on the same
+ * arithmetic) has not been measured, so it stays an open follow-up. On the estimate a 10% share
+ * keeps a small container under its ceiling, and the SDK reports `index-partial` honestly when the
+ * budget bites, so a short index degrades the answer instead of crashing the process.
  *
  * This is the pooled budget for the whole process, not for one client: a deployment serving several
  * credentials keeps up to {@link SCOPED_INDEX_BUDGET_DIVISOR} scoped clients warm, and each one owns
@@ -52,4 +57,37 @@ export function scopedIndexTextBudgetBytes(heapLimitBytes: number): number {
   const total = indexTextBudgetBytes(heapLimitBytes);
   const share = Math.floor(total / SCOPED_INDEX_BUDGET_DIVISOR / MIB) * MIB;
   return Math.min(total, Math.max(MIB, share));
+}
+
+/** 1,500: a doc cap below this would truncate a small tenant's whole corpus, so a tiny budget keeps a floor. */
+export const MIN_INDEX_MAX_DOCS = 1500;
+/** 50,000: the SDK's own default doc count, and the most one index should ever hold. */
+export const MAX_INDEX_MAX_DOCS = 50_000;
+/** ~1 KB of record + postings per indexed document, on top of the ~4x text ratio. ESTIMATE. */
+const INDEX_DOC_BYTES = 1024;
+
+/**
+ * The document cap for ONE body index, derived from the SAME heap-derived text budget it is paired with.
+ *
+ * The text budget alone does not bound the index: `maxDocs` defaults to 50,000 in the SDK, a walk can
+ * reach 250 pages x 100 rows x 2 body resources, and a document whose text the budget evicted keeps
+ * its record and postings, so the record overhead grows even when no text is added. This caps the
+ * count from the same pool: ~1 KB of record + postings per document, i.e. one document per KiB of
+ * text budget, clamped to 1,500-50,000.
+ *
+ * ESTIMATE, and it bounds growth rather than proving a peak: the pairing says "this index may hold X
+ * MiB of text and Y documents", not "the process cannot exceed its heap". A document past the cap is
+ * simply not indexed — the index reports `index-partial` / truncated, as it already does when the
+ * text budget bites. Resulting numbers: a 512 MiB container gets a 25 MiB pool and 3 MiB per scoped
+ * client, so 3,072 documents per scoped client (25,600 for the stdio pool); a 1 GiB heap ceiling
+ * reaches the 64 MiB cap and 8 MiB per client, so 8,192 documents (50,000 for the stdio pool). All
+ * ~3,300 articles of the production tenant fit at the 1 GiB figure; what the cap truncates first is
+ * title-only assets, which cost a record without carrying text.
+ *
+ * Named for its scoped use because that is where it matters: the pool is divided per client, and the
+ * cap travels the same `search` object as `maxIndexTextBytes`.
+ */
+export function scopedIndexMaxDocs(textBudgetBytes: number): number {
+  const docs = Math.floor(textBudgetBytes / INDEX_DOC_BYTES);
+  return Math.min(MAX_INDEX_MAX_DOCS, Math.max(MIN_INDEX_MAX_DOCS, docs));
 }

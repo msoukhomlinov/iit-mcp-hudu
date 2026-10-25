@@ -21,15 +21,27 @@ afterEach(() => vi.unstubAllGlobals());
  * more tools than the read-only one, so it gets its own (larger) ceiling.
  *
  * Measured matrix (write / read-only / hudu_search, UTF-8 bytes of the served `tools/list` JSON):
- *   stdio default  27,571 / 22,843 / 2,758      http default  27,439 / 22,711 / 2,626
- *   stdio auto     27,694 / 22,966 / 2,881      http auto     27,439 / 22,711 / 2,626
- *   stdio vendor   27,644 / 22,916 / 2,831      http vendor   27,304 / 22,576 / 2,491
+ *   stdio default  27,460 / 22,732 / 2,621      http default  27,310 / 22,582 / 2,471
+ *   stdio auto     27,496 / 22,768 / 2,657      http auto     27,310 / 22,582 / 2,471
+ *   stdio vendor   27,511 / 22,783 / 2,672      http vendor   27,212 / 22,484 / 2,373
+ * The binding configuration is `stdio` + `vendor`: 217 B of read-only headroom and 228 B of
+ * `hudu_search` headroom (`MIN_HEADROOM` below).
  * (`http` default and `auto` coincide: `auto` is already that transport's tier.)
  */
 const BUDGET_WRITE = 28_000;
 const BUDGET_READ_ONLY = 23_000;
 /** `hudu_search` is the largest single tool and must fit under every tier-policy setting. */
 const BUDGET_SEARCH = 2_900;
+
+/**
+ * Free space every binding configuration must keep.
+ *
+ * A ceiling asserted at the measured value is a one-byte ratchet: the next word added to any prose
+ * fails the gate with a bare `expected 23001 to be <= 23000`, which reads like an arbitrary line
+ * rather than "this edit consumed the margin". The margin is asserted explicitly so an edit that
+ * eats it fails with that message instead (#50 review 6).
+ */
+const MIN_HEADROOM = 200;
 
 const VARIANTS = ['default', 'auto', 'vendor'] as const;
 type Variant = (typeof VARIANTS)[number];
@@ -73,14 +85,22 @@ describe('served tools/list size', () => {
         expect(count).toBe(19);
         expect(size, label).toBeLessThanOrEqual(BUDGET_WRITE);
       });
-      it(`${label}: read-only profile stays within ${BUDGET_READ_ONLY} B`, async () => {
+      it(`${label}: read-only profile stays within ${BUDGET_READ_ONLY} B and keeps ${MIN_HEADROOM} B free`, async () => {
         const { count, size } = await measure(transport, 'deny', variant);
         expect(count).toBe(17);
         expect(size, label).toBeLessThanOrEqual(BUDGET_READ_ONLY);
+        expect(
+          BUDGET_READ_ONLY - size,
+          `${label}: read-only headroom under ${BUDGET_READ_ONLY} B (an edit ate the margin; trim a description instead of raising the budget)`,
+        ).toBeGreaterThanOrEqual(MIN_HEADROOM);
       });
-      it(`${label}: hudu_search stays within ${BUDGET_SEARCH} B`, async () => {
+      it(`${label}: hudu_search stays within ${BUDGET_SEARCH} B and keeps ${MIN_HEADROOM} B free`, async () => {
         const { search } = await measure(transport, 'deny', variant);
         expect(search, label).toBeLessThanOrEqual(BUDGET_SEARCH);
+        expect(
+          BUDGET_SEARCH - search,
+          `${label}: hudu_search headroom under ${BUDGET_SEARCH} B (an edit ate the margin; move a clause to help instead of raising the budget)`,
+        ).toBeGreaterThanOrEqual(MIN_HEADROOM);
       });
     }
   }

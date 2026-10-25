@@ -281,17 +281,34 @@ articles or assets the policy is `vendor` and no index path runs, whatever the v
 `HUDU_SEARCH_INDEX_TTL` (milliseconds, default `600000`) is the body index's freshness window: past
 it a search still answers from the index it has and rebuilds in the background.
 
-The body index's text budget is derived from the process's V8 heap ceiling: a tenth of the heap,
-clamped to 8-64 MiB. That tenth rests on the ~4x structure-to-text ratio and the ~90 MB baseline
-heap measured in the #51 crash trace (a 252 MB peak at a 64 MiB text budget on the production
-tenant), and that crash trace IS a 512 MiB container: the OLD behaviour (the SDK-default 64 MiB
-budget) peaked at ~252 MB heap and then died with `Reached heap limit` mid-search. What has NOT been
-measured is the peak under the NEW, heap-derived budget, so the bound is an ESTIMATE, not a proof
-that a build cannot exhaust the heap. On that estimate a 512 MiB container (roughly a 259 MB heap
-ceiling) gets a 25 MiB pool, which is 3 MiB per scoped client; a 1 GiB heap ceiling reaches the
-64 MiB cap, 8 MiB per client. When the budget bites the SDK reports `index-partial` and the search
-degrades to a shorter index instead of dying. FOLLOW-UP (open): measure the peak under the new
-budget in a 512 MiB container, and review the SDK's `maxDocs` default (50,000).
+The body index is bounded by TWO caps derived from the same heap estimate: a text budget and a
+document cap. The text budget is a tenth of the process's V8 heap ceiling, clamped to 8-64 MiB;
+the document cap is one document per KiB of that budget (`maxDocs`), clamped to 1,500-50,000. Both
+travel the SDK's `search` options, so neither is an env knob.
+
+Where the tenth comes from, and what the "4x" is a ratio of. The #51 crash trace is a 512 MiB
+container running the OLD behaviour — the SDK-default 64 MiB text budget — which peaked at ~252 MB
+of heap and died with `Reached heap limit` mid-search. It measured the ~90 MB baseline heap and about
+4 bytes of index structures per byte of text ACTUALLY HELD, not per byte of budget: that index held
+~41 MB of text out of its 64 MiB budget, and the peak reconciles as ~90 + 4 x 41 = ~254 MB. Read
+against the budget instead of the held text the same ratio would predict 90 + 4 x 64 = ~346 MB, which
+the trace never saw. So on the estimate a 512 MiB container (roughly a 259 MB heap ceiling) gets a
+25 MiB pool, which is 3 MiB per scoped client, and the estimated peak is ~90 + 4 x 25 = ~190 MB. A
+1 GiB heap ceiling reaches the 64 MiB cap, 8 MiB per client.
+
+The document cap exists because the text budget bounds index TEXT only: a document whose text was
+evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
+reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
+container indexes up to 3,072 documents per scoped client (25,600 for the stdio pool), a 1 GiB heap
+ceiling 8,192 per client (50,000 for the pool). The per-document cost is an ESTIMATE (~1 KB of record
+plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
+peak. Documents past the cap are simply not indexed — the freshest are kept and the index reports
+`index-partial` / truncated exactly as it already does when the text budget bites. All ~3,300 articles
+of the production tenant fit at the 1 GiB figure; what the cap truncates first on a small heap is
+title-only assets, which cost a record without carrying text.
+
+FOLLOW-UP (open): measure the peak under this budget in a 512 MiB container. The only measurement so
+far is the old 64 MiB profile's ~252 MB peak (issue #51's trace).
 
 The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for

@@ -234,11 +234,13 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           .min(1)
           .optional()
           .describe(searchQueryDescription(ctx)),
-        resources: z.array(resourceEnum(searchableResources)).optional().describe('Default: deployment scope.'),
+        // Omitting `resources` searches every resource the deployment may read, which is exactly the
+        // enum below plus the `resources` mode's list, so the field carries no prose of its own.
+        resources: z.array(resourceEnum(searchableResources)).optional(),
         topic: z
           .enum(HELP_TOPICS as [string, ...string[]])
           .optional()
-          .describe('mode="help" only; "all" adds syntax and scoring.'),
+          .describe('mode="help" only; "all" adds syntax.'),
         limit: z.number().int().min(1).max(25).optional().describe('1-25, default 8; larger is CONFIG_ERROR.'),
         snippetChars: z.number().int().min(0).max(400).optional().describe('0 = no snippet.'),
         company_id: z.number().int().positive().optional().describe('One company.'),
@@ -246,13 +248,18 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         min_score: z
           .number()
           .optional()
-          .describe('0-100 floor; drops are not counted: 0 hits may be the floor or the company_id/updated_since filters (meta.scanned vs. meta.returned).'),
+          .describe(
+            '0-100 floor; 0 hits may be the floor (meta.scanned vs. meta.returned) or the company_id/updated_since filters; drops are not counted.',
+          ),
         exact_only: z.boolean().optional().describe('No fuzzy match.'),
         // Under `http` neither field is served: the tier decides whether a call may wait for a
         // corpus-wide walk, and the calling model can observe neither the index's warmth nor the
         // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead. The object is
         // LOOSE, so a caller that sends either field anyway still reaches the handler, which reports
         // it as overridden (`meta.reasons` gains `tier-policy-override`) exactly as the invoke path does.
+        // That looseness is DELIBERATE and documented (CHANGELOG, "Unreleased"): tightening this to
+        // `.strict()` would reject the field before the handler could report `tier-policy-override`,
+        // which is the documented answer for a caller whose schema still sends one.
         ...(searchTierIsPolicy
           ? {}
           : {
@@ -263,16 +270,16 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
                   !indexSearchable
                     ? '"vendor" only here: articles or assets are excluded, so "index", "auto" and refresh:true are refused (the walk is corpus-wide).'
                     : toolDefaultTier === 'auto'
-                      ? 'Defaults to "auto": answers now, warming the index. "index" blocks until complete.'
+                      ? 'Defaults to "auto"; "index" waits; "vendor" is body-blind.'
                       : toolDefaultTier === 'vendor'
-                        ? 'Defaults to "vendor" (HUDU_SEARCH_TIER_POLICY): no body index. "index" awaits one; "auto" builds it.'
+                        ? 'Defaults to "vendor" (HUDU_SEARCH_TIER_POLICY); "index" waits, "auto" builds.'
                         : 'Defaults to "index": builds or awaits the body index. "vendor" is body-blind.',
                 ),
               refresh: z
                 .boolean()
                 .optional()
                 .describe(
-                  'true rebuilds the local body index (minutes; no Hudu change).',
+                  'true rebuilds the local body index (stdio only; minutes; no Hudu change).',
                 ),
             }),
       }).loose(),
