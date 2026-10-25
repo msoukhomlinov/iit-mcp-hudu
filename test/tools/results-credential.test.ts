@@ -195,4 +195,25 @@ describe('shape view is bound to the call, not the process (#16)', () => {
     expect(bodyOf(rb)).toContain('edge_whitespace');
     expect(bodyOf(rb)).not.toContain('embedded_quotes');
   });
+
+  it('a clean request is never told it is anomalous while a malformed one is in flight (and vice versa)', async () => {
+    const clean = runWithCredentialShapeView({}, async () => {
+      await wait(10);
+      return errorContent(unauthorized());
+    });
+    const malformed = runWithCredentialShapeView({ request: ['embedded_quotes'] }, async () => {
+      await wait(2);
+      return errorContent(unauthorized());
+    });
+    const [rc, rm] = [await clean, await malformed];
+    expect(JSON.parse(rc.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
+    expect(bodyOf(rm)).toContain('embedded_quotes');
+  });
+
+  it('a scope wins over the process-wide fallback, which still serves code outside any scope (stdio unit tests)', async () => {
+    setCredentialShapeView({ env: ['surrounding_single_quotes'] });
+    expect(bodyOf(errorContent(unauthorized()))).toContain('surrounding_single_quotes');
+    const scoped = await runWithCredentialShapeView({}, async () => errorContent(unauthorized()));
+    expect(bodyOf(scoped)).not.toContain('surrounding_single_quotes');
+  });
 });
