@@ -427,8 +427,9 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // `cache` is the SDK's `recommended` per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min
     // base). Caches are per
     // client, hence per scope — a write through the write or delete client does NOT clear the
-    // read client's cache (separate instances), so a read after a mutation is TTL-bounded stale,
-    // never unbounded.
+    // read client's cache (separate instances), so the dispatchers call the read client's
+    // `clearCache()` after every write or delete attempt (src/tools/dispatch.ts). A write from
+    // another process is still TTL-bounded stale.
     // `cooldown` is the 429 cooldown gate, always on; a
     // locally refused call answers with RateLimitError.notSent, which the error envelope
     // surfaces so a local refusal stays distinguishable from a vendor rejection.
