@@ -17,7 +17,7 @@ Does optionally linking each user's Hudu account (calling Hudu's `/mcp` with tha
 
 | Threat | Entra + server-side policy and audit | Plus Hudu account link |
 |---|---|---|
-| Shared `X-MCP-Token` leaks, anyone acts with full rights | Closed: tokens are per-user, short-lived, validated (issuer, audience, tenant). Service callers keep `X-MCP-Token`. | Same |
+| A shared service credential leaks, anyone acts with full rights | Closed for users: tokens are per-user, short-lived, validated (issuer, audience, tenant). The server holds no shared-token gate today (`X-MCP-Token` is removed and ignored, see `src/auth.ts`); any service-caller token would be a re-introduced control or live at the gateway. | Same |
 | Over-privileged user (read-only person calls write or delete) | Closed: Entra group maps to tool set, companies, destructive rights, in this server. Already partly present via `HUDU_WRITE_POLICY` and `HUDU_SECRET_READS`. | Same, plus Hudu RBAC, but only on `/mcp` article work |
 | Cannot attribute an action to a person | Closed in this server's audit log (user, tool, argument digest, record ids). Hudu still shows one key. | Closed in Hudu for `/mcp` calls only; the `/api/v1` majority stays one key |
 | Departed or deactivated user keeps access | Closed: Entra disable stops new tokens. Residual: token lifetime. | Worse: refresh tokens do not expire and Hudu may not check `discarded?` (untested), so a stolen refresh token is a long-lived Hudu credential |
@@ -31,7 +31,7 @@ Recommend NOT building the Hudu account link now. Build Entra sign-in with serve
 
 Revisit the link only if all of these become true: (a) a concrete requirement for Hudu-native per-person attribution on article edits that the server audit log cannot satisfy, (b) milestone 2 shows deactivated-user tokens are rejected and refresh tokens rotate, (c) Hudu documents or versions `/mcp`.
 
-Order if work continues (matches milestone 3): Entra validation and audit first; keep `X-MCP-Token` for service callers; Hudu link last, if ever.
+Order if work continues (matches milestone 3): Entra validation and audit first; no shared-token gate exists today, so decide whether service callers need a re-introduced control or a gateway-side token; Hudu link last, if ever.
 
 ## Milestone 2: live experiments still needed (non-production Hudu only)
 
