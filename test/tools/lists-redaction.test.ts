@@ -5,7 +5,7 @@ type Json = Record<string, any>;
 /** Old flat call shape -> the merged tool: page/page_size stay top-level, everything else is a filter. */
 const callList = (session: { call(name: string, args: Json): Promise<Json> }, resource: string, args: Json = {}) => {
   const { page, page_size, ...filters } = args;
-  return session.call('hudu_list', { resource, ...(page !== undefined ? { page } : {}), ...(page_size !== undefined ? { page_size } : {}), ...(Object.keys(filters).length ? { filters } : {}) });
+  return session.call('hudu_list', { resource, expand: true, ...(page !== undefined ? { page } : {}), ...(page_size !== undefined ? { page_size } : {}), ...(Object.keys(filters).length ? { filters } : {}) });
 };
 
 afterEach(() => vi.unstubAllGlobals());

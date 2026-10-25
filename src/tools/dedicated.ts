@@ -64,7 +64,7 @@ export const DEDICATED_READ_TOOLS = {
   hudu_list: {
     // The registry operations `hudu_list(resource)` serves, keyed to the resource it takes.
     covers: ['companies.list', 'articles.list', 'assets.listAcrossCompanies', 'asset_layouts.list'],
-    toolArguments: ['resource', 'page', 'page_size', 'filters'],
+    toolArguments: ['resource', 'page', 'page_size', 'expand', 'filters'],
   },
   hudu_fetch_many: {
     covers: ['operations.fetchMany'],
@@ -243,6 +243,7 @@ function listInputSchema(operation: string): Described['input_schema'] {
     field('resource', 'string', true, { enum: [resource] }),
     field('page', 'integer', false),
     ...(LIST_RESOURCES[resource].pageSize ? [field('page_size', 'integer', false)] : []),
+    field('expand', 'boolean', false),
     field('filters', 'object', false, { description: `Accepted keys: ${listFilterNames(resource).join(', ')}.` }),
   ]) as Described['input_schema'];
 }

@@ -77,7 +77,7 @@ describe('hudu_describe_operation steers a mapped read to its ungated tool', () 
     const session = await connect();
     const d = (await session.call('hudu_describe_operation', { operation: 'assets.listAcrossCompanies' })).structuredContent;
     expect(Object.keys(d.input_schema)).not.toContain('include');
-    expect(Object.keys(d.input_schema).sort()).toEqual(['filters', 'page', 'page_size', 'resource']);
+    expect(Object.keys(d.input_schema).sort()).toEqual(['expand', 'filters', 'page', 'page_size', 'resource']);
     expect(d.input_schema.resource.enum).toEqual(['assets']);
     expect(d.input_schema.filters.description).toContain('company_id');
     expect(d.example).toBeNull();

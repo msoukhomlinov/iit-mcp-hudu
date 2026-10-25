@@ -26,7 +26,10 @@ excluded by `HUDU_SEARCH_RESOURCES` is refused by the list tool too, before any 
 `asset_layouts` is not searchable (the SDK declares no vendor text filter for it), so it follows the
 same reachability as the existing ungated `hudu_get_asset_layout` tool. The tool set is the SDK's
 `CORE_TOOLS` plus `hudu_list`, which is this server's own; a future SDK upgrade must not re-add the
-four old names.
+four old names. Rows are compact summaries by default (id, name, key scalar fields, `url`,
+`created_at`, `updated_at`; no custom-field values, article bodies or layout field definitions), which keeps a
+25-row assets page under 20,000 characters instead of ~88,000; pass `expand: true` for the full
+records (`hudu_read` `articles.list` rows are always full). Article rows carry no body unless expanded. Paging is unchanged (`asset_layouts` still takes no `page_size`).
 
 These tools run on node-hudu 0.17.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
@@ -268,8 +271,7 @@ caller-named origins — a security property, not a deployment preference.
 `hudu_read` and `hudu_write` pass `contentFormat: 'markdown'` to the SDK, and `hudu_get_article_context`
 asks for Markdown, so single-article bodies (`articles.get`, `articles.getContext`, `articles.resolve`,
 `create`, `update`) are returned and accepted as Markdown. Hudu callouts (`> [!INFO]`), accordions, task
-lists and Mermaid fences (stored as the editor-native `<pre class="language-mermaid">` form) round-trip as the dialect documents. Rows from `hudu_list` (articles),
-`hudu_fetch_many`, `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
+lists and Mermaid fences (stored as the editor-native `<pre class="language-mermaid">` form) round-trip as the dialect documents. Rows from `hudu_fetch_many`, `hudu_read` `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
 those operations take no format. Rules a caller needs:
 
 - A write's `data.content` is parsed as Markdown unless it opens with block-level HTML (`<p>`, `<div>`,
