@@ -712,6 +712,20 @@ describe('lossy Markdown reads are signalled', () => {
     }
   });
 
+  it('hudu_read of a body that converts to nothing reads as empty content, flagged lossy', async () => {
+    const session = await connect(article('<video src="x.mp4"></video>'));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.markdown_lossy).toBe(true);
+      expect(result.structuredContent.markdown_lossy_codes).toContain('ROUNDTRIP_BODY_EMPTY');
+      expect(JSON.stringify(result.structuredContent.result)).not.toContain('content_loss');
+      expect(JSON.stringify(result.structuredContent.result)).toContain('"content":""');
+    } finally {
+      await session.close();
+    }
+  });
+
   it('hudu_get_article_context flags it too', async () => {
     const session = await connect(article('<p>Keep</p><video src="x.mp4"></video>'));
     try {
