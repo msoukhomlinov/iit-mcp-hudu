@@ -281,6 +281,8 @@ those operations take no format. Rules a caller needs:
   (for example a `<video>`); send HTML to keep it. The SDK's loss guard runs on every write.
 - Prefer Markdown (or editor-native HTML): Hudu reshapes API-written HTML on the next UI save (h5/h6 flattened, `small`/`abbr`/`q`/`section`/`aside` unwrapped, `thead` removed, an unknown callout type becomes info).
 - `articles.getSection` / `articles.patchSection` read or edit one section as Markdown, with dry-run.
+  `articles.getSection` carries no `markdown_lossy` signal (the SDK drops `content_loss` inside it, and a
+  section is not the whole body); read the whole article with `articles.get` to learn whether it is lossy.
 - A Markdown read can be incomplete: anything the dialect cannot express is dropped or reduced
   (`<video>` and `<script>` are dropped entirely). `hudu_read` (`articles.get` / `getContext` / `resolve`) and
   `hudu_get_article_context` then set `markdown_lossy: true` (with `markdown_lossy_codes`, the SDK's

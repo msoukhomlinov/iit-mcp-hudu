@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Docs: `articles.getSection` carries no `markdown_lossy` signal (node-hudu drops `content_loss` inside `readSection`); the README now says so and a test pins it. Read the whole article with `articles.get` to learn whether a body is lossy.
 - Behaviour change: `hudu_list` serves compact summary rows by default (the node-hudu `*Summary` field sets, plus `url` / `created_at` / `updated_at`) instead of full records, cutting a default page from ~49-88k to under 20k characters. `expand: true` returns the full records as before. Envelope, `page_size` default 25 and `asset_layouts` paging (no `page_size`) are unchanged. Callers that read custom `fields`, article `content` or layout `fields` from list rows must pass `expand: true` (issue #22).
 - Fix: the 401 shape annotation is bound to the call (AsyncLocalStorage) instead of module-level state written per request, so under http a 401 never carries another concurrent request's credential anomalies (#16).
 - Dependency: node-hudu 0.16.0 -> 0.17.0. Plan hash re-stamped to `1ad5e23b...`; operation set unchanged (236).
