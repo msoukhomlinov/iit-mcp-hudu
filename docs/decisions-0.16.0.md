@@ -54,4 +54,4 @@ Both items previously listed here as open are done in 9320e28:
 
 - `htmlToMarkdown` can throw `CONVERSION_EMPTY_OUTPUT` (non-empty input converting to empty output). A Markdown read of such an article now fails with that error exactly as the SDK's own conversion did; a lossy-but-non-empty body degrades to the `markdown_lossy` flag instead.
   Superseded in 0.17: reads of empty-converting bodies no longer fail (content `""`, code `ROUNDTRIP_BODY_EMPTY`), and the SDK supplies `content_loss`.
-- Converting a ~157 KB article with a 2,500-row table was reported to take ~26 s, which looks quadratic in the table path. The read now converts locally, so the cost is paid per read in this process; worth a performance issue on node-hudu before large articles are common.
+- Converting a ~157 KB article with a 2,500-row table was reported to take ~26 s, which looks quadratic in the table path. From node-hudu 0.17 the SDK converts in-process, so the cost is still paid per read in this process; worth a performance issue on node-hudu before large articles are common.
