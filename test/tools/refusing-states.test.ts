@@ -87,3 +87,43 @@ describe('a genuine vendor failure keeps its per-item / per-resource shape', () 
     await s.close();
   });
 });
+
+describe.each(Object.entries(states))('%s: local validation and policy refusals win over the credential refusal', (_s, { open, code }) => {
+  it('hudu_search with no query is CONFIG_ERROR', async () => {
+    const s = await open();
+    const r = await s.call('hudu_search', { mode: 'search' });
+    expect(r.isError).toBe(true);
+    const c = JSON.parse(r.content[0]!.text).code;
+    expect(c).toBe('CONFIG_ERROR');
+    expect(c).not.toBe(code);
+    expect(s.urls).toEqual([]);
+    await s.close();
+  });
+
+  it.each(['hudu_fetch_many', 'read fetchMany'])('%s: a credential item is POLICY_DENIED, not the credential refusal', async (name) => {
+    const s = await open();
+    const items = [{ resource: 'asset_passwords', id: 1 }];
+    const r = name === 'hudu_fetch_many'
+      ? await s.call('hudu_fetch_many', { items })
+      : await s.call('hudu_read', { operation: 'operations.fetchMany', input: { items } });
+    expect(r.isError).toBe(true);
+    const c = JSON.parse(r.content[0]!.text).code;
+    expect(c).toBe('POLICY_DENIED');
+    expect(c).not.toBe(code);
+    expect(s.urls).toEqual([]);
+    await s.close();
+  });
+});
+
+describe('a refusing request keeps the excluded-tier error', () => {
+  it('hudu_search tier:index with a corpus-excluding scope is its CONFIG_ERROR', async () => {
+    const s = await connectForRequest('caller-key', never, [], { HUDU_SEARCH_RESOURCES: ['companies'] }, null);
+    const r = await s.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index' });
+    expect(r.isError).toBe(true);
+    const body = JSON.parse(r.content[0]!.text);
+    expect(body.code).toBe('CONFIG_ERROR');
+    expect(body.message).toContain('body index is unavailable');
+    expect(s.urls).toEqual([]);
+    await s.close();
+  });
+});

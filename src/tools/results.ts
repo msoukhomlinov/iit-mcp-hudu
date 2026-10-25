@@ -33,7 +33,7 @@ export type ToolReturn =
 export interface CredentialShapeView {
   readonly env?: readonly CredentialAnomaly[];
   readonly request?: readonly CredentialAnomaly[];
-  /** Set when this unit's client is a refusing placeholder (malformed key, refused origin): the error every tool call would fail with. */
+  /** Set when this unit's client is a refusing placeholder (malformed key, refused origin, no origin, invalid base URL, keyless): the error every tool call would fail with. */
   readonly refusal?: unknown;
 }
 
@@ -46,7 +46,7 @@ export function runWithCredentialShapeView<T>(view: CredentialShapeView, fn: () 
 
 /**
  * The refusal envelope for a unit whose client is a refusing placeholder, else undefined. The
- * search paths isolate per-resource failures into a successful 0-hit result, so they ask this
+ * search and fetchMany paths fold a refusal into a 0-hit result or per-item rows, so they ask this
  * first and answer exactly as every other tool does, before any request.
  */
 export function upfrontRefusal(): ToolReturn | undefined {
