@@ -261,11 +261,23 @@ the schema never advertises a guaranteed-empty read. A per-resource read failure
 thrown by the resolve fan-out, are reported as unavailable — never with Hudu's own authorization
 message, which is a fact about the calling credential, not the caller's query.
 
-Under `http` each caller's search scope starts cold, so `hudu_search` defaults to `tier:"auto"`
-rather than `"index"`: it answers from Hudu search immediately and builds the body index in the
-background, so a caller's later search is body-aware without the first one awaiting a corpus-wide
-walk (some clients enforce a 60s call timeout). Under `stdio` the one long-lived index stays warm and the
-default is `"index"`. Pass `tier:"index"` explicitly for a complete first answer.
+Under `http` each caller's search scope starts cold, so `hudu_search` uses `tier:"auto"` rather than
+`"index"`: it answers from Hudu search immediately and builds the body index in the background, so a
+caller's later search is body-aware without the first one awaiting a corpus-wide walk. The tier
+decides whether a call may *wait*, and the calling model can observe neither the index's warmth nor
+the walk's duration, so under `http` the tier is deployment policy, not a call parameter: the served
+schema offers neither `tier` nor `refresh`, and a request that still sends either is answered by the
+policy path and returns immediately. `meta.index` reports the index state (`state`: `cold`,
+`refreshing`, `partial`, `warm`), and `meta.degraded` says when the answer was body-blind. Under
+`stdio` the one long-lived index stays warm, both fields stay in the schema, and the default is
+`"index"`; a caller there can still pass `tier:"index"` for a complete first answer.
+
+`HUDU_SEARCH_TIER_POLICY=auto|index|vendor` sets that policy explicitly (default `auto` under
+`http`, `index` under `stdio`): `vendor` forces the vendor tier and never builds a body index,
+`index` lets a call wait for a complete body-index answer. When `HUDU_SEARCH_RESOURCES` excludes
+articles or assets the policy is `vendor` and no index path runs, whatever the variable says.
+`HUDU_SEARCH_INDEX_TTL` (milliseconds, default `600000`) is the body index's freshness window: past
+it a search still answers from the index it has and rebuilds in the background.
 
 The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for
