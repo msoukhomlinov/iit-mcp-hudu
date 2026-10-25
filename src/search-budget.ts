@@ -40,8 +40,9 @@ export const MAX_INDEX_TEXT_BYTES = 64 * MIB;
  *
  * This also CORRECTS a pre-existing oversubscription: with eight shares, three caches could hold
  * 3 x 8 x 6 = 144 MiB of text against a 51 MiB pool. The trade is still breadth for depth: an
- * evicted scope rebuilds on demand (answers stay non-blocking and fall back to the vendor tier
- * meanwhile), and a deployment needing both breadth and depth needs a larger heap.
+ * evicted scope rebuilds on demand, and answers fall back to the vendor tier meanwhile — unless the
+ * deployment forces `HUDU_SEARCH_TIER_POLICY=index`, where the call waits on that rebuild (with
+ * progress and cancellation). A deployment needing both breadth and depth needs a larger heap.
  */
 export const SCOPED_INDEX_BUDGET_DIVISOR = 2;
 
@@ -105,8 +106,8 @@ export function indexTextBudgetBytes(heapLimitBytes: number): number {
  * write-enabled one threefold.
  *
  * The share is an exact byte quotient, so `clients x share` never exceeds the pool and no pool space
- * is lost to rounding (whole-MiB rounding discarded up to a third of a small pool: 7 of 16 MiB in
- * the 512 MiB write-enabled profile). Small pools get a share below the single-client
+ * is lost to rounding (whole-MiB rounding discarded 7 of 16 MiB, 44%, in the 512 MiB write-enabled
+ * profile, and up to 8 of 17 MiB in the worst case). Small pools get a share below the single-client
  * {@link MIN_INDEX_TEXT_BYTES} on purpose — the clients cannot each hold the single-client floor out
  * of an 8 MiB pool — and the SDK accepts any positive bound (a probe with 932,067 bytes built and
  * answered `warm`).

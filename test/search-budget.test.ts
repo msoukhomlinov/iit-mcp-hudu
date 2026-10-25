@@ -37,11 +37,19 @@ describe('indexTextBudgetBytes', () => {
 });
 
 describe('scopedIndexTextBudgetBytes', () => {
-  // The two factors the pool is divided by are spelled out here, NOT imported from the
-  // implementation: three per-mode caches (read, write, delete) and, per cache, the client capacity
-  // plus one eviction transient.
+  // The counted clients per profile are LITERALS, not a re-evaluation of the implementation's
+  // formula: three per mode cache (two clients plus one eviction of margin), so one cache counts
+  // three and the write-enabled three caches count nine. The two factors are pinned separately, so
+  // changing either fails a test here instead of rescaling both sides of every bound below.
   const CACHES_WRITES = 3;
-  const clientsFor = (caches: number) => (SCOPED_INDEX_BUDGET_DIVISOR + SCOPED_INDEX_EVICTION_TRANSIENT) * caches;
+  const clientsFor = (caches: number) => (caches === 1 ? 3 : 9);
+
+  it('counts two clients plus one eviction of margin, per mode cache', () => {
+    expect(SCOPED_INDEX_BUDGET_DIVISOR).toBe(2);
+    expect(SCOPED_INDEX_EVICTION_TRANSIENT).toBe(1);
+    expect(clientsFor(1)).toBe(3);
+    expect(clientsFor(CACHES_WRITES)).toBe(9);
+  });
 
   it('never hands one client more than its share of the process pool', () => {
     for (const caches of [1, CACHES_WRITES]) {
@@ -88,9 +96,8 @@ describe('scopedIndexTextBudgetBytes', () => {
   });
 
   it('sizes the measured heaps per profile: one cache (read-only), three (writes enabled)', () => {
-    // 259 MiB -> a 16.19 MiB pool; 816 MiB -> a 51 MiB pool. Three clients per cache: capacity plus
-    // the eviction transient, so a pool divides by three (read-only) or nine (writes).
-    // Literal byte counts, not a restatement of the formula: 16.19 MiB / 3 and / 9, 51 MiB / 3 and / 9.
+    // 259 MiB -> a 16 MiB pool; 816 MiB -> a 51 MiB pool. Literal byte counts, not a restatement of
+    // the formula: 16 MiB / 3 and / 9, 51 MiB / 3 and / 9.
     expect(indexTextBudgetBytes(259 * MiB)).toBe(16_777_216);
     expect(scopedIndexTextBudgetBytes(259 * MiB, 1)).toBe(5_592_405);
     expect(scopedIndexTextBudgetBytes(259 * MiB, CACHES_WRITES)).toBe(1_864_135);
@@ -107,17 +114,20 @@ describe('scopedIndexMaxDocs', () => {
   });
 
   it('sizes the two measured heaps to the documented caps', () => {
-    // 512 MiB container: a 16 MiB pool, 1.78 MiB per counted client -> 1,820 docs with writes.
+    // 512 MiB container: a 16 MiB pool, so 5.33 MiB / 5,461 documents read-only.
     const smallHeap = 259 * MiB;
     expect(scopedIndexTextBudgetBytes(smallHeap, 1)).toBe(5_592_405);
     expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap, 1))).toBe(5461);
     expect(scopedIndexMaxDocs(indexTextBudgetBytes(smallHeap))).toBe(16_384);
-    // 1 GiB heap ceiling: the 64 MiB clamp, 7.11 MiB per client -> 7,281 docs with writes.
+    // 1 GiB heap ceiling: the 64 MiB clamp, so 21.33 MiB / 21,845 documents read-only.
     const largeHeap = 1024 * MiB;
     expect(scopedIndexTextBudgetBytes(largeHeap, 1)).toBe(22_369_621);
     expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(largeHeap, 1))).toBe(21_845);
-    // Writes enabled: three per-mode caches (read, write, delete) -> 5.67 MiB per client at 816 MiB.
+    // Writes enabled: three per-mode caches (read, write, delete) divide the same pool by nine, so
+    // the same three heaps give 1,820 / 5,802 / 7,281 documents.
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap, 3))).toBe(1820);
     expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(816 * MiB, 3))).toBe(5802);
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(largeHeap, 3))).toBe(7281);
   });
 
   it('never exceeds the SDK default 50,000 documents and never exceeds its own share', () => {
