@@ -187,20 +187,16 @@ describe('hudu_search credential refusal', () => {
     await session.close();
   });
 
-  it('fails a key-less search closed before any request, unchanged by the fix', async () => {
-    // The keyless fail-closed path is fenced: no request is ever issued for the credential-less
-    // parent. The search keeps its current shape (a per-resource AUTH_ERROR note in meta, no
-    // upstream 401 occurred) — pinning it here so the fix cannot drift it.
+  it('fails a key-less search closed with the AUTH_ERROR envelope other tools return, before any request', async () => {
+    // Issue #35 (deliberate change from the earlier soft per-resource note in meta.failed): a
+    // key-less request is refused up front like every other tool, and no request is ever issued.
     const session = await connectForRequest(undefined, () => {
       throw new Error('no Hudu request may be issued without a key');
     });
     const result = await session.call('hudu_search', { mode: 'search', query: 'reset', limit: 1, snippetChars: 0 });
     expect(session.urls).toEqual([]);
-    const failed = result.structuredContent.meta.failed as Array<{ resource: string; code: string }>;
-    // The vendor fan-out always records both scope resources; the background index entry joins
-    // when its walk has rejected by the time the answer is built.
-    expect(failed.map((f) => f.resource)).toEqual(expect.arrayContaining(['articles', 'assets']));
-    for (const entry of failed) expect(entry.code).toBe('AUTH_ERROR');
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({ error: true, code: 'AUTH_ERROR', category: 'auth' });
     await session.close();
   });
 });

@@ -130,6 +130,11 @@ function malformedCredentialRefusal(anomalies: readonly string[]): AuthError {
   return refusal;
 }
 
+/** The error a refusing placeholder client's strategy surfaces, as `errorContent` renders it for every other tool. */
+function placeholderRefusal(strategy: AuthStrategy): AuthError {
+  return new AuthError(`Auth strategy "${strategy.name}" did not produce usable credential headers; no request was sent`);
+}
+
 /**
  * A per-(origin, credential) client built from the request's own `x-hudu-base-url` and
  * `x-hudu-api-key`, cached by the pair's hash.
@@ -279,7 +284,7 @@ export function buildCredentialShapeView(config: Config, headers: ReturnType<typ
  * Under `stdio` the process boundary is the trust boundary and the parent already carries the
  * environment's credential and origin; the headers are never read on this path.
  */
-function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestContext, log: Logger): { client: HuduClient; origin?: string; refusal?: AuthError } {
+export function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestContext, log: Logger): { client: HuduClient; origin?: string; refusal?: AuthError } {
   if (config.MCP_TRANSPORT === 'stdio') return { client: entry.parent, origin: new URL(config.HUDU_BASE_URL!).origin };
   const headers = ctx.requestInfo === undefined ? undefined : headerRecord(ctx.requestInfo.headers);
   const { headerKey, headerBase, callerNamed } = presentedCredential(config, headers);
@@ -293,11 +298,11 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
     ? defaultBase === undefined
     : baseHostAllowed(headerBase!, config.HUDU_ALLOWED_BASE_HOSTS);
   if (callerNamed && !callerOriginAllowed) {
-    return { client: entry.baseRefused, refusal: new AuthError(`Auth strategy "${BASE_URL_NOT_ALLOWED.name}" did not produce usable credential headers; no request was sent`) };
+    return { client: entry.baseRefused, refusal: placeholderRefusal(BASE_URL_NOT_ALLOWED) };
   }
 
   const key = headerKey ?? (callerNamed ? undefined : config.HUDU_API_KEY);
-  if (key === undefined) return { client: entry.parent };
+  if (key === undefined) return { client: entry.parent, refusal: placeholderRefusal(NO_SERVER_CREDENTIAL) };
   // Pre-dispatch shape gate, on the value this request will actually present: a credential whose
   // bytes were mangled by the load is refused HERE, before a client is constructed and so before
   // the first dial. The check is on whichever value won above, so it covers the per-request header
@@ -320,7 +325,7 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
     }
     return { client, refusal: malformedCredentialRefusal(anomalies) };
   }
-  if (base === undefined) return { client: entry.noBase };
+  if (base === undefined) return { client: entry.noBase, refusal: placeholderRefusal(NO_REQUEST_BASE_URL) };
   try {
     const client = entry.scopes.for(base, key);
     // Only publish an origin after the dispatched client has passed SDK validation.
@@ -342,7 +347,7 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
         }
         return { client, refusal: malformedCredentialRefusal([]) };
       }
-      return { client: entry.badBase };
+      return { client: entry.badBase, refusal: placeholderRefusal(INVALID_REQUEST_BASE_URL) };
     }
     throw err;
   }

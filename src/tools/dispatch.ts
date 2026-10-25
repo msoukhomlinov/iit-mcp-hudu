@@ -82,10 +82,11 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           let result = await dispatchOperation(client, effect, operation, bag, opts);
           // After the SDK's own input validation, so bad input stays CONFIG_ERROR. The refusing
           // placeholder never dials, so nothing reached Hudu; the engine swallows its error into a
-          // 0-hit result only for searchKnowledge and an isolating searchAcrossResources, so only
-          // those answer the typed refusal (a throwing call already carries the SDK's own envelope).
+          // 0-hit result (searchKnowledge, an isolating searchAcrossResources) or per-item rows
+          // (fetchMany), so only those answer the typed refusal (a throwing call already carries the SDK's own envelope).
           const isolating = operation === SEARCH_ACROSS_OPERATION && (bag.opts as { isolateErrors?: unknown } | undefined)?.isolateErrors === true;
-          if (operation === SEARCH_KNOWLEDGE_OPERATION || isolating) {
+          // fetchMany folds a whole-batch refusal into per-item rows; a refused client is a top-level error.
+          if (operation === SEARCH_KNOWLEDGE_OPERATION || operation === FETCH_MANY_OPERATION || isolating) {
             const refused = upfrontRefusal();
             if (refused !== undefined) return refused;
           }
