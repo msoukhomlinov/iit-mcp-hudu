@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Dependency: node-hudu 0.16.0 -> 0.17.0. Plan hash re-stamped to `1ad5e23b...`; operation set unchanged (236).
+- Markdown article reads take their loss signal from the SDK: node-hudu now attaches `content_loss` to the record on a Markdown read, so the server no longer forces HTML and converts and diffs the body itself. `markdown_lossy` / `markdown_lossy_codes` are unchanged; the per-record `content_loss` is lifted into them and not passed through.
+- Behaviour change: inline `<svg>` and `<iframe>` now survive Markdown reads and writes (they were flagged lossy and writes over them were refused). A body that converts to nothing reads as an empty body flagged `ROUNDTRIP_BODY_EMPTY` instead of failing.
+
 ## 0.3.0
 
 **Upgrading from 0.2.3: breaking changes.** (1) Article bodies through `hudu_read` / `hudu_write` / `hudu_delete` are Markdown by default. (2) `HUDU_CACHE_PRESET`, `HUDU_COOLDOWN`, `HUDU_TIMEOUT_MS` and `HUDU_SEARCH_MAX_INDEX_PAGES` are removed and a set one now fails boot. (3) `hudu_list_companies` / `_articles` / `_assets` / `_asset_layouts` are replaced by `hudu_list(resource)`. (4) Served tool definitions drop `_meta`. (5) The repository uses pnpm. The SDK is pinned exactly to node-hudu 0.16.0 (plan hash `fba0aa46...`); 0.15.0 was never published. `HUDU_READ_ONLY` is NOT removed: `true` is a hard override (see below). **UPGRADE HAZARD:** on 0.2.3 an UNSET `HUDU_READ_ONLY` meant read-only. Now only `HUDU_WRITE_POLICY` decides when it is unset, so these two configs, with `HUDU_READ_ONLY` unset, now give the model `hudu_write` / `hudu_delete`: (a) `HUDU_WRITE_POLICY=all`; (b) `HUDU_WRITE_POLICY=allow_list` with a non-empty `HUDU_WRITE_ALLOW`. Set `HUDU_READ_ONLY=true` to keep them read-only. The server logs a warning at boot in exactly this case.
