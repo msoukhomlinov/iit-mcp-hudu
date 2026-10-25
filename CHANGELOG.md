@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+**Upgrading from 0.3.0:** `hudu_list` now returns compact summary rows by default. Callers that read custom `fields`, article `content` or layout `fields` from list rows must pass `expand: true`. Everything else is additive or a fix.
 
 - Docs: `articles.getSection` carries no `markdown_lossy` signal (node-hudu drops `content_loss` inside `readSection`); the README now says so and a test pins it. Read the whole article with `articles.get` to learn whether a body is lossy.
 - Behaviour change: `hudu_list` serves compact summary rows by default (the node-hudu `*Summary` field sets, plus `url` / `created_at` / `updated_at`) instead of full records, cutting a default page from ~49-88k to under 20k characters. `expand: true` returns the full records as before. Envelope, `page_size` default 25 and `asset_layouts` paging (no `page_size`) are unchanged. Callers that read custom `fields`, article `content` or layout `fields` from list rows must pass `expand: true` (issue #22).
@@ -9,6 +11,7 @@
 - Dependency: node-hudu 0.16.0 -> 0.17.0. Plan hash re-stamped to `1ad5e23b...`; operation set unchanged (236).
 - Markdown article reads take their loss signal from the SDK: node-hudu now attaches `content_loss` to the record on a Markdown read, so the server no longer forces HTML and converts and diffs the body itself. `markdown_lossy` / `markdown_lossy_codes` are unchanged; the per-record `content_loss` is lifted into them and not passed through.
 - Behaviour change: inline `<svg>` and `<iframe>` now survive Markdown reads and writes (they were flagged lossy and writes over them were refused). A body that converts to nothing reads as an empty body flagged `ROUNDTRIP_BODY_EMPTY` instead of failing.
+- Docs: decision record for per-user identity (`docs/decisions/per-user-identity.md`): do not build the Hudu account link now; Entra sign-in plus server-side per-user policy and audit instead.
 
 ## 0.3.0
 
