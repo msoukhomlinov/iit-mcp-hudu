@@ -48,7 +48,7 @@ describe('read cache clear: failure, delegate and scope paths', () => {
       const { s } = await open({ write: w });
       try {
         expect(text(await get(s))).toContain('old');
-        const r = await update(s, 'applied anyway');
+        await update(s, 'applied anyway');
         expect(text(await get(s))).toContain('applied anyway');
       } finally { await s.close(); }
     });
