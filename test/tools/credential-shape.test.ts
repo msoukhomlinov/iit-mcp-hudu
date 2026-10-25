@@ -10,7 +10,9 @@
  * made, so "nothing was dialed" is an assertion here, not a convention.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connect, connectForRequest } from '../helpers/mcp-session.js';
+import { config, connect, connectForRequest } from '../helpers/mcp-session.js';
+import { createLogger } from '../../src/logger.js';
+import { createMcpServerFactory } from '../../src/tools.js';
 import { loadConfig } from '../../src/config.js';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -190,5 +192,37 @@ describe('C1c: auth-failure diagnostics on an anomalous credential', () => {
     const legacy = await stdio.call('hudu_get_api_info', {});
     expect(JSON.parse(legacy.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     await stdio.close();
+  });
+});
+
+describe('#16: the 401 annotation belongs to the request that made the call', () => {
+  const unauthorized = () => new Response(JSON.stringify({ error: 'Bad credentials' }), { status: 401, headers: { 'content-type': 'application/json' } });
+  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  it.each([
+    ['hudu_get_api_info', {}],
+    ['hudu_read', { operation: 'api_info.get' }],
+    ['hudu_list', { resource: 'companies' }],
+  ])('%s: a clean request awaiting its 401 is not annotated by a malformed request that connects meanwhile', async (tool, args) => {
+    // ONE factory serves both requests, as the http handler does. Hudu answers B's call 401 after
+    // a delay; A (a malformed key) connects inside that window.
+    const factory = createMcpServerFactory(
+      { ...config, MCP_TRANSPORT: 'http', HUDU_API_KEY: undefined, HUDU_BASE_URL: undefined },
+      createLogger('error', () => undefined),
+    );
+    const slow401 = (() => wait(60).then(unauthorized)) as unknown as () => Response;
+    const b = await connectForRequest(CLEAN_KEY, slow401, [], {}, 'https://hudu.example.com', factory);
+    const pending = b.call(tool, args);
+    await wait(15);
+    const a = await connectForRequest(QUOTED_KEY, slow401, [], {}, 'https://hudu.example.com', factory);
+    const result = await pending;
+    expect(result.isError).toBe(true);
+    const text = JSON.stringify(result);
+    expect(text).toContain('UNAUTHORIZED');
+    expect(text).not.toContain('embedded_quotes');
+    expect(text).not.toContain('surrounding_single_quotes');
+    expect(text).not.toContain('credentialShape');
+    await a.close();
+    await b.close();
   });
 });

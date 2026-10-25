@@ -26,16 +26,14 @@ export type ToolReturn =
  * Bound to the call, not the process: the server factory runs each tool handler inside
  * `runWithCredentialShapeView`, an AsyncLocalStorage scope, so `errorContent` (~20 call sites) reads
  * the view of the serving unit that made THIS call. Under http the unit is the request, and
- * concurrent requests each see their own. `setCredentialShapeView` is only the fallback for code
- * running outside any scope (unit tests); empty means "no view of the credentials", which keeps the
- * envelope exactly as it was; nothing is inferred from the absence of evidence.
+ * concurrent requests each see their own. Outside any scope there is no view of the credentials,
+ * which keeps the envelope exactly as it was; nothing is inferred from the absence of evidence.
  */
 export interface CredentialShapeView {
   readonly env?: readonly CredentialAnomaly[];
   readonly request?: readonly CredentialAnomaly[];
 }
 
-let credentialShapeView: CredentialShapeView = {};
 const viewScope = new AsyncLocalStorage<CredentialShapeView>();
 
 /** Run `fn` (and everything it awaits) with `view` as the credential view `errorContent` reads. */
@@ -43,14 +41,9 @@ export function runWithCredentialShapeView<T>(view: CredentialShapeView, fn: () 
   return viewScope.run(view, fn);
 }
 
-/** Publish (or clear) this serving unit's view of the credentials it dials with. */
-export function setCredentialShapeView(view: CredentialShapeView): void {
-  credentialShapeView = view;
-}
-
 /** The anomalies from the credentials the CURRENT serving unit presented, if any were seen. */
 function observedCredentialAnomalies(): readonly CredentialAnomaly[] {
-  const view = viewScope.getStore() ?? credentialShapeView;
+  const view = viewScope.getStore() ?? {};
   const env = view.env ?? [];
   const request = view.request ?? [];
   const both = [...env, ...request];
