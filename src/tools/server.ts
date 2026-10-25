@@ -490,8 +490,8 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
         : undefined;
     const scopedOptions = { ...options, mode, reveal: false, ...(allowOperations ? { allowOperations } : {}) };
     // ONE scoped client's share of the process pool: each per-mode cache holds MAX_SCOPED_CLIENTS
-    // clients plus one eviction transient, and the process builds one cache per mode (`modes`
-    // above), so handing each the whole pool would let it hold that many times the text it was
+    // clients plus one eviction transient, and the process builds one cache per mode (`modes`,
+    // below), so handing each the whole pool would let it hold that many times the text it was
     // sized for (#51). Divide by both factors, using the cache count the policy implies rather than
     // how many are warm.
     // Only the per-(origin, credential) clients are divided — the parent keeps the pool, because

@@ -44,11 +44,15 @@ describe('scopedIndexTextBudgetBytes', () => {
   const CACHES_WRITES = 3;
   const clientsFor = (caches: number) => (caches === 1 ? 3 : 9);
 
-  it('counts two clients plus one eviction of margin, per mode cache', () => {
+  it('counts two clients plus one eviction of margin, per mode cache', async () => {
     expect(SCOPED_INDEX_BUDGET_DIVISOR).toBe(2);
     expect(SCOPED_INDEX_EVICTION_TRANSIENT).toBe(1);
     expect(clientsFor(1)).toBe(3);
     expect(clientsFor(CACHES_WRITES)).toBe(9);
+    // The literals above assume a per-cache capacity of two, so pin the capacity the factory
+    // actually passes: a capacity-only change must not leave every bound in this file green.
+    const { MAX_SCOPED_CLIENTS } = await import('../src/tools/server.js');
+    expect(MAX_SCOPED_CLIENTS).toBe(2);
   });
 
   it('never hands one client more than its share of the process pool', () => {

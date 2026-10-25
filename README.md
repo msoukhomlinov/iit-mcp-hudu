@@ -445,7 +445,9 @@ Every client the server builds — the parent, the fail-closed placeholders and 
   blindly.
 - `cache: 'recommended'` — fixed on: the
   per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min base). Caches are
-  per client, so per scope. The write and delete clients have their own caches, so after every `hudu_write` /
+  per client, so per scope — and a scope's client survives only while it stays in its mode cache,
+  which holds two pairs: a deployment serving more than two credentials therefore re-fetches more
+  from Hudu after an eviction, the same breadth-for-depth trade the body index makes. The write and delete clients have their own caches, so after every `hudu_write` /
   `hudu_delete` attempt that is not a dry run (including a failed or timed-out one, which may have
   applied) the server clears the read client's cache for the same scope: a record read (get, getSection, fetch_many, article context) after a write in
   the same server process is fresh. A write made by another process or deployment can still be served
