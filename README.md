@@ -328,10 +328,11 @@ what reaches the 64 MiB cap.
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
 evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
 reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
-container indexes up to 5,461 documents per scoped client read-only, 1,820 with writes (16,384 for
-the stdio pool), a 1 GiB container's ~816 MB ceiling (assumed ~80%) 17,408 per client read-only,
-5,802 with writes (50,000 for the pool), and only a 1024 MB ceiling 21,845 read-only, 7,281 with
-writes. The per-document cost is an ESTIMATE (~1 KB of record
+container indexes up to 5,461 documents per scoped client read-only, 1,820 with writes (a stdio
+parent carries the whole pool instead: 16,384 documents; writes enabled builds one parent per mode,
+so up to three of them carry it), a 1 GiB container's ~816 MB ceiling (assumed ~80%) 17,408 per
+client read-only, 5,802 with writes (50,000 in a stdio parent), and only a 1024 MB ceiling 21,845
+read-only, 7,281 with writes. The per-document cost is an ESTIMATE (~1 KB of record
 plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
 peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
 `maxDocs` bounds the RETAINED index, not the build-time peak; the peak during a walk is bounded by

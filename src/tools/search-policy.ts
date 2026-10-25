@@ -156,7 +156,8 @@ export function sanitizeIndexMeta<T>(index: T): T {
 
 /**
  * The policy's verdict: the bag to dispatch, plus whether deployment policy overrode a tier or
- * refresh the caller supplied (so the dispatcher can say so in `meta.reasons` and the response text).
+ * refresh the caller supplied (so the dispatcher can say so in `meta.policyOverride` and the
+ * response text).
  */
 export type SearchInvokePolicy = { bag: Record<string, unknown>; tierOverridden: boolean };
 
