@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.5.0
+
+**Upgrading from 0.4.0:** clients now see `markdown_lossy` / `markdown_lossy_codes` on `articles.getSection` (the signal describes the whole article, so the loss may be in another section). `hudu_list` compact rows are unchanged. node-hudu 0.17.0 -> 0.18.0, plan hash re-stamped to `9d110798...`, operation set unchanged (236).
+
+- `articles.getSection` lifts the SDK's whole-body `content_loss` into `markdown_lossy` / `markdown_lossy_codes` like the other article reads; `content_loss` is never passed through. This supersedes the 0.4.0 note that section reads carry no signal (#42, #39).
+- `COMPACT_FIELDS` is built from the SDK's `SUMMARY_FIELDS` plus explicit extras (`created_at`, `url`), with a test that derives from the SDK and a literal pin of the final lists, so SDK drift fails CI. Served rows are byte-identical (#42, #39).
+- Dependency: node-hudu 0.17.0 -> 0.18.0 (exact pin). Plan hash re-stamped to `9d110798...`; operation set unchanged (236).
+
 ## 0.4.0
 
 **Upgrading from 0.3.0:** `hudu_list` now returns compact summary rows by default. Callers that read custom `fields`, article `content` or layout `fields` from list rows must pass `expand: true`. Everything else is additive or a fix.
