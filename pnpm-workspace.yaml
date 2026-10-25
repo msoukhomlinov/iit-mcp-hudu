@@ -1,7 +1,8 @@
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  - node-hudu@0.14.0 || 0.16.0 || 0.17.0 || 0.18.0
+  # Delete this entry after 2026-10-26T08:02Z, once 0.18.0 is older than the 1-day minimum release age.
+  - node-hudu@0.18.0
 overrides:
   source-map-js: 1.2.2
   vite: ">=8.3.3 <9"

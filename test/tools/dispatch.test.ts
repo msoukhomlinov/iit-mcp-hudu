@@ -731,7 +731,8 @@ describe('lossy Markdown reads are signalled', () => {
     try {
       const result = await session.call('hudu_get_article_context', { id: 22, opts: { expand: true } });
       expect(result.structuredContent.markdown_lossy).toBe(true);
-      expect(result.content[0].text).toContain('markdown_lossy: true');
+      expect(result.content[0].text).toContain('the Markdown body is incomplete; fetch the stored HTML');
+      expect(result.content[0].text).not.toContain('another section');
     } finally {
       await session.close();
     }
@@ -745,7 +746,7 @@ describe('lossy Markdown reads are signalled', () => {
       expect(result.isError).toBeUndefined();
       expect(result.structuredContent.markdown_lossy).toBe(true);
       expect(result.structuredContent.markdown_lossy_codes.length).toBeGreaterThan(0);
-      expect(result.content[0].text).toContain('markdown_lossy: true');
+      expect(result.content[0].text).toContain('(the loss may be in another section); fetch the stored HTML');
       expect(JSON.stringify(result)).not.toContain('content_loss');
       expect(session.urls).toHaveLength(1);
     } finally {

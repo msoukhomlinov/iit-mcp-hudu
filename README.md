@@ -284,7 +284,7 @@ those operations take no format. Rules a caller needs:
   `articles.getSection` carries the same `markdown_lossy` / `markdown_lossy_codes` signal as `articles.get`;
   it describes the whole article, so the loss may be in another section.
 - A Markdown read can be incomplete: anything the dialect cannot express is dropped or reduced
-  (`<video>` and `<script>` are dropped entirely). `hudu_read` (`articles.get` / `getContext` / `resolve`) and
+  (`<video>` and `<script>` are dropped entirely). `hudu_read` (`articles.get` / `getContext` / `getSection` / `resolve`) and
   `hudu_get_article_context` then set `markdown_lossy: true` (with `markdown_lossy_codes`, the SDK's
   `diffArticleRoundTrip` content-loss codes) and add one sentence to the result text; fetch the stored
   HTML with `hudu_fetch_many` (`{items:[{resource:"articles", id}]}`) to see the full body. The read is one

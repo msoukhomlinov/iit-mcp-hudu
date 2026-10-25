@@ -123,7 +123,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           }
           const simulated = result !== null && typeof result === 'object' && (result as { simulated?: unknown }).simulated === true;
           // A Markdown article read that lost content says so; a lossless read is byte-identical to before.
-          return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + (lossy.length ? lossyNote(lossy) : ''), {
+          return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + (lossy.length ? lossyNote(lossy, operation) : ''), {
             simulated,
             operation,
             result: result ?? null,

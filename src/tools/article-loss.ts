@@ -45,5 +45,5 @@ export function takeContentLoss(operation: string, result: unknown): { result: u
 }
 
 /** The one short sentence appended to the result text when a read lost content. */
-export const lossyNote = (codes: readonly string[]): string =>
-  ` markdown_lossy: true (${codes.join(', ')}): the Markdown read of this article is incomplete (for a section read, the loss may be in another section); fetch the stored HTML with hudu_fetch_many {items:[{resource:"articles", id}]} to see all of it.`;
+export const lossyNote = (codes: readonly string[], operation?: string): string =>
+  ` markdown_lossy: true (${codes.join(', ')}): ${operation === 'articles.getSection' ? 'the Markdown read of this article is incomplete (the loss may be in another section)' : 'the Markdown body is incomplete'}; fetch the stored HTML with hudu_fetch_many {items:[{resource:"articles", id}]} to see all of it.`;
