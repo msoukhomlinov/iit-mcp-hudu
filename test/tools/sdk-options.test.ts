@@ -15,7 +15,7 @@ vi.mock('node-hudu', async (importOriginal) => {
 });
 
 const { connect, connectForRequest } = await import('../helpers/mcp-session.js');
-const { MAX_SCOPED_INDEX_CACHES, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } = await import('../../src/search-budget.js');
+const { SCOPED_INDEX_BUDGET_DIVISOR, SCOPED_INDEX_EVICTION_TRANSIENT, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } = await import('../../src/search-budget.js');
 const { getHeapStatistics } = await import('node:v8');
 
 describe('fixed SDK client options', () => {
@@ -65,15 +65,18 @@ describe('body-index text budget is pooled per process', () => {
     await session.close();
     const heap = getHeapStatistics().heap_size_limit;
     const pool = indexTextBudgetBytes(heap);
-    // This fixture enables writes (HUDU_WRITE_POLICY: "all"), so the factory builds three per-mode
-    // caches and the share is the pool divided by clients x caches.
-    const share = scopedIndexTextBudgetBytes(heap, MAX_SCOPED_INDEX_CACHES);
+    // This fixture enables writes (HUDU_WRITE_POLICY: "all"), so the factory builds one cache per
+    // mode entry; one credential materialises exactly one client in each.
+    const CACHES_WRITES = 3;
+    const share = scopedIndexTextBudgetBytes(heap, CACHES_WRITES);
     const budgets = captured.map((options) => (options.search as { maxIndexTextBytes: number }).maxIndexTextBytes);
     expect(budgets).toContain(pool);
     const scoped = budgets.filter((b) => b === share);
-    expect(scoped.length).toBeGreaterThan(0);
-    // All the clients the three caches materialised together hold no more text than the pool.
+    expect(scoped.length).toBe(CACHES_WRITES);
+    // The clients the three caches materialised hold no more text than the pool, and the count the
+    // pool was divided by (capacity plus the eviction transient, per cache) also fits it.
     expect(scoped.length * share).toBeLessThanOrEqual(pool);
+    expect((SCOPED_INDEX_BUDGET_DIVISOR + SCOPED_INDEX_EVICTION_TRANSIENT) * CACHES_WRITES * share).toBeLessThanOrEqual(pool);
     expect(budgets.every((b) => b <= pool)).toBe(true);
   });
 
@@ -85,9 +88,10 @@ describe('body-index text budget is pooled per process', () => {
     const heap = getHeapStatistics().heap_size_limit;
     const budgets = captured.map((options) => (options.search as { maxIndexTextBytes: number }).maxIndexTextBytes);
     const oneCache = scopedIndexTextBudgetBytes(heap, 1);
-    const threeCaches = scopedIndexTextBudgetBytes(heap, MAX_SCOPED_INDEX_CACHES);
+    const threeCaches = scopedIndexTextBudgetBytes(heap, 3);
     expect(oneCache).not.toBe(threeCaches);
-    expect(budgets).toContain(oneCache);
+    // Deny builds ONE cache (read), so exactly one scoped client carries the share.
+    expect(budgets.filter((b) => b === oneCache).length).toBe(1);
     expect(budgets).not.toContain(threeCaches);
   });
 
@@ -98,7 +102,7 @@ describe('body-index text budget is pooled per process', () => {
     await session.close();
     const searches = captured.map((options) => options.search as { maxIndexTextBytes: number; maxDocs: number });
     const pool = indexTextBudgetBytes(getHeapStatistics().heap_size_limit);
-    const share = scopedIndexTextBudgetBytes(getHeapStatistics().heap_size_limit, MAX_SCOPED_INDEX_CACHES);
+    const share = scopedIndexTextBudgetBytes(getHeapStatistics().heap_size_limit, 3);
     // The stdio/http parent (the pool) and each scoped client (a share) both carry a derived cap.
     expect(searches.some((s) => s.maxIndexTextBytes === pool && s.maxDocs === scopedIndexMaxDocs(pool))).toBe(true);
     expect(searches.some((s) => s.maxIndexTextBytes === share && s.maxDocs === scopedIndexMaxDocs(share))).toBe(true);

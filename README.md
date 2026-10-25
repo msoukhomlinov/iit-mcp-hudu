@@ -300,7 +300,7 @@ surface headroom); the meta vocabulary is enforced by the tests that publish it
 
 The body index is bounded by TWO caps derived from the same heap estimate: a text budget and a
 document cap. The text budget is a SIXTEENTH of the process's V8 heap ceiling, clamped to 8-64 MiB;
-the document cap is one document per KiB of that budget (`maxDocs`), clamped to 1,500-50,000. Both
+the document cap is one document per KiB of that budget (`maxDocs`), capped at 50,000. Both
 travel the SDK's `search` options, so neither is an env knob. The divisor moved from 10 to 16 in
 round 11 because the tenth left no usable production margin (the arithmetic below).
 
@@ -323,7 +323,7 @@ what reaches the 64 MiB cap.
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
 evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
 reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
-container indexes up to 5,120 documents per scoped client read-only, 1,500 with writes (16,384 for
+container indexes up to 5,120 documents per scoped client read-only, 1,024 with writes (16,384 for
 the stdio pool), a 1 GiB container's ~816 MB ceiling (assumed ~80%) 17,408 per client read-only,
 5,120 with writes (50,000 for the pool), and only a 1024 MB ceiling 21,504 read-only, 7,168 with
 writes. The per-document cost is an ESTIMATE (~1 KB of record
