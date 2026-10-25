@@ -2,8 +2,9 @@
  * tools/search-prose.ts — the policy-adjusted search prose: tool and field descriptions, help text,
  * and the `operations.searchKnowledge` rows `hudu_describe_operation` and `hudu_list_operations` serve.
  */
-import { SEARCH_MODES, SEARCH_RESOURCES, TOOL_DESCRIPTIONS } from 'node-hudu/mcp';
+import { SEARCH_MODES, SEARCH_RESOURCES } from 'node-hudu/mcp';
 import type { ToolContext } from './context.js';
+import { toolDescription } from './tool-prose.js';
 import { SEARCH_ACROSS_OPERATION, effectiveAcrossResources, SDK_SEARCHABLE, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION } from './search-policy.js';
 
 /**
@@ -112,6 +113,13 @@ export function adjustHelpText(ctx: ToolContext, text: string): string {
       .replace(SEARCH_DEFAULT_INDEX_SENTENCE, SEARCH_DEFAULT_VENDOR_SENTENCE);
   }
   adjusted = adjusted.replace(`\n  ${CREDENTIAL_REDACTION_LINE}`, credentialRedactionLine(ctx));
+  // `refresh` is a stdio-only field: it rebuilds this process's local body index, not anything in
+  // Hudu. Help is the one surface where the cost can be stated in full.
+  if (!searchTierIsPolicy && indexSearchable) {
+    adjusted +=
+      '\n\n  refresh=true rebuilds THIS SERVER\'S local body index before answering. It changes nothing in Hudu,' +
+      ' can take minutes (the walk is corpus-wide), and is a stdio-only field.';
+  }
   // The SDK's multi-word paragraph names every resource, so a narrowed deployment may not keep it
   // verbatim. The full set is true as written, so it is left alone (byte-for-byte, as always here).
   const searchableSet = new Set(ctx.searchableResources);
@@ -207,7 +215,7 @@ export function adjustedSearchModes(ctx: ToolContext) {
  */
 export function searchToolDescription(ctx: ToolContext): string {
   const { searchableResources, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
-  const base = TOOL_DESCRIPTIONS['hudu_search'];
+  const base = toolDescription('hudu_search');
   const searchableSet = new Set(searchableResources);
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
   if (fullSet && toolDefaultTier === 'index') return base;
@@ -253,7 +261,7 @@ function serverPolicyTierSentence(ctx: ToolContext): string {
 export function searchQueryDescription(ctx: ToolContext): string {
   const { indexSearchable, toolDefaultTier } = ctx;
   const base =
-    'mode="search" only, and REQUIRED there: omitting it is a CONFIG_ERROR naming mode:"help" (it never falls back to help). Partial words are tolerated; article BODY content is searched. Per-resource matching rules and multi-word behaviour: mode="help", topic="query".';
+    'REQUIRED for mode="search". Partial words are fine; article BODY content is searched. Multi-word rules: mode="help", topic="query".';
   if (!indexSearchable) {
     return base.replace(
       'article BODY content is searched.',

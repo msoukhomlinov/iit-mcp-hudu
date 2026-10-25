@@ -181,7 +181,8 @@ describe('context read failures', () => {
       expect(result.isError).toBeUndefined();
       expect(result.structuredContent.context).toBeDefined();
       const spec = (await session.list()).find((entry) => entry.name === tool);
-      expect(spec!.description).toContain('refused credential answers UNAUTHORIZED');
+      // A refused sub-list is the same clean UNAUTHORIZED refusal; the compact prose says so once.
+      expect(spec!.description).toContain('answers UNAUTHORIZED');
     } finally {
       await session.close();
     }

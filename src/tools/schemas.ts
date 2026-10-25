@@ -39,23 +39,22 @@ export const LIMIT = z
   .min(1)
   .max(MAX_LIMIT)
   .default(DEFAULT_LIMIT)
-  .describe('Maximum rows returned (1-100, default 25). A larger value throws CONFIG_ERROR - the SDK never silently clamps.');
+  .describe('1-100 rows, default 25; larger is a CONFIG_ERROR.');
 
-export const EXPAND = z
-  .boolean()
-  .default(false)
-  .describe('Return the full typed records instead of the compact summaries (default false).');
+export const EXPAND = z.boolean().default(false);
 
 /** Accepts a bare id/name/slug or the identifier object the resource documents. */
 export const IDENTIFIER = z.union([
   z.number().int().positive(),
   z.string().min(1),
+  // The object form's five keys are named here rather than described one by one: the member set is
+  // the contract, and five one-line descriptions rode on every tool that carries this union.
   z.object({
-    id: z.number().int().positive().optional().describe('Numeric id - the direct fetch.'),
-    name: z.string().optional().describe('Exact name.'),
-    slug: z.string().optional().describe('Exact slug.'),
-    external_id: z.string().optional().describe('Vendor-side external id.'),
-    domain: z.string().optional().describe('Domain, for resources that have one.'),
+    id: z.number().int().positive().optional(),
+    name: z.string().optional(),
+    slug: z.string().optional(),
+    external_id: z.string().optional(),
+    domain: z.string().optional(),
   }),
 ]);
 

@@ -5,6 +5,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { redact } from 'node-hudu';
 import { META_TOOLS } from 'node-hudu/mcp';
 import { normalizeResultUrls } from './result-urls.js';
+import { toolDescription } from './tool-prose.js';
 import { AUTH_FAILURE_CODES } from './search-policy.js';
 import { CREDENTIAL_LOAD_HINT, type CredentialAnomaly } from '../credential.js';
 
@@ -411,5 +412,7 @@ export function contextErrorContent(err: unknown): ToolReturn {
 export function metaSpec(name: string) {
   const spec = META_TOOLS.find((t) => t.name === name);
   if (spec === undefined) throw new Error(`node-hudu/mcp publishes no META tool named ${name}`);
-  return { title: spec.title, description: spec.description, annotations: spec.annotations };
+  // The title and annotations are the SDK's; the description is this server's compact prose
+  // (`tool-prose.ts`) — the SDK's repeats paragraphs every other tool also carried.
+  return { title: spec.title, description: toolDescription(name), annotations: spec.annotations };
 }

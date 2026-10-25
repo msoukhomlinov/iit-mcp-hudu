@@ -6,13 +6,11 @@ import { dispatchOperation, META_TOOLS } from 'node-hudu/mcp';
 import { writeToolRegistered, assertNeverReachablePermitted, assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
+import { toolDescription } from './tool-prose.js';
 import { lossyNote, takeContentLoss } from './article-loss.js';
-import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
+import { contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
 import { INVOKE_OUTPUT } from './schemas.js';
 import { FETCH_MANY_OPERATION, applyFetchManyPolicyToInvoke, SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
-
-/** The SDK's curated text cites its own tracker ("(issues #70/#72)"); that is noise to a model and an internal reference. */
-const stripIssueRefs = (text: string): string => text.replace(/\s*\(issues? #\d+(?:[/, ]+#?\d+)*\)/g, '');
 
 export function registerDispatchTools(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
@@ -31,7 +29,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
       spec.name,
       {
         title: spec.title,
-        description: stripIssueRefs(spec.description) + (mode === 'delete' ? '' : ARTICLE_FORMAT_NOTE),
+        description: toolDescription(spec.name),
         inputSchema: z.strictObject({
           operation: z.enum(operations).describe(field('operation')),
           input: z.record(z.string(), z.unknown()).optional().describe(field('input')),
