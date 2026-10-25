@@ -41,7 +41,8 @@ export const LIMIT = z
   .default(DEFAULT_LIMIT)
   .describe('1-100 rows, default 25; larger is a CONFIG_ERROR.');
 
-export const EXPAND = z.boolean().default(false);
+/** The full typed record instead of the compact projection: named once, served by every reader. */
+export const EXPAND = z.boolean().default(false).describe('Full records, not compact summaries.');
 
 /** Accepts a bare id/name/slug or the identifier object the resource documents. */
 export const IDENTIFIER = z.union([

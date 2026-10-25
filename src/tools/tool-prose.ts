@@ -14,11 +14,11 @@
 
 const DESCRIPTIONS: Record<string, string> = {
   hudu_search:
-    "Search Hudu first for text discovery. mode=\"search\" (default) runs `query`; \"help\" and \"resources\" explain the tool.\nmode=\"search\": ranked, fuzzy search over article TITLE and BODY content, asset names, custom-field VALUES and identifiers, plus company/user/group/website names. As a tool it defaults to tier \"index\" (builds/awaits the body index), so results are body-complete.\nRead meta.degraded before trusting an empty result; an unhonoured field is a CONFIG_ERROR.",
+    "Search Hudu first. mode=\"search\" (default) runs `query`; \"help\" and \"resources\" explain the tool.\nmode=\"search\": ranked, fuzzy search over article TITLE and BODY content, asset names, custom-field VALUES and identifiers, plus company/user/group/website names. As a tool it defaults to tier \"index\" (builds/awaits the body index), so results are body-complete.\nEmpty results: read meta.degraded; an unhonoured field is a CONFIG_ERROR.",
   hudu_read:
     "Execute READ operations only, by registry key (hudu_list_operations lists them; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. Results mask credentials and custom fields. Article bodies: single-article reads are Markdown, other rows stored HTML; a lossy read sets markdown_lossy.",
   hudu_write:
-    "Execute a WRITE operation by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. dry_run:true previews without writing; confirm is the SDK confirmation string, not human consent. Article bodies: writes are Markdown; Hudu reshapes API-written HTML on the next UI save.",
+    "Execute a WRITE operation by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. dry_run:true previews without writing; confirm is the SDK confirmation string, not human consent. Article bodies: writes are Markdown; re-read with articles.get before editing. Hudu reshapes API-written HTML on the next UI save.",
   hudu_delete:
     "Execute a DESTRUCTIVE operation by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. dry_run:true previews without deleting; confirm is the SDK confirmation string, not human consent.",
   hudu_list:

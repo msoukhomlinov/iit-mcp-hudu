@@ -6,7 +6,7 @@
  * race need a build that is still running when the assertion is made — a stubbed Hudu answering
  * instantly would settle the walk before anything could be observed.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { createLogger } from '../../src/logger.js';
 import { registerSearchTool } from '../../src/tools/search.js';
@@ -173,22 +173,49 @@ describe('hudu_search progress while awaiting the body index', () => {
     expect(meta.timings).toEqual({ vendorMs: 0, localMs: expect.any(Number), requests: 0 });
     expect(meta.scoreScope).toBe('per-resource');
     expect(meta.bytes).toBe(2); // the serialised empty hits array
-    // No generation was scored, so the index status claims nothing about one.
+    // The index is exactly the SDK's KnowledgeIndexMeta: no generation was scored, so nothing
+    // about one is claimed, and no status()-only field rides along.
     expect(meta.index.state).toBe('refreshing');
     expect(meta.index.staleness).toBe('unknown');
     expect(meta.index.docs).toEqual({});
-    expect(meta.index.watermarks).toEqual({ articles: null, assets: null });
     expect(meta.index.builtAt).toBeNull();
+    expect(meta.index.ageMs).toBeNull();
+    expect(meta.index.indexChangedSinceScore).toBe(false);
+    expect(meta.index.lastFullAt).toBeNull();
+    expect(meta.index.lastCompleteFullAt).toBeNull();
+    expect(meta.index.fullWalkDue).toBe(false);
+    expect(Object.keys(meta.index).sort()).toEqual([
+      'ageMs',
+      'builtAt',
+      'docs',
+      'fullWalkDue',
+      'indexChangedSinceScore',
+      'lastCompleteFullAt',
+      'lastFullAt',
+      'staleness',
+      'state',
+    ]);
+    expect(meta.index).not.toHaveProperty('watermarks');
+    expect(meta.index).not.toHaveProperty('requestsLastBuild');
+    expect(meta.index).not.toHaveProperty('lastBuildError');
     expect(meta.indexAge).toBeNull();
   });
 
   it('reports a cold index, not a refreshing one, when the request was already cancelled at entry', async () => {
     // Nothing was awaited, so claiming a build in flight would be false: the state is simply cold.
+    // The abort check also precedes the work, so no build was started for a caller already gone.
     const build = deferred<typeof RESULT>();
-    const handler = harness({ searchKnowledge: () => build.promise as never });
+    let started = 0;
+    const handler = harness({
+      searchKnowledge: () => {
+        started += 1;
+        return build.promise as never;
+      },
+    });
     const controller = new AbortController();
     controller.abort();
     const result = await handler({ mode: 'search', query: 'reset', tier: 'index' }, request(controller.signal, async () => {}, 'tok-6'));
+    expect(started).toBe(0);
     expect(result.structuredContent.meta.index.state).toBe('cold');
     expect(result.structuredContent.meta.reasons).toEqual(['index-build-cancelled']);
     expect(result.structuredContent.meta.timings.localMs).toBe(0);

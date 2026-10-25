@@ -26,7 +26,7 @@ export function registerMetaTools(server: McpServer, ctx: ToolContext): void {
       ...metaSpec('hudu_list_operations'),
       inputSchema: z.object({
         limit: z.number().int().min(1).max(100).default(40).describe('1-100, default 40.'),
-        offset: z.number().int().min(0).default(0),
+        offset: z.number().int().min(0).default(0).describe('Row offset, for paging.'),
         effect: z.enum(['read', 'write', 'destructive']).optional(),
         resource: z.string().optional().describe('Resource, e.g. "assets".'),
         unexposed_only: z.boolean().optional().describe('Only rows with NO tool of their own.'),

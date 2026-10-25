@@ -95,10 +95,13 @@ function narrowedSearchSummary(ctx: ToolContext): string {
  */
 export function adjustHelpText(ctx: ToolContext, text: string): string {
   const { defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
-  const tier = !indexSearchable
-    ? 'tool default "vendor"; "index", "auto" and refresh are refused because HUDU_SEARCH_RESOURCES excludes articles or assets.'
-    : searchTierIsPolicy
-      ? `tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter.`
+  // Order matters: under `http` no tier field is served at all, so a refusal naming "index", "auto"
+  // and refresh would describe a schema that does not exist there. The deployment policy comes
+  // first; the corpus refusal applies only where the caller holds the field.
+  const tier = searchTierIsPolicy
+    ? `tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter.`
+    : !indexSearchable
+      ? 'tool default "vendor"; "index", "auto" and refresh are refused because HUDU_SEARCH_RESOURCES excludes articles or assets.'
       : toolDefaultTier === 'auto'
       ? 'tool default "auto" (answers from Hudu search now; builds the body index in the background so a later search is body-aware); "index" waits for a complete body-index answer before returning.'
       : toolDefaultTier === 'vendor'
@@ -223,10 +226,12 @@ export function searchToolDescription(ctx: ToolContext): string {
   if (fullSet && toolDefaultTier === 'index') return base;
   const defaultSentence =
     'As a tool it defaults to tier "index" (builds/awaits the body index), so results are body-complete.';
-  const replacement = !indexSearchable
-    ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
-    : searchTierIsPolicy
-      ? serverPolicyTierSentence(ctx)
+  // Same order as the help text: under `http` the tier field is not served, so the corpus refusal
+  // (which names refused field values) would describe a schema the caller never sees.
+  const replacement = searchTierIsPolicy
+    ? serverPolicyTierSentence(ctx)
+    : !indexSearchable
+      ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
       : toolDefaultTier === 'auto'
       ? 'As a TOOL it defaults to tier "auto": it answers from Hudu search now and builds the body index in the background, so a later search is body-aware rather than body-blind. Pass tier:"index" to wait for a complete first answer.'
       : toolDefaultTier === 'vendor'
@@ -332,10 +337,12 @@ export function applySearchDescribePolicy<
     ?.replace('scope defaults to articles and assets', `scope defaults to ${JSON.stringify(defaultSearchScope)}`)
     .replace(
       'it defaults to tier "index" when called as the MCP tool (the SDK default stays lazy)',
-      !indexSearchable
-        ? 'this deployment excludes articles or assets, so it defaults to tier "vendor" and refuses "index", "auto" and refresh'
-        : searchTierIsPolicy
-          ? `the tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter`
+      // Policy first, as in the help text: under `http` the field is not served, so naming refused
+      // values would describe a schema this caller never sees.
+      searchTierIsPolicy
+        ? `the tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter`
+        : !indexSearchable
+          ? 'this deployment excludes articles or assets, so it defaults to tier "vendor" and refuses "index", "auto" and refresh'
           : toolDefaultTier === 'auto'
           ? 'it defaults to tier "auto" when called as the MCP tool: it answers from Hudu search now and builds the body index in the background (pass tier:"index" to wait for a complete first answer; the SDK default stays lazy)'
           : 'it defaults to tier "index" when called as the MCP tool (the SDK default stays lazy)',

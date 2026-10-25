@@ -11,12 +11,16 @@ import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured after the compact tool prose and field descriptions, plus the restored prose facts: 26,713 / 22,027.
+// Measured after the compact tool prose and field descriptions, plus the restored prose facts: 27,295 / 22,567.
 /** Per-profile totals: the write-enabled profile carries two more tools, so it gets its own ceiling. */
 const BUDGET_WRITE = 27_500;
 const BUDGET_READ_ONLY = 23_000;
-/** `hudu_search` is the largest tool; its own ceiling keeps it from eating either total. */
-const BUDGET_SEARCH = 3_100;
+/**
+ * `hudu_search` is the largest tool; its own ceiling keeps it from eating either total. It is
+ * #52's acceptance value (<= 2,900 B), not a rounded-up measurement: the served description is
+ * ~2,820 B, so the gate has real headroom below the promise.
+ */
+const BUDGET_SEARCH = 2_900;
 
 const bytes = async (policy: 'all' | 'deny') => {
   const session = await connect(undefined, { HUDU_WRITE_POLICY: policy });

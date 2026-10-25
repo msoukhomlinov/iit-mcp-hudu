@@ -3,7 +3,7 @@
  * deployment search policy. Pairs with `src/tools/search-prose.ts`.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connect } from '../helpers/mcp-session.js';
+import { connect, connectForRequest } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -204,6 +204,24 @@ describe('HUDU_SEARCH_TIER_POLICY=vendor under stdio', () => {
     const help = await session.call('hudu_search', { mode: 'help' });
     expect(help.structuredContent.help.text).toContain('tool default "index" (complete answer); "auto" = the SDK default.');
     expect(help.structuredContent.help.defaults.tier).toBe('index');
+    await session.close();
+  });
+});
+
+describe('http with an excluded corpus', () => {
+  it('names the served tier policy instead of refused fields the schema never offers', async () => {
+    // No tier field is served over http, so a corpus refusal that names "index", "auto" and refresh
+    // would describe a schema this caller never sees — and claim refusals that cannot happen.
+    const session = await connectForRequest('key-a', () => Response.json([]), [], { HUDU_SEARCH_RESOURCES: ['companies'] });
+    const tool = (await session.list()).find((t) => t.name === 'hudu_search')!;
+    expect(tool.inputSchema.properties).not.toHaveProperty('tier');
+    expect(tool.description).toContain('sets the search tier server-side');
+    expect(tool.description).not.toContain('refuses "index", "auto" and refresh');
+    const help = await session.call('hudu_search', { mode: 'help' });
+    const text: string = help.structuredContent.help.text;
+    expect(text).toContain("this deployment's policy");
+    expect(text).not.toContain('"auto" and refresh are refused');
+    expect(help.structuredContent.help.defaults.tier).toBe('vendor');
     await session.close();
   });
 });

@@ -15,7 +15,7 @@ import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
-import { indexTextBudgetBytes } from '../search-budget.js';
+import { SCOPED_INDEX_BUDGET_DIVISOR, indexTextBudgetBytes, scopedIndexTextBudgetBytes } from '../search-budget.js';
 import { runWithCredentialShapeView, type CredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 import { answerRenamedTools } from './renamed.js';
@@ -28,14 +28,12 @@ const SERVER_VERSION = (createRequire(import.meta.url)('../../package.json') as 
 /**
  * The maximum number of per-(origin, credential) scoped clients kept warm in one process.
  *
- * Each scoped client owns its own Hudu knowledge index, which the SDK bounds with a 64 MB text
- * budget (the SDK's `search.maxIndexPages` bounds the same budget from the walk side). An unbounded map
- * would let enough distinct callers grow the heap past the container limit, so the cache is capped
- * and evicts least-recently-used first. Eight scopes is 8 × 64 MB of text at the absolute worst
- * case — the cap, not a typical tenant — which leaves headroom under the 1 GB container limit for
- * the Node runtime and in-flight request bodies while keeping the common working set resident.
+ * Each scoped client owns its own Hudu knowledge index. An unbounded map would let enough distinct
+ * callers grow the heap past the container limit, so the cache is capped and evicts
+ * least-recently-used first. The cap is the same number the process-wide index text budget is
+ * divided by (`search-budget.ts`), so eight clients share one pool instead of each claiming it.
  */
-export const MAX_SCOPED_CLIENTS = 8;
+export const MAX_SCOPED_CLIENTS = SCOPED_INDEX_BUDGET_DIVISOR;
 
 /**
  * A strategy that refuses to produce headers.
@@ -411,6 +409,7 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
   // resolves — if any code path ever dialed it, the failure would be unmistakable — and its label
   // says what it is, since the parent client's log and audit lines carry this origin.
   const HTTP_PLACEHOLDER_ORIGIN = 'https://no-hudu-origin.invalid';
+  const heapLimitBytes = getHeapStatistics().heap_size_limit;
   const options: HuduConfig = {
     baseUrl: config.MCP_TRANSPORT === 'http' ? HTTP_PLACEHOLDER_ORIGIN : config.HUDU_BASE_URL!,
     logger: log,
@@ -443,10 +442,12 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     profile: 'agent',
     cache: 'recommended',
     // The body index's text budget follows the process's own heap ceiling, so a small container
-    // degrades to `index-partial` instead of dying at the V8 heap limit (#51).
+    // degrades to `index-partial` instead of dying at the V8 heap limit (#51). This value is the
+    // PROCESS-wide pool: the scoped clients below each take a share of it, since each materialises
+    // its own index. The parent client keeps the pool because under `stdio` it is the only client.
     // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
     search: {
-      maxIndexTextBytes: indexTextBudgetBytes(getHeapStatistics().heap_size_limit),
+      maxIndexTextBytes: indexTextBudgetBytes(heapLimitBytes),
       ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL }),
     },
     timeoutMs: 30000,
@@ -475,6 +476,11 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
         ? [...reads, ...config.HUDU_WRITE_ALLOW.filter((key) => getCapability(key)?.effect === (mode === 'delete' ? 'destructive' : 'write')).flatMap((key) => withWriteDependencies(key, mode === 'delete' ? 'destructive' : 'write'))]
         : undefined;
     const scopedOptions = { ...options, mode, reveal: false, ...(allowOperations ? { allowOperations } : {}) };
+    // ONE scoped client's share of the process pool: the cache can hold MAX_SCOPED_CLIENTS of them,
+    // so handing each the whole pool would let the process hold 8x the text it was sized for (#51).
+    // Only the per-(origin, credential) clients are divided — the parent keeps the pool, because
+    // under `stdio` it is the only client and a deeper index is the point of serving that way.
+    const scopedSearch = { ...options.search, maxIndexTextBytes: scopedIndexTextBudgetBytes(heapLimitBytes) };
     const parent = config.MCP_TRANSPORT === 'stdio'
       ? new HuduClient({ ...scopedOptions, apiKey: config.HUDU_API_KEY! })
       : new HuduClient({ ...scopedOptions, auth: NO_SERVER_CREDENTIAL });
@@ -499,7 +505,7 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
       // passed: it cannot express the hostname matcher's wildcard suffixes, and the private bound
       // wins over it anyway.
       scopes: new ScopedClientCache(
-        (baseUrl, apiKey) => new HuduClient({ ...scopedOptions, baseUrl, apiKey, blockPrivateHosts: true }),
+        (baseUrl, apiKey) => new HuduClient({ ...scopedOptions, baseUrl, apiKey, blockPrivateHosts: true, search: scopedSearch }),
         MAX_SCOPED_CLIENTS,
         log,
       ),
