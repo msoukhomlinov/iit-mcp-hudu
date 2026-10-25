@@ -15,6 +15,8 @@ const RECORD_PATHS: Readonly<Record<string, readonly (readonly string[])[]>> = {
   // resolve answers the record itself; the `{ value }` envelope is the helper form of the same read.
   'articles.resolve': [[], ['value']],
   'articles.getContext': [['article']],
+  // The SDK reports getSection loss for the WHOLE body (the loss may sit in another section).
+  'articles.getSection': [[]],
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -44,4 +46,4 @@ export function takeContentLoss(operation: string, result: unknown): { result: u
 
 /** The one short sentence appended to the result text when a read lost content. */
 export const lossyNote = (codes: readonly string[]): string =>
-  ` markdown_lossy: true (${codes.join(', ')}): the Markdown body is incomplete; fetch the stored HTML with hudu_fetch_many {items:[{resource:"articles", id}]} to see all of it.`;
+  ` markdown_lossy: true (${codes.join(', ')}): the Markdown read of this article is incomplete (for a section read, the loss may be in another section); fetch the stored HTML with hudu_fetch_many {items:[{resource:"articles", id}]} to see all of it.`;

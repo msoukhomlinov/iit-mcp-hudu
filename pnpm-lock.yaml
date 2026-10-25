@@ -174,8 +174,8 @@ importers:
         specifier: ^2.3.1
         version: 2.3.1
       node-hudu:
-        specifier: 0.17.0
-        version: 0.17.0
+        specifier: 0.18.0
+        version: 0.18.0
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -1004,8 +1004,8 @@ packages:
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
 
-  node-hudu@0.17.0:
-    resolution: {integrity: sha512-wzTBVUqbN0Z+GDX98HgK065gi24xT8wAzEZbV863sy3rzGNNktXTOyhFbgrd+bKtOFGfVG1S01TlczQt87zmNQ==}
+  node-hudu@0.18.0:
+    resolution: {integrity: sha512-3PbvUSXSULCBiPhVJSAhaBFSbngUwg6fYx+9m2dFw5UsqOOYrL4ixtVyGJphmXF7j5775fH+0+3j8svnbSpHrg==}
     engines: {node: '>=24.0.0'}
 
   obug@3.0.0:
@@ -1924,7 +1924,7 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
-  node-hudu@0.17.0:
+  node-hudu@0.18.0:
     dependencies:
       '@joplin/turndown-plugin-gfm': 1.0.68
       marked: 18.0.13

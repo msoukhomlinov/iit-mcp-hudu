@@ -3,6 +3,7 @@
  * `expand: true` (issue #22). Hudu is stubbed at `globalThis.fetch` by the shared session harness.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SUMMARY_FIELDS } from 'node-hudu';
 import { COMPACT_FIELDS } from '../../src/tools/lists.js';
 import { connect } from '../helpers/mcp-session.js';
 
@@ -44,10 +45,20 @@ describe('hudu_list compact rows', () => {
   });
 });
 
-// Pinned explicitly: the SDK exports no runtime projection, so a node-hudu bump that changes a
-// `*Summary` shape must be reviewed here by hand.
 describe('COMPACT_FIELDS', () => {
-  it('pins the compact field list per resource', () => {
+  const extras = {
+    companies: ['created_at'],
+    articles: ['url', 'created_at'],
+    assets: ['created_at'],
+    asset_layouts: ['url', 'created_at', 'updated_at'],
+  } as const;
+  it.each(Object.keys(extras) as (keyof typeof extras)[])('%s is exactly SUMMARY_FIELDS plus the explicit extras', (r) => {
+    expect([...COMPACT_FIELDS[r]].sort()).toEqual([...SUMMARY_FIELDS[r], ...extras[r]].filter((k, i, a) => a.indexOf(k) === i).sort());
+    // every SDK summary key is served
+    for (const k of SUMMARY_FIELDS[r]) expect(COMPACT_FIELDS[r]).toContain(k);
+  });
+
+  it('pins the final compact field list per resource (an SDK bump that changes fields fails here)', () => {
     expect(COMPACT_FIELDS).toEqual({
       companies: ['id', 'name', 'nickname', 'slug', 'website', 'phone_number', 'city', 'state', 'id_number', 'archived', 'url', 'created_at', 'updated_at'],
       articles: ['id', 'name', 'slug', 'company_id', 'folder_id', 'draft', 'enable_sharing', 'url', 'created_at', 'updated_at'],
