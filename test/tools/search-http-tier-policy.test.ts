@@ -80,6 +80,19 @@ describe('hudu_search schema and the search tier', () => {
     await session.close();
   });
 
+  it('cannot let HUDU_SEARCH_TIER_POLICY=index reach the index when the corpus excludes articles or assets', async () => {
+    // The corpus gate outranks the policy knob: the walk is corpus-wide, so an excluded resource
+    // would be walked. Only "vendor" may come out, whatever the variable says.
+    for (const resources of [['companies'], ['users', 'groups']]) {
+      const session = await connect(undefined, { HUDU_SEARCH_RESOURCES: resources, HUDU_SEARCH_TIER_POLICY: 'index' });
+      const help = await session.call('hudu_search', { mode: 'help' });
+      expect(help.structuredContent.help.defaults.tier, resources.join(',')).toBe('vendor');
+      const tool = await toolOf(session);
+      expect(tool.inputSchema.properties.tier.description).toContain('"vendor" only here');
+      await session.close();
+    }
+  });
+
   it('takes the tier from HUDU_SEARCH_TIER_POLICY when the deployment sets one', async () => {
     const http = await connectForRequest('key-a', () => Response.json([]), [], { HUDU_SEARCH_TIER_POLICY: 'vendor' });
     const help = await http.call('hudu_search', { mode: 'help' });

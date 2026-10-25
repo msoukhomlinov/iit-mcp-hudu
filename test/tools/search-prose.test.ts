@@ -165,3 +165,45 @@ describe('hudu_search advertised description', () => {
     await session.close();
   });
 });
+
+describe('HUDU_SEARCH_TIER_POLICY=vendor under stdio', () => {
+  it('describes the vendor tier in the description, the tier field and the help text', async () => {
+    const session = await connect(undefined, { HUDU_SEARCH_TIER_POLICY: 'vendor' });
+    const tool = (await session.list()).find((t) => t.name === 'hudu_search')!;
+    expect(tool.description).toContain('defaults to tier "vendor"');
+    expect(tool.description).toContain('HUDU_SEARCH_TIER_POLICY');
+    expect(tool.description).not.toContain('defaults to tier "index"');
+    // Under stdio the caller keeps the field, so the field description must name the vendor default.
+    const tier = tool.inputSchema.properties.tier;
+    expect(tier.description).toContain('Defaults to "vendor"');
+    expect(tier.description).not.toContain('Defaults to "index"');
+    const help = await session.call('hudu_search', { mode: 'help' });
+    const text: string = help.structuredContent.help.text;
+    expect(text).toContain('tool default "vendor"');
+    expect(text).not.toContain('tool default "index"');
+    expect(help.structuredContent.help.defaults.tier).toBe('vendor');
+    await session.close();
+  });
+
+  it('describes "auto" when the policy sets it', async () => {
+    const session = await connect(undefined, { HUDU_SEARCH_TIER_POLICY: 'auto' });
+    const tool = (await session.list()).find((t) => t.name === 'hudu_search')!;
+    expect(tool.description).toContain('defaults to tier "auto"');
+    expect(tool.inputSchema.properties.tier.description).toContain('Defaults to "auto"');
+    const help = await session.call('hudu_search', { mode: 'help' });
+    expect(help.structuredContent.help.text).toContain('tool default "auto"');
+    expect(help.structuredContent.help.defaults.tier).toBe('auto');
+    await session.close();
+  });
+
+  it('keeps the "index" prose when the policy sets it', async () => {
+    const session = await connect(undefined, { HUDU_SEARCH_TIER_POLICY: 'index' });
+    const tool = (await session.list()).find((t) => t.name === 'hudu_search')!;
+    expect(tool.description).toContain('defaults to tier "index"');
+    expect(tool.inputSchema.properties.tier.description).toContain('Defaults to "index"');
+    const help = await session.call('hudu_search', { mode: 'help' });
+    expect(help.structuredContent.help.text).toContain('tool default "index" (complete answer); "auto" = the SDK default.');
+    expect(help.structuredContent.help.defaults.tier).toBe('index');
+    await session.close();
+  });
+});

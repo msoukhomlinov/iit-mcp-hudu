@@ -12,8 +12,9 @@ export const MAX_INDEX_TEXT_BYTES = 64 * MIB;
 /**
  * The total extracted text a client's body index may hold, from the V8 heap ceiling in bytes.
  *
- * A tenth of the heap, rounded down to whole MiB and clamped to 8-64 MiB. Measured on issue #51's
- * build: the index structures cost roughly 4x the text budget, and the process carries ~90 MB of
+ * A tenth of the heap, rounded down to whole MiB and clamped to 8-64 MiB. ESTIMATE (not a
+ * measurement), inferred from issue #51's crash trace — a 252 MB peak heap at a 64 MiB text budget:
+ * the index structures cost roughly 4x the text they hold, and the process carries roughly 90 MB of
  * baseline heap, so a 10% share keeps a small container under its ceiling — and the SDK reports
  * `index-partial` honestly when the budget bites, so a short index degrades the answer instead of
  * crashing the process.

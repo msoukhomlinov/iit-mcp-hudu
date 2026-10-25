@@ -145,15 +145,6 @@ function boundErrorMessage(raw: string, status: number | undefined, url: string 
  * tool descriptions (and the SDK's own registry vocabulary) promise `CONFIG_ERROR`. Derive the code
  * from the name so a config refusal reaches the model in the vocabulary it was told to expect.
  */
-/**
- * Appended to every tool that reads or writes an article body. The single-article reads and the
- * article writes speak Markdown; list, search and batch rows cannot (their operations take no
- * format), and a write that opens with block HTML is passed through as HTML, so a model that reads
- * HTML from a row and writes it back unchanged stays correct while a mixed body does not.
- */
-export const ARTICLE_FORMAT_NOTE =
-  ' Article bodies: single-article reads and writes are Markdown; list, search, fetch-many and company-context rows are stored HTML. A body opening with block HTML is sent as HTML. A read that lost content sets markdown_lossy: fetch the HTML with hudu_fetch_many. Re-read with articles.get before editing. Hudu reshapes API-written HTML on the next UI save (h5/h6 flattened, unknown callout types become info); prefer Markdown.';
-
 export function errorContent(err: unknown): ToolReturn {
   // A 401/403-class credential refusal is the fixed UNAUTHORIZED envelope on EVERY tool, not just
   // the search/resolve/context paths: the vendor's own message may name the resource the key may

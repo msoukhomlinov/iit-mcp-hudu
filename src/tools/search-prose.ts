@@ -101,6 +101,8 @@ export function adjustHelpText(ctx: ToolContext, text: string): string {
       ? `tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter.`
       : toolDefaultTier === 'auto'
       ? 'tool default "auto" (answers from Hudu search now; builds the body index in the background so a later search is body-aware); "index" waits for a complete body-index answer before returning.'
+      : toolDefaultTier === 'vendor'
+      ? 'tool default "vendor" (HUDU_SEARCH_TIER_POLICY: answers come from Hudu search alone, so no body index is built or awaited); "index" waits for one, "auto" builds it in the background.'
       : 'tool default "index" (complete answer); "auto" = the SDK default.';
   let adjusted = text
     .replace('default ["articles","assets"].', `default ${JSON.stringify(defaultSearchScope)}.`)
@@ -227,6 +229,8 @@ export function searchToolDescription(ctx: ToolContext): string {
       ? serverPolicyTierSentence(ctx)
       : toolDefaultTier === 'auto'
       ? 'As a TOOL it defaults to tier "auto": it answers from Hudu search now and builds the body index in the background, so a later search is body-aware rather than body-blind. Pass tier:"index" to wait for a complete first answer.'
+      : toolDefaultTier === 'vendor'
+      ? 'As a TOOL it defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY): it answers from Hudu search only and builds or awaits no body index, unless you pass tier:"index" or refresh:true.'
       : defaultSentence;
   let out = base;
   if (!fullSet) {

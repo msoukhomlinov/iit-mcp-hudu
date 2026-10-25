@@ -280,9 +280,10 @@ articles or assets the policy is `vendor` and no index path runs, whatever the v
 it a search still answers from the index it has and rebuilds in the background.
 
 The body index's text budget is derived from the process's V8 heap ceiling: a tenth of the heap,
-clamped to 8-64 MiB. The index structures cost about four times the text they hold, so a small
-container (a 512 MiB limit leaves roughly a 259 MB heap ceiling) gets a 25 MiB budget and a large
-one keeps the SDK's 64 MiB default. When the budget bites, the SDK reports `index-partial` and the
+clamped to 8-64 MiB. The 4x text-to-structure ratio and the ~90 MB baseline heap behind that tenth
+are an ESTIMATE inferred from a crash trace (252 MB peak at a 64 MiB text budget), not a
+measurement; on that estimate a small container (a 512 MiB limit leaves roughly a 259 MB heap
+ceiling) gets a 25 MiB budget and a large one keeps the SDK's 64 MiB default. When the budget bites, the SDK reports `index-partial` and the
 search degrades to a shorter index — it no longer grows the heap until Node dies with
 `Reached heap limit` and restarts the container mid-search.
 

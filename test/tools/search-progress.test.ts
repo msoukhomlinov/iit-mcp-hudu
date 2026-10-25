@@ -10,7 +10,6 @@ import { describe, expect, it } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { createLogger } from '../../src/logger.js';
 import { registerSearchTool } from '../../src/tools/search.js';
-import { SEARCH_OUTPUT } from '../../src/tools/schemas.js';
 import type { ToolContext } from '../../src/tools/context.js';
 import { connect } from '../helpers/mcp-session.js';
 
@@ -146,9 +145,9 @@ describe('hudu_search progress while awaiting the body index', () => {
     build.resolve(RESULT);
   });
 
-  it('answers the cancelled wait with a complete KnowledgeSearchMeta that validates', async () => {
-    // A cancelled answer is a real search answer: every field the SDK publishes is present, the
-    // degraded reason is in the SDK's closed union, and the shape validates against SEARCH_OUTPUT.
+  it('answers the cancelled wait with a complete KnowledgeSearchMeta', async () => {
+    // A cancelled answer is a real search answer. SEARCH_OUTPUT types `meta` as unknown, so this
+    // asserts each published field directly rather than trusting a schema parse.
     const build = deferred<typeof RESULT>();
     const handler = harness({ searchKnowledge: () => build.promise as never });
     const controller = new AbortController();
@@ -157,22 +156,43 @@ describe('hudu_search progress while awaiting the body index', () => {
     const result = await call;
     build.resolve(RESULT);
     const { meta } = result.structuredContent;
-    for (const field of ['query', 'terms', 'resources', 'scanned', 'returned', 'limit', 'complete', 'reasons', 'index', 'degraded', 'errors', 'failed', 'timings', 'scoreScope', 'bytes', 'indexAge']) {
-      expect(meta, field).toHaveProperty(field);
-    }
     expect(meta.query).toBe('reset the vpn');
     expect(meta.terms).toEqual(['reset', 'the', 'vpn']);
     expect(meta.resources).toEqual(['articles', 'assets']);
     expect(meta.limit).toBe(3);
+    expect(meta.complete).toBe(false);
+    expect(meta.reasons).toEqual(['index-build-cancelled']);
     expect(meta.scanned).toBe(0);
     expect(meta.returned).toBe(0);
-    expect(meta.timings).toMatchObject({ vendorMs: 0, requests: 0 });
-    expect(meta.indexAge).toBeNull();
-    expect(meta.index.state).toBe('refreshing');
     expect(meta.degraded.reason).toBe('body-not-indexed');
+    expect(meta.degraded.advice).toContain('not searched');
     // The SDK's closed union: no invented degraded reason value.
     expect(['no-index', 'vendor-only', 'body-not-indexed']).toContain(meta.degraded.reason);
-    expect(SEARCH_OUTPUT.safeParse(result.structuredContent).success).toBe(true);
+    expect(meta.errors).toEqual([]);
+    expect(meta.failed).toEqual([]);
+    expect(meta.timings).toEqual({ vendorMs: 0, localMs: expect.any(Number), requests: 0 });
+    expect(meta.scoreScope).toBe('per-resource');
+    expect(meta.bytes).toBe(2); // the serialised empty hits array
+    // No generation was scored, so the index status claims nothing about one.
+    expect(meta.index.state).toBe('refreshing');
+    expect(meta.index.staleness).toBe('unknown');
+    expect(meta.index.docs).toEqual({});
+    expect(meta.index.watermarks).toEqual({ articles: null, assets: null });
+    expect(meta.index.builtAt).toBeNull();
+    expect(meta.indexAge).toBeNull();
+  });
+
+  it('reports a cold index, not a refreshing one, when the request was already cancelled at entry', async () => {
+    // Nothing was awaited, so claiming a build in flight would be false: the state is simply cold.
+    const build = deferred<typeof RESULT>();
+    const handler = harness({ searchKnowledge: () => build.promise as never });
+    const controller = new AbortController();
+    controller.abort();
+    const result = await handler({ mode: 'search', query: 'reset', tier: 'index' }, request(controller.signal, async () => {}, 'tok-6'));
+    expect(result.structuredContent.meta.index.state).toBe('cold');
+    expect(result.structuredContent.meta.reasons).toEqual(['index-build-cancelled']);
+    expect(result.structuredContent.meta.timings.localMs).toBe(0);
+    build.resolve(RESULT);
   });
 
   it('waits, ticks and cancels on the http policy path when HUDU_SEARCH_TIER_POLICY is index', async () => {
@@ -220,18 +240,24 @@ describe('hudu_search progress while awaiting the body index', () => {
   });
 
   it('carries the token across the real stdio transport', async () => {
-    // The build must outlive the 2s first tick for a notification to cross the wire at all.
-    // Only the first request is slow: the build must outlive the 2s first tick, and the helper
-    // polls for the reply for 2.5s.
+    // The build must outlive the 2s first tick for a notification to cross the wire at all. Waiting
+    // on the condition (the first progress notification on the wire) instead of a fixed sleep keeps
+    // the test off a millisecond margin; the bound is generous and only fires on a real failure.
     let first = true;
+    type LiveSession = Awaited<ReturnType<typeof connect>>;
+    const seen: { session?: LiveSession } = {};
     const slow = (async () => {
       if (first) {
         first = false;
-        await new Promise((r) => setTimeout(r, 2_050));
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline && !seen.session?.notifications().some((n) => n.method === 'notifications/progress')) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
       }
       return Response.json([]);
     }) as unknown as (url: string) => Response;
     const session = await connect(slow);
+    seen.session = session;
     const result = await session.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index', limit: 1, snippetChars: 0 }, { progressToken: 'wire-1' });
     expect(result.isError).toBeUndefined();
     const ticks = session.notifications().filter((n) => n.method === 'notifications/progress');

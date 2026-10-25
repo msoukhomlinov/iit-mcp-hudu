@@ -58,12 +58,13 @@ async function awaitWithProgress<T>(
   token: ProgressToken | undefined,
   work: Promise<T>,
   log: { debug(msg: string, fields?: Record<string, unknown>): void },
-): Promise<{ aborted: false; value: T } | { aborted: true; elapsedMs: number }> {
+): Promise<{ aborted: false; value: T } | { aborted: true; elapsedMs: number; waited: boolean }> {
   const signal = req?.signal;
   const started = Date.now();
   if (signal?.aborted === true) {
     void work.catch(() => {});
-    return { aborted: true, elapsedMs: 0 };
+    // Nothing was awaited: the caller was already gone, so no build was started or joined.
+    return { aborted: true, elapsedMs: 0, waited: false };
   }
   const tick = (): void => {
     if (token === undefined) return;
@@ -87,8 +88,8 @@ async function awaitWithProgress<T>(
   }, PROGRESS_FIRST_TICK_MS);
   let onAbort: (() => void) | undefined;
   try {
-    const aborted = new Promise<{ aborted: true; elapsedMs: number }>((resolve) => {
-      onAbort = () => resolve({ aborted: true, elapsedMs: Date.now() - started });
+    const aborted = new Promise<{ aborted: true; elapsedMs: number; waited: boolean }>((resolve) => {
+      onAbort = () => resolve({ aborted: true, elapsedMs: Date.now() - started, waited: true });
       signal?.addEventListener('abort', onAbort, { once: true });
     });
     return await Promise.race([work.then((value) => ({ aborted: false as const, value })), aborted]);
@@ -122,7 +123,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
    * cancellation itself is named in `meta.reasons` (`index-build-cancelled`), and the advice points
    * at the immediate alternative instead of inviting a silent retry loop.
    */
-  const cancelledSearch = (query: string, scope: KnowledgeResource[], limit: number, elapsedMs: number) => {
+  const cancelledSearch = (query: string, scope: KnowledgeResource[], limit: number, elapsedMs: number, waited: boolean) => {
     const hits: unknown[] = [];
     // The SDK's own normalisation is not reachable here (no result was produced), so the terms are the
     // query's raw split rather than a claim about what the engine would have matched.
@@ -154,10 +155,11 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         scoreScope: 'per-resource',
         // Serialised size of the (empty) hits array, as the SDK reports it for a real answer.
         bytes: Buffer.byteLength(JSON.stringify(hits), 'utf8'),
-        // The SDK status() shape for a build in flight on an empty store: no generation was scored,
-        // so nothing about one is claimed.
+        // The SDK status() shape for an empty store: no generation was scored, so nothing about one
+        // is claimed. "refreshing" only when this call actually joined a build; a request already
+        // cancelled at entry awaited nothing, so the index is simply "cold".
         index: {
-          state: 'refreshing',
+          state: waited ? 'refreshing' : 'cold',
           builtAt: null,
           ageMs: null,
           staleness: 'unknown',
@@ -188,17 +190,17 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           .min(1)
           .optional()
           .describe(searchQueryDescription(ctx)),
-        resources: z.array(resourceEnum(searchableResources)).optional(),
+        resources: z.array(resourceEnum(searchableResources)).optional().describe('Default: deployment scope.'),
         topic: z.enum(HELP_TOPICS as [string, ...string[]]).optional(),
         limit: z.number().int().min(1).max(25).optional().describe('1-25, default 8; larger is a CONFIG_ERROR.'),
-        snippetChars: z.number().int().min(0).max(400).optional(),
-        company_id: z.number().int().positive().optional(),
+        snippetChars: z.number().int().min(0).max(400).optional().describe('0 = no snippet.'),
+        company_id: z.number().int().positive().optional().describe('One company.'),
         updated_since: z.string().optional(),
         min_score: z
           .number()
           .optional()
           .describe('0-100 floor. Dropped hits are NOT counted, so an empty result can be the floor: meta.scanned vs meta.returned, and the company_id/updated_since/scope filters exclude hits too.'),
-        exact_only: z.boolean().optional(),
+        exact_only: z.boolean().optional().describe('No fuzzy match.'),
         // Under `http` neither field is served: the tier decides whether a call may wait for a
         // corpus-wide walk, and the calling model can observe neither the index's warmth nor the
         // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead. This schema path
@@ -215,7 +217,9 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
                     ? '"vendor" only here: articles or assets are excluded, so "index", "auto" and refresh:true are refused (the walk is corpus-wide).'
                     : toolDefaultTier === 'auto'
                       ? 'Defaults to "auto": answers now, warming the body index in the background. "index" awaits a complete body-index answer.'
-                      : 'Defaults to "index": builds or awaits the body index, so answers are body-complete. "vendor" answers from Hudu alone.',
+                      : toolDefaultTier === 'vendor'
+                        ? 'Defaults to "vendor" (HUDU_SEARCH_TIER_POLICY): answers from Hudu search only, building or awaiting no body index. "index" awaits one; "auto" builds it in the background.'
+                        : 'Defaults to "index": builds or awaits the body index, so answers are body-complete. "vendor" answers from Hudu alone.',
                 ),
               refresh: z
                 .boolean()
@@ -355,7 +359,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         let result;
         if (searchWaits) {
           const awaited = await awaitWithProgress(req.mcpReq as RequestContext, progressTokenOf(req.mcpReq as RequestContext), work, log);
-          if (awaited.aborted) return cancelledSearch(args.query, (args.resources ?? defaultSearchScope) as KnowledgeResource[], args.limit ?? SEARCH_DEFAULT_LIMIT, awaited.elapsedMs);
+          if (awaited.aborted) return cancelledSearch(args.query, (args.resources ?? defaultSearchScope) as KnowledgeResource[], args.limit ?? SEARCH_DEFAULT_LIMIT, awaited.elapsedMs, awaited.waited);
           result = awaited.value;
         } else {
           result = await work;

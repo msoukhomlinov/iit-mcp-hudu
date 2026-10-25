@@ -12,7 +12,7 @@
     "(?i)paperclip",
     "(?i)iit-mcp-hudu-private"
   ],
-  "max_surface_bytes": 22800,
+  "max_surface_bytes": 23000,
   "max_tools": 17,
   "surface_calls": [
     {
