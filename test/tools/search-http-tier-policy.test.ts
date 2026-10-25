@@ -22,6 +22,9 @@ describe('hudu_search schema and the search tier', () => {
     const tool = await toolOf(session);
     expect(tool.inputSchema.properties).not.toHaveProperty('tier');
     expect(tool.inputSchema.properties).not.toHaveProperty('refresh');
+    // The http object is LOOSE, which is what lets a caller that still sends tier/refresh reach the
+    // policy path and be told they were overridden instead of being rejected by schema validation.
+    expect(tool.inputSchema.additionalProperties).toEqual({});
     // The schema and the prose agree: nothing invites a caller to await a body-index walk.
     expect(tool.description).not.toContain('Pass "index"');
     expect(tool.description).toContain('set server-side');
@@ -33,6 +36,9 @@ describe('hudu_search schema and the search tier', () => {
     const tool = await toolOf(session);
     expect(tool.inputSchema.properties).toHaveProperty('tier');
     expect(tool.inputSchema.properties).toHaveProperty('refresh');
+    // stdio serves every field, so it stays STRICT: an unknown argument is refused, and the served
+    // schema does not widen the same way the http one deliberately does.
+    expect(tool.inputSchema.additionalProperties).toBe(false);
     await session.close();
   });
 
@@ -54,7 +60,7 @@ describe('hudu_search schema and the search tier', () => {
     expect(result.isError).toBeUndefined();
     // The tool path tells the same story as the invoke path: the fields it sent were overridden by
     // deployment policy, so `meta.reasons` names it and the text says so.
-    expect(result.structuredContent.meta.reasons).toContain('tier-policy-override');
+    expect(result.structuredContent.meta.policyOverride).toEqual({ stripped: ['tier', 'refresh'], appliedTier: 'auto' });
     expect(result.content[0].text).toContain('overridden by the server search tier policy');
     // No walk completed before the answer: the index is still cold (or building in the background).
     // An awaited build would return "warm" — and at production corpus size it would return past the
@@ -69,7 +75,7 @@ describe('hudu_search schema and the search tier', () => {
     await session.close();
   });
 
-  it('answers from the vendor tier in well under a second while the index walk never settles', async () => {
+  it('answers from the vendor tier while the index walk never settles (deterministic, not a stopwatch)', async () => {
     // The incident is a corpus walk that HANGS, not a corpus that answers empty instantly: a stub
     // that settles at once would let a wrongly-awaited build return just as fast. The walk request
     // here never resolves, so only a path that refuses to await it can answer at all.
@@ -104,7 +110,7 @@ describe('hudu_search schema and the search tier', () => {
     const session = await connectForRequest('key-a', () => Response.json([]));
     const result = await session.call('hudu_search', { mode: 'search', query: 'reset', limit: 1, snippetChars: 0 });
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent.meta.reasons).not.toContain('tier-policy-override');
+    expect(result.structuredContent.meta.policyOverride).toBeUndefined();
     await new Promise((r) => setTimeout(r, 100));
     await session.close();
   });
@@ -116,7 +122,7 @@ describe('hudu_search schema and the search tier', () => {
       input: { query: 'reset', opts: { tier: 'index', refresh: true, limit: 1, snippetChars: 0 } },
     });
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent.result.meta.reasons).toContain('tier-policy-override');
+    expect(result.structuredContent.result.meta.policyOverride).toEqual({ stripped: ['tier', 'refresh'], appliedTier: 'auto' });
     expect(String(result.content[0].text)).toContain('overridden by the server search tier policy');
     await new Promise((r) => setTimeout(r, 100));
     await session.close();

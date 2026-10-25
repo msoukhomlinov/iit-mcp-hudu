@@ -31,14 +31,14 @@ export const SCOPED_INDEX_BUDGET_DIVISOR = 8;
  * would predict 90 + 4 x 64 = ~346 MB, which the trace never saw — hence "held", not "budget".
  * The peak under THIS budget (about 25 MiB of text on a 512 MiB heap, so ~190 MB on the same
  * arithmetic) has not been measured, so it stays an open follow-up. On the estimate a 10% share
- * keeps a small container under its ceiling, and the SDK reports `index-partial` honestly when the
+ * keeps a small container under its ceiling, and the SDK reports index state "partial" honestly when the
  * budget bites, so a short index degrades the answer instead of crashing the process.
  *
  * This is the pooled budget for the whole process, not for one client: a deployment serving several
  * credentials keeps up to {@link SCOPED_INDEX_BUDGET_DIVISOR} scoped clients warm, and each one owns
  * its own body index, so each is handed only {@link scopedIndexTextBudgetBytes}. The trade is
  * plain: a deployment holding several credentials builds shallower indexes (a scope that hits its
- * share reports `index-partial`), while a deployment that needs depth should raise the container
+ * share reports index state "partial"), while a deployment that needs depth should raise the container
  * memory or serve over stdio, where one long-lived credential owns the whole pool.
  */
 export function indexTextBudgetBytes(heapLimitBytes: number): number {
@@ -85,9 +85,10 @@ const INDEX_DOC_BYTES = 1024;
  * text budget, clamped to 1,500-50,000.
  *
  * ESTIMATE, and it bounds growth rather than proving a peak: the pairing says "this index may hold X
- * MiB of text and Y documents", not "the process cannot exceed its heap". A document past the cap is
- * simply not indexed — the index reports `index-partial` / truncated, as it already does when the
- * text budget bites. Resulting numbers: a 512 MiB container gets a 25 MiB pool and 3 MiB per scoped
+ * MiB of text and Y documents", not "the process cannot exceed its heap". The SDK upserts every
+ * walked document and applies the cap only AFTER the walk, so this bounds what the index RETAINS,
+ * not the walk's peak (the heap ceiling and the text budget's eviction bound that). A capped index
+ * reports index state "partial", as it already does when the text budget bites. Resulting numbers: a 512 MiB container gets a 25 MiB pool and 3 MiB per scoped
  * client, so 3,072 documents per scoped client (25,600 for the stdio pool); a 1 GiB heap ceiling
  * reaches the 64 MiB cap and 8 MiB per client, so 8,192 documents (50,000 for the stdio pool). All
  * ~3,300 articles of the production tenant fit at the 1 GiB figure. WHICH documents a small heap's

@@ -63,6 +63,10 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           // assert above passes it, and only the item-level check closes the credential-read gap.
           const searchPolicy = operation === SEARCH_KNOWLEDGE_OPERATION ? applySearchPolicyToInvoke(ctx, input ?? {}) : undefined;
           const tierOverridden = searchPolicy?.tierOverridden === true;
+          // The ORIGINAL input opts, before policy replaced tier/refresh: these are the fields the
+          // caller actually sent, so `meta.policyOverride.stripped` names exactly those.
+          const rawOpts = (input !== undefined && typeof input.opts === 'object' && input.opts !== null ? (input.opts as { tier?: unknown; refresh?: unknown }) : {});
+          const stripped = (['tier', 'refresh'] as const).filter((field) => rawOpts[field] !== undefined);
           const bag =
             searchPolicy !== undefined
               ? searchPolicy.bag
@@ -151,13 +155,13 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
               // and the narrowed hudu_search schema must not be bypassable into the old behaviour.
               if (credentialRefused(meta, (result as { hits?: readonly unknown[] }).hits)) return unauthorizedContent();
               const failures = sanitizeSearchFailures(meta.failed ?? meta.errors);
-              // A tier/refresh the deployment policy overrode is announced, never silently swapped.
-              const reasons = Array.isArray(meta.reasons) ? meta.reasons : [];
+              // A tier/refresh the deployment policy overrode is announced in its own field, never
+              // silently swapped and never mixed into `reasons` (which names BOUNDS that bit).
               result = {
                 ...(result as Record<string, unknown>),
                 meta: {
                   ...meta,
-                  ...(tierOverridden ? { reasons: [...reasons, 'tier-policy-override'] } : {}),
+                  ...(tierOverridden ? { policyOverride: { stripped, appliedTier: (bag.opts as { tier?: unknown } | undefined)?.tier } } : {}),
                   errors: failures,
                   failed: failures,
                   index: sanitizeIndexMeta(meta.index),
@@ -175,7 +179,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           }
           const simulated = result !== null && typeof result === 'object' && (result as { simulated?: unknown }).simulated === true;
           // A Markdown article read that lost content says so; a lossless read is byte-identical to before.
-          const overrideNote = tierOverridden ? ' The tier/refresh this call carried were overridden by the server search tier policy.' : '';
+          const overrideNote = tierOverridden ? ` The ${stripped.join('/')} field(s) this call carried were overridden by the server search tier policy.` : '';
           return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + overrideNote + (lossy.length ? lossyNote(lossy, operation) : ''), {
             simulated,
             operation,

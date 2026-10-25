@@ -267,7 +267,8 @@ caller's later search is body-aware without the first one awaiting a corpus-wide
 decides whether a call may *wait*, and the calling model can observe neither the index's warmth nor
 the walk's duration, so under `http` the tier is deployment policy, not a call parameter: the served
 schema offers neither `tier` nor `refresh`, and a request that still sends either is answered by the
-policy path. That path returns immediately only when the resolved policy is `auto` or `vendor`:
+policy path, which records the stripped fields in `meta.policyOverride`. That path returns
+immediately only when the resolved policy is `auto` or `vendor`:
 with `HUDU_SEARCH_TIER_POLICY=index` an `http` call still waits for a complete body-index answer,
 which is exactly that knob's documented purpose. `meta.index` reports the index state (`state`: `cold`,
 `refreshing`, `partial`, `warm`), and `meta.degraded` says when the answer was body-blind. Under
@@ -278,8 +279,17 @@ which is exactly that knob's documented purpose. `meta.index` reports the index 
 `http`, `index` under `stdio`): `vendor` forces the vendor tier and never builds a body index,
 `index` lets a call wait for a complete body-index answer. When `HUDU_SEARCH_RESOURCES` excludes
 articles or assets the policy is `vendor` and no index path runs, whatever the variable says.
-`HUDU_SEARCH_INDEX_TTL` (milliseconds, default `600000`) is the body index's freshness window: past
-it a search still answers from the index it has and rebuilds in the background.
+`HUDU_SEARCH_INDEX_TTL` (milliseconds, default `600000`) is the body index's freshness window. What
+the SDK does past it — answer from the stale index while rebuilding in the background — is
+UNVERIFIED here: this repo sets the knob (a test asserts it reaches the client) but has not measured
+the stale-rebuild behaviour.
+
+A request cancelled while a call waits on a body-index build answers instead of throwing.
+`meta.degraded.reason` stays `body-not-indexed` (the SDK's closed union), `meta.cancelled` records
+`{ during: "index-build", waited }`, and `meta.reasons` stays empty because no bound bit — the answer
+was cancelled, not bounded. Its `meta.index.state` is `cold` or `refreshing`; `cold` here means no
+generation was observed by THIS call, not that the process has no warm index (under `stdio` a warm
+index is possible, and this answer does not claim otherwise).
 
 The body index is bounded by TWO caps derived from the same heap estimate: a text budget and a
 document cap. The text budget is a tenth of the process's V8 heap ceiling, clamped to 8-64 MiB;
@@ -302,10 +312,12 @@ reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that over
 container indexes up to 3,072 documents per scoped client (25,600 for the stdio pool), a 1 GiB heap
 ceiling 8,192 per client (50,000 for the pool). The per-document cost is an ESTIMATE (~1 KB of record
 plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
-peak. Documents past the cap are simply not indexed — the freshest are kept and the index reports
-`index-partial` / truncated exactly as it already does when the text budget bites. All ~3,300 articles
-of the production tenant fit at the 1 GiB figure; what the cap truncates first on a small heap is
-title-only assets, which cost a record without carrying text.
+peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
+`maxDocs` bounds the RETAINED index, not the build-time peak; the peak during a walk is bounded by
+the heap ceiling and the text budget's eviction, not by `maxDocs`. A capped index reports index state
+`partial`, exactly as it already does when the text budget bites. All ~3,300 articles of the
+production tenant fit at the 1 GiB figure; what the cap truncates first on a small heap is title-only
+assets, which cost a record without carrying text.
 
 FOLLOW-UP (open): measure the peak under this budget in a 512 MiB container. The only measurement so
 far is the old 64 MiB profile's ~252 MB peak (issue #51's trace).

@@ -62,7 +62,8 @@ describe('hudu_read of operations.searchKnowledge while the index build waits', 
       const result = await call;
       expect(result.isError).toBeUndefined();
       expect(result.structuredContent.operation).toBe('operations.searchKnowledge');
-      expect(result.structuredContent.result.meta.reasons).toEqual(['index-build-cancelled']);
+      expect(result.structuredContent.result.meta.reasons).toEqual([]);
+      expect(result.structuredContent.result.meta.cancelled).toEqual({ during: 'index-build', waited: true });
       expect(result.structuredContent.result.meta.complete).toBe(false);
       expect(result.structuredContent.result.meta.index.state).toBe('refreshing');
       expect(result.structuredContent.result.hits).toEqual([]);
@@ -78,8 +79,10 @@ describe('hudu_read of operations.searchKnowledge while the index build waits', 
     controller.abort();
     const result = await handler(ARGS, request(controller.signal, async () => {}, 'tok-gone'));
     expect(fetches()).toBe(0);
-    expect(result.structuredContent.result.meta.reasons).toEqual(['index-build-cancelled']);
-    // Nothing was joined, so the index is simply cold.
+    expect(result.structuredContent.result.meta.reasons).toEqual([]);
+    expect(result.structuredContent.result.meta.cancelled).toEqual({ during: 'index-build', waited: false });
+    // Nothing was joined, so this call observed no generation: the state is "cold", which does not
+    // claim the process has no warm stdio index.
     expect(result.structuredContent.result.meta.index.state).toBe('cold');
     expect(result.structuredContent.result.meta.timings.localMs).toBe(0);
   });

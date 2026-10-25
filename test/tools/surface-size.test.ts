@@ -4,7 +4,7 @@
  * measured value plus a small margin; lower them when a lever lands, never raise them to go green.
  *
  * The budget is a property of the SHIPPED server, so it is asserted for every supported
- * configuration, not just the default one: {default, auto, vendor} x {stdio, http}. A deployment
+ * configuration, not just the default one: {default, auto, index, vendor} x {stdio, http}. A deployment
  * that sets HUDU_SEARCH_TIER_POLICY=auto switches the tier sentences in `hudu_search`, and that
  * prose must fit the same ceiling as the default.
  *
@@ -21,12 +21,13 @@ afterEach(() => vi.unstubAllGlobals());
  * more tools than the read-only one, so it gets its own (larger) ceiling.
  *
  * Measured matrix (write / read-only / hudu_search, UTF-8 bytes of the served `tools/list` JSON):
- *   stdio default  27,460 / 22,732 / 2,621      http default  27,310 / 22,582 / 2,471
- *   stdio auto     27,496 / 22,768 / 2,657      http auto     27,310 / 22,582 / 2,471
- *   stdio index    27,460 / 22,732 / 2,621      http index    27,199 / 22,471 / 2,360
- *   stdio vendor   27,511 / 22,783 / 2,672      http vendor   27,212 / 22,484 / 2,373
- * The binding configuration is `stdio` + `vendor`: 217 B of read-only headroom and 228 B of
- * `hudu_search` headroom (`MIN_HEADROOM` below).
+ *   stdio default  27,463 / 22,735 / 2,624      http default  27,310 / 22,582 / 2,471
+ *   stdio auto     27,499 / 22,771 / 2,660      http auto     27,310 / 22,582 / 2,471
+ *   stdio index    27,463 / 22,735 / 2,624      http index    27,199 / 22,471 / 2,360
+ *   stdio vendor   27,514 / 22,786 / 2,675      http vendor   27,212 / 22,484 / 2,373
+ * The binding configuration is `stdio` + `vendor`: 214 B of read-only headroom and 225 B of
+ * `hudu_search` headroom (`MIN_HEADROOM` below). `stdio` sizes carry the strict object's
+ * `additionalProperties: false`; `http` carries the loose `{}` that lets an override be reported.
  * (`http` default and `auto` coincide: `auto` is already that transport's tier.)
  */
 const BUDGET_WRITE = 28_000;

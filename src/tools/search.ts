@@ -12,10 +12,15 @@ import { credentialRefused, sanitizeIndexMeta, sanitizeSearchFailures } from './
 import { adjustHelpText, adjustedSearchModes, searchQueryDescription, searchToolDescription } from './search-prose.js';
 
 /** The first tick is deferred: a fast build should not pay for a notification, but 2s of silence reads as a hang. */
-const PROGRESS_FIRST_TICK_MS = 2_000;
+export const PROGRESS_FIRST_TICK_MS = 2_000;
 
-/** How often a waiting call reports elapsed time after that. A cold walk takes minutes, not seconds. */
-const PROGRESS_TICK_MS = 10_000;
+/**
+ * How often a waiting call reports elapsed time after that. #52 requires intervals of at most 10 s.
+ * The value is 7 s because `setInterval` never fires EARLY: at a 10 s cadence the gap from the 2 s
+ * first tick to the next notification is 10 s or slightly more, which sits ON the bound rather than
+ * inside it. 7 s keeps every gap (2 s, then 7 s) under the bound with room for timer jitter.
+ */
+export const PROGRESS_TICK_MS = 7_000;
 
 /** The tool's `limit` default, stated in prose: 1-25, default 8. */
 export const SEARCH_DEFAULT_LIMIT = 8;
@@ -125,7 +130,7 @@ export interface CancelledSearch {
  * The caller's request was cancelled while the body index was still building, so no body search
  * ran. `hits: []` with `meta.complete: false` and the in-vocabulary `meta.degraded` reason
  * (`body-not-indexed`, because that is factually what was not searched) says exactly that; the
- * cancellation itself is named in `meta.reasons` (`index-build-cancelled`), and the advice names the
+ * cancellation itself is recorded in `meta.cancelled`, and the advice names the
  * alternative the CALLER's transport actually serves instead of inviting a silent retry loop:
  * `tier:"vendor"` under stdio, a retry under http (where no tier field is served and the background
  * build makes a later search body-backed).
@@ -160,8 +165,8 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
   // quiet network. Transport-aware: the two paths serve different fields and different next steps.
   const text =
     transport === 'http'
-      ? 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned. The build this call started continues in the background, still issuing Hudu requests. DEGRADED (index-build-cancelled): retry — the body index keeps building in the background, so a later search is body-backed.'
-      : 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned. The build this call started continues in the background, still issuing Hudu requests. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.';
+      ? 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned. The build this call started continues in the background, still issuing Hudu requests. DEGRADED (body-not-indexed): retry — the body index keeps building in the background, so a later search is body-backed.'
+      : 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned. The build this call started continues in the background, still issuing Hudu requests. DEGRADED (body-not-indexed): retry, or ask for tier:"vendor" for an immediate body-blind answer.';
   // The timings are stated as what they are, not as a quiet network: `vendorMs` is 0 because no
   // vendor-tier scoring happened, the wait is `localMs`, and the request count is NOT tracked for a
   // cancelled wait (the SDK counts requests inside a call it completes; this one never completed).
@@ -169,7 +174,8 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
     (transport === 'http'
       ? 'The request was cancelled while the body index built, so article bodies were not scored. Retry: the body index keeps building in the background, so a later search is body-backed.'
       : 'The request was cancelled while the body index built, so article bodies were not scored. Retry, or use tier:"vendor" for an immediate body-blind answer.') +
-    ' timings.localMs is the local body-index wait this call spent (the wait is local time, so it is reported there); timings.vendorMs is 0 because no vendor-tier scoring ran; request counts are NOT TRACKED for a cancelled wait, so timings.requests is not a count of Hudu requests.';
+    ' timings.localMs is the local body-index wait this call spent (the wait is local time, so it is reported there); timings.vendorMs is 0 because no vendor-tier scoring ran; request counts are NOT TRACKED for a cancelled wait, so timings.requests is not a count of Hudu requests.' +
+    ' meta.cancelled records this cancellation ({ during: "index-build", waited }); meta.reasons stays empty because no bound bit — the answer was cancelled, not bounded.';
   return {
     text,
     data: {
@@ -186,9 +192,12 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         returned: 0,
         limit,
         complete: false,
-        reasons: ['index-build-cancelled'],
-        // `reason` stays inside the SDK's closed union (`no-index | vendor-only | body-not-indexed`);
-        // the cancellation-specific fact is carried by `reasons`, which is an open string array.
+        // No BOUND bit: `reasons` is the SDK's list of bounds that bit, and a cancellation is an
+        // event, not a bound. The cancellation has its own field (`meta.cancelled`), so the answer
+        // stays truthful without inventing a reason code.
+        reasons: [],
+        cancelled: { during: 'index-build', waited },
+        // `reason` stays inside the SDK's closed union (`no-index | vendor-only | body-not-indexed`).
         degraded: {
           reason: 'body-not-indexed',
           advice,
@@ -197,7 +206,7 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         failed: [],
         // `localMs` is the SDK's LOCAL time, not vendor time. Nothing was scored here, but the
         // local body-index wait IS local time this call spent, so it is reported as such rather than
-        // zeroed; `meta.reasons` names it (`index-build-cancelled`). `vendorMs` is 0 because no
+        // zeroed; `meta.cancelled` records it. `vendorMs` is 0 because no
         // vendor tier was scored. `requests` cannot be honest: the SDK counts a completed call's
         // requests, this one never completed, and the walk it started keeps issuing requests in the
         // background, so the field stays at its only representable value (the type requires a
@@ -208,8 +217,9 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         bytes: Buffer.byteLength(JSON.stringify(hits), 'utf8'),
         // No generation was scored, so nothing about one is claimed — not even a null builtAt/ageMs
         // pair ("no generation recorded" is said by their absence). "refreshing" only when this
-        // call actually joined a build; a request cancelled before any work started awaited
-        // nothing, so the index is simply "cold".
+        // call actually joined a build. "cold" is reported when this call observed no generation,
+        // which includes the already-cancelled entry: a WARM stdio index is possible in the process,
+        // and this answer does not claim otherwise.
         index,
         indexAge: null,
       },
@@ -230,12 +240,11 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
 export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
   const { ops, searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy, log } = ctx;
-  server.registerTool(
-    'hudu_search',
-    {
-      title: 'Search Hudu',
-      description: searchToolDescription(ctx),
-      inputSchema: z.object({
+  // Under `http` the tier/refresh fields are not served; the object stays LOOSE there so a caller
+  // that still sends one reaches the handler and is TOLD it was overridden (meta.policyOverride)
+  // instead of being rejected before the policy path can answer. Under `stdio` every field is
+  // served, so the object stays STRICT: an unknown argument is refused, never silently ignored.
+  const inputFields = {
         mode: z
           .enum(['search', 'help', 'resources'])
           .default('search'),
@@ -264,12 +273,11 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         exact_only: z.boolean().optional().describe('No fuzzy match.'),
         // Under `http` neither field is served: the tier decides whether a call may wait for a
         // corpus-wide walk, and the calling model can observe neither the index's warmth nor the
-        // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead. The object is
-        // LOOSE, so a caller that sends either field anyway still reaches the handler, which reports
-        // it as overridden (`meta.reasons` gains `tier-policy-override`) exactly as the invoke path does.
-        // That looseness is DELIBERATE and documented (CHANGELOG, "Unreleased"): tightening this to
-        // `.strict()` would reject the field before the handler could report `tier-policy-override`,
-        // which is the documented answer for a caller whose schema still sends one.
+        // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead. The http
+        // object is LOOSE so a caller that sends either field anyway still reaches the handler,
+        // which reports it as overridden (`meta.policyOverride`) exactly as the invoke path does.
+        // That looseness is DELIBERATE and http-only (CHANGELOG, "Unreleased"); `stdio` keeps the
+        // object strict because it serves both fields and has nothing to report.
         ...(searchTierIsPolicy
           ? {}
           : {
@@ -292,7 +300,14 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
                   'true rebuilds the local body index (stdio only; minutes; no Hudu change).',
                 ),
             }),
-      }).loose(),
+  };
+  server.registerTool(
+    'hudu_search',
+    {
+      title: 'Search Hudu',
+      description: searchToolDescription(ctx),
+      // http: loose (report an override rather than reject the field); stdio: strict (all fields served).
+      inputSchema: searchTierIsPolicy ? z.object(inputFields).loose() : z.object(inputFields).strict(),
       outputSchema: SEARCH_OUTPUT,
       // readOnlyHint stays true: the hint describes the TARGET SYSTEM (Hudu), which this tool never
       // writes. `refresh` rebuilds this process's local body index — a cache — and changes nothing in
@@ -386,9 +401,11 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
       const refresh = searchTierIsPolicy ? false : (args as { refresh?: boolean }).refresh;
       // Under `http` the served schema omits both fields, but the object is loose: a client may still
       // send them. They are deployment policy, so they are ignored — and SAID to be, with the same
-      // `tier-policy-override` reason the invoke path reports, never stripped in silence.
+      // `meta.policyOverride` the invoke path reports, never stripped in silence.
       const overridden =
         searchTierIsPolicy && ((args as { tier?: unknown }).tier !== undefined || (args as { refresh?: unknown }).refresh !== undefined);
+      // Which of the two fields the caller actually sent, for `meta.policyOverride.stripped`.
+      const stripped = (['tier', 'refresh'] as const).filter((field) => (args as Record<string, unknown>)[field] !== undefined);
       // The body index is corpus-wide and cannot be scoped. When the deployment excludes a corpus
       // resource, NO index-backed path may run: an explicit "index" or "auto" tier, or `refresh`
       // (which forces a full rebuild), would each walk the excluded endpoint. Refuse them rather
@@ -458,16 +475,16 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         const failedNote = failures.length
           ? ` ${failures.length} resource(s) unavailable: ${failures.map((f) => f.resource ?? 'unknown').join(', ')}.`
           : '';
-        const overrideNote = overridden ? ' The tier/refresh this call carried were overridden by the server search tier policy.' : '';
+        const overrideNote = overridden ? ` The ${stripped.join('/')} field(s) this call carried were overridden by the server search tier policy.` : '';
         return ok(`Found ${result.hits.length} ranked match(es)${incomplete}.${bodyBlind}${failedNote}${overrideNote}`, {
           mode: 'search',
           query: args.query,
           hits: result.hits,
           meta: {
             ...result.meta,
-            // The SDK lists every bound that bit in `reasons` independent of `complete`, so an
-            // override belongs there and does not make the answer incomplete.
-            ...(overridden ? { reasons: [...result.meta.reasons, 'tier-policy-override'] } : {}),
+            // `reasons` is the SDK's list of BOUNDS that bit; a deployment policy override is not a
+            // bound, so it is reported in its own field and does not touch `reasons` or `complete`.
+            ...(overridden ? { policyOverride: { stripped, appliedTier: tier } } : {}),
             errors: failures,
             failed: failures,
             index: sanitizeIndexMeta(result.meta.index),

@@ -445,7 +445,7 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     profile: 'agent',
     cache: 'recommended',
     // The body index's text budget follows the process's own heap ceiling, so a small container
-    // degrades to `index-partial` instead of dying at the V8 heap limit (#51). This value is the
+    // reports index state "partial" instead of dying at the V8 heap limit (#51). This value is the
     // PROCESS-wide pool: the scoped clients below each take a share of it, since each materialises
     // its own index. The parent client keeps the pool because under `stdio` it is the only client.
     // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
@@ -453,8 +453,11 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
       maxIndexTextBytes: poolTextBytes,
       // The doc cap comes from the SAME pool: the text budget bounds extracted text only, while a
       // document whose text it evicted keeps its record and postings, and the SDK's own default is
-      // 50,000 documents. One document per KiB of text budget, so the two caps grow together and a
-      // document past the cap is simply not indexed (`index-partial`, as when the text budget bites).
+      // 50,000 documents. One document per KiB of text budget, so the two caps grow together.
+      // HONEST SCOPE: the SDK upserts every walked document and applies this cap only AFTER the walk,
+      // so `maxDocs` bounds the RETAINED index, not the build peak; the peak during a walk is bounded
+      // by the heap ceiling and the text budget's eviction (an estimate, not a proof), and a capped
+      // index reports index state "partial".
       maxDocs: poolMaxDocs,
       ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL }),
     },

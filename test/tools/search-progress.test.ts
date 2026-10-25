@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { createLogger } from '../../src/logger.js';
-import { registerSearchTool } from '../../src/tools/search.js';
+import { PROGRESS_TICK_MS, registerSearchTool } from '../../src/tools/search.js';
 import type { ToolContext } from '../../src/tools/context.js';
 import { connect } from '../helpers/mcp-session.js';
 
@@ -60,7 +60,7 @@ function request(signal: AbortSignal, notify: (n: Notify) => Promise<void>, toke
 }
 
 describe('hudu_search progress while awaiting the body index', () => {
-  it('ticks first at 2s and then every 10s when the caller sent a progress token', async () => {
+  it('ticks first at 2s and then every 7s (at most 10s apart) when the caller sent a progress token', async () => {
     vi.useFakeTimers();
     try {
       const build = deferred<typeof RESULT>();
@@ -73,9 +73,13 @@ describe('hudu_search progress while awaiting the body index', () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(received).toHaveLength(1);
       expect(received[0]!.params!.progress).toBe(2);
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(7_000);
       expect(received).toHaveLength(2);
-      expect(received[1]!.params!.progress).toBe(12);
+      expect(received[1]!.params!.progress).toBe(9);
+      // #52's bound is "at intervals of at most 10 s". `setInterval` never fires EARLY, so the
+      // cadence constant itself must sit below the bound; the behavioural advance above proves the
+      // 2 s first tick and the 7 s interval, and this pins the constant the scheduler uses.
+      expect(PROGRESS_TICK_MS).toBeLessThanOrEqual(10_000);
       build.resolve(RESULT);
       await call;
       const params = received[0]!.params!;
@@ -153,7 +157,7 @@ describe('hudu_search progress while awaiting the body index', () => {
       const call = handler({ mode: 'search', query: 'reset', tier: 'vendor', refresh: true }, request(new AbortController().signal, async (n) => received.push(n), 'tok-refresh'));
       await vi.advanceTimersByTimeAsync(2_000);
       expect(received).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(7_000);
       expect(received).toHaveLength(2);
       build.resolve(RESULT);
       await call;
@@ -191,7 +195,8 @@ describe('hudu_search progress while awaiting the body index', () => {
     const result = await call;
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent.meta.degraded.reason).toBe('body-not-indexed');
-    expect(result.structuredContent.meta.reasons).toEqual(['index-build-cancelled']);
+    expect(result.structuredContent.meta.reasons).toEqual([]);
+    expect(result.structuredContent.meta.cancelled).toEqual({ during: 'index-build', waited: true });
     expect(result.structuredContent.meta.complete).toBe(false);
     expect(result.structuredContent.hits).toEqual([]);
     expect(result.content[0].text).toContain('DEGRADED');
@@ -214,7 +219,8 @@ describe('hudu_search progress while awaiting the body index', () => {
     expect(meta.resources).toEqual(['articles', 'assets']);
     expect(meta.limit).toBe(3);
     expect(meta.complete).toBe(false);
-    expect(meta.reasons).toEqual(['index-build-cancelled']);
+    expect(meta.reasons).toEqual([]);
+    expect(meta.cancelled).toEqual({ during: 'index-build', waited: true });
     expect(meta.scanned).toBe(0);
     expect(meta.returned).toBe(0);
     expect(meta.degraded.reason).toBe('body-not-indexed');
@@ -285,7 +291,8 @@ describe('hudu_search progress while awaiting the body index', () => {
     const result = await handler({ mode: 'search', query: 'reset', tier: 'index' }, request(controller.signal, async () => {}, 'tok-6'));
     expect(started).toBe(0);
     expect(result.structuredContent.meta.index.state).toBe('cold');
-    expect(result.structuredContent.meta.reasons).toEqual(['index-build-cancelled']);
+    expect(result.structuredContent.meta.reasons).toEqual([]);
+    expect(result.structuredContent.meta.cancelled).toEqual({ during: 'index-build', waited: false });
     expect(result.structuredContent.meta.timings.localMs).toBe(0);
     build.resolve(RESULT);
   });
@@ -339,7 +346,8 @@ describe('hudu_search progress while awaiting the body index', () => {
       expect(received).toHaveLength(1);
       controller.abort();
       const result = await call;
-      expect(result.structuredContent.meta.reasons).toEqual(['index-build-cancelled']);
+      expect(result.structuredContent.meta.reasons).toEqual([]);
+      expect(result.structuredContent.meta.cancelled).toEqual({ during: 'index-build', waited: true });
       build.resolve(RESULT);
     } finally {
       vi.useRealTimers();
