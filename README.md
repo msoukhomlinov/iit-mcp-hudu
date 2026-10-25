@@ -28,7 +28,7 @@ same reachability as the existing ungated `hudu_get_asset_layout` tool. The tool
 `CORE_TOOLS` plus `hudu_list`, which is this server's own; a future SDK upgrade must not re-add the
 four old names.
 
-These tools run on node-hudu 0.16.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
+These tools run on node-hudu 0.17.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -276,17 +276,20 @@ those operations take no format. Rules a caller needs:
   `<h1>`-`<h6>`, `<table>`, lists, `<pre>`, `<blockquote>`, `<hr>`, Hudu's `mce-accordion`), in which case
   it is sent as HTML. Re-read an article through `articles.get` before editing it.
 - A Markdown write is refused when the stored article holds something the dialect cannot express
-  (for example an inline `<svg>`); send HTML to keep it. The SDK's loss guard runs on every write.
+  (for example a `<video>`); send HTML to keep it. The SDK's loss guard runs on every write.
 - Prefer Markdown (or editor-native HTML): Hudu reshapes API-written HTML on the next UI save (h5/h6 flattened, `small`/`abbr`/`q`/`section`/`aside` unwrapped, `thead` removed, an unknown callout type becomes info).
 - `articles.getSection` / `articles.patchSection` read or edit one section as Markdown, with dry-run.
-- A Markdown read can be incomplete: anything the dialect cannot express (an inline `<svg>`, say) comes
-  back as plain text. `hudu_read` (`articles.get` / `getContext` / `resolve`) and
+- A Markdown read can be incomplete: anything the dialect cannot express is dropped or reduced
+  (`<video>` and `<script>` are dropped entirely). `hudu_read` (`articles.get` / `getContext` / `resolve`) and
   `hudu_get_article_context` then set `markdown_lossy: true` (with `markdown_lossy_codes`, the SDK's
   `diffArticleRoundTrip` content-loss codes) and add one sentence to the result text; fetch the stored
   HTML with `hudu_fetch_many` (`{items:[{resource:"articles", id}]}`) to see the full body. The read is one
-  fetch with HTML forced and converted locally (so there is no second request); a caller's own
+  fetch: the SDK converts the body and reports the loss on the record (no second request); a caller's own
   `opts.format: "html"` returns the stored HTML untouched with no flag. Callouts, accordions, task
-  lists and Mermaid round-trip cleanly and are never flagged; a lossless read is unchanged.
+  lists, Mermaid, inline `<svg>` and `<iframe>` round-trip cleanly and are never flagged; a lossless read is unchanged.
+  A body that converts to nothing (only `<video>`, `<input>`, `<p></p>`) reads as `content: ""` with
+  `markdown_lossy_codes` containing `ROUNDTRIP_BODY_EMPTY` (it used to fail with `CONVERSION_EMPTY_OUTPUT`).
+  The SDK fails a Markdown read with `CONFIG_ERROR` when the Markdown form exceeds 256 KiB.
 
 ## SDK behaviour (0.12.0)
 
@@ -364,7 +367,7 @@ pnpm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.16.0`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.17.0`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `pnpm install --frozen-lockfile`.
 
 ## Deployment

@@ -3,6 +3,9 @@
 ## Unreleased
 
 - Fix: the 401 shape annotation is bound to the call (AsyncLocalStorage) instead of module-level state written per request, so under http a 401 never carries another concurrent request's credential anomalies (#16).
+- Dependency: node-hudu 0.16.0 -> 0.17.0. Plan hash re-stamped to `1ad5e23b...`; operation set unchanged (236).
+- Markdown article reads take their loss signal from the SDK: node-hudu now attaches `content_loss` to the record on a Markdown read, so the server no longer forces HTML and converts and diffs the body itself. `markdown_lossy` / `markdown_lossy_codes` are unchanged; the per-record `content_loss` is lifted into them and not passed through.
+- Behaviour change: inline `<svg>` and `<iframe>` now survive Markdown reads and writes (they were flagged lossy and writes over them were refused). A body that converts to nothing reads as an empty body flagged `ROUNDTRIP_BODY_EMPTY` instead of failing.
 
 ## 0.3.0
 

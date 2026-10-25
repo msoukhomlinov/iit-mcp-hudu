@@ -33,4 +33,4 @@ export { MAX_SCOPED_CLIENTS, ScopedClientCache, createMcpServerFactory } from '.
  * it against the installed `CATALOG_PLAN_HASH`, so the upgrade fails CI instead of quietly shipping
  * a tool surface that no longer describes the SDK behind it.
  */
-export const BUILT_AGAINST_PLAN_HASH = 'fba0aa4600d095e3a68e3cb25b55e78a9b9023be1f3b4e6f78fb8644e847ed2d';
+export const BUILT_AGAINST_PLAN_HASH = '1ad5e23b9c140e8f9cf60ac710dd508fc1109e86b9a0620b2d0925f16b11d7b8';

@@ -26,7 +26,7 @@
   "capabilitiesManifest": "capabilities.json",
   "sdk": {
     "package": "node-hudu",
-    "versionRange": "0.16.0"
+    "versionRange": "0.17.0"
   },
   "vendorExtensions": false
 }
