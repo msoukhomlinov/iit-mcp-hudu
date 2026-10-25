@@ -11,6 +11,78 @@ import { HELP_TOPICS, SEARCH_OUTPUT, resourceEnum } from './schemas.js';
 import { credentialRefused, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
 import { adjustHelpText, adjustedSearchModes, searchQueryDescription, searchToolDescription } from './search-prose.js';
 
+/** How often a waiting call reports elapsed time. A cold walk takes minutes, not seconds. */
+const PROGRESS_TICK_MS = 10_000;
+
+/** A caller's progress token: the spec allows a string or a number, nothing else. */
+type ProgressToken = string | number;
+
+/** The request-scoped fields a waiting call needs: the caller's token, its abort signal, its notify. */
+type RequestContext = {
+  _meta?: Record<string, unknown>;
+  signal?: AbortSignal;
+  notify: (notification: { method: string; params?: Record<string, unknown> }) => Promise<void>;
+};
+
+/**
+ * The progress token this request carried, if it asked for progress at all.
+ *
+ * A `null`, an object or an absent `_meta` means the caller did not ask: no tick is ever sent, so a
+ * client that never opted in sees no notifications.
+ */
+function progressTokenOf(req: RequestContext | undefined): ProgressToken | undefined {
+  const token = req?._meta?.progressToken;
+  return typeof token === 'string' || typeof token === 'number' ? token : undefined;
+}
+
+/**
+ * Await `work`, reporting elapsed whole seconds to the caller's progress token while it runs.
+ *
+ * Time is the only honest measure here: the corpus walk's page count is not observable through the
+ * SDK, so the notification carries no `total` and no percentage. A rejected `notify` is swallowed —
+ * a client that closed its stream must not fail the search.
+ *
+ * Cancellation: the SDK's walk has no abort hook, so an aborted request stops AWAITING the walk (the
+ * handler returns its honest degraded answer) rather than aborting the walk itself. `work` keeps
+ * running in this process; its result is discarded and its rejection is observed so it cannot
+ * surface as an unhandled rejection.
+ */
+async function awaitWithProgress<T>(
+  req: RequestContext | undefined,
+  token: ProgressToken | undefined,
+  work: Promise<T>,
+  log: { debug(msg: string, fields?: Record<string, unknown>): void },
+): Promise<{ aborted: false; value: T } | { aborted: true }> {
+  const signal = req?.signal;
+  if (signal?.aborted === true) {
+    void work.catch(() => {});
+    return { aborted: true };
+  }
+  const started = Date.now();
+  const tick = (): void => {
+    if (token === undefined) return;
+    const elapsed = Math.floor((Date.now() - started) / 1000);
+    void req
+      ?.notify({ method: 'notifications/progress', params: { progressToken: token, progress: elapsed, message: `body index build: ${elapsed}s elapsed` } })
+      .catch((err: unknown) => log.debug('progress notification rejected; search continues', { error: err instanceof Error ? err.message : String(err) }));
+  };
+  // The first tick is immediate: waiting with no signal at all for 10s reads as a hang.
+  tick();
+  const timer = setInterval(tick, PROGRESS_TICK_MS);
+  let onAbort: (() => void) | undefined;
+  try {
+    const aborted = new Promise<{ aborted: true }>((resolve) => {
+      onAbort = () => resolve({ aborted: true });
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+    return await Promise.race([work.then((value) => ({ aborted: false as const, value })), aborted]);
+  } finally {
+    clearInterval(timer);
+    if (onAbort !== undefined) signal?.removeEventListener('abort', onAbort);
+    void work.catch(() => {});
+  }
+}
+
 // hudu_search — ONE self-describing search tool with three modes (search | help | resources).
 // Mode discipline by construction, not by hope: a field the selected mode cannot honour is a
 // CONFIG_ERROR naming the fields it does honour, never a silent ignore, and each mode returns a
@@ -23,39 +95,61 @@ import { adjustHelpText, adjustedSearchModes, searchQueryDescription, searchTool
 // for programmatic callers; a TOOL under stdio must not hand an agent a degraded answer by default.
 export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
-  const { ops, searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
+  const { ops, searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy, log } = ctx;
+  /**
+   * The answer a cancelled wait gets: a complete, honest DEGRADED result, never a throw.
+   *
+   * The caller's request was cancelled while the body index was still building, so no body search
+   * ran. `hits: []` with `meta.complete: false` and a named `meta.degraded` reason says exactly that,
+   * and points at the immediate alternative instead of inviting a silent retry loop.
+   */
+  const cancelledSearch = (query: string, scope: KnowledgeResource[]) =>
+    ok(`Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.`, {
+      mode: 'search',
+      query,
+      resources: scope,
+      hits: [],
+      meta: {
+        mode: 'search',
+        complete: false,
+        reasons: ['cancelled'],
+        degraded: {
+          reason: 'index-build-cancelled',
+          advice: 'The request was cancelled while the body index built, so article bodies were not searched. Retry, or use tier:"vendor" for an immediate body-blind answer.',
+        },
+        failed: [],
+        errors: [],
+        index: { state: 'cold' },
+        scanned: 0,
+        returned: 0,
+      },
+    });
   server.registerTool(
     'hudu_search',
     {
-      title: 'Search Hudu (search | help | resources)',
+      title: 'Search Hudu',
       description: searchToolDescription(ctx),
       inputSchema: z.object({
         mode: z
           .enum(['search', 'help', 'resources'])
           .default('search')
-          .describe('Which mode to run. Default "search" (the query runs; nothing else is needed). "help" returns how to use this tool. "resources" returns what is searchable. A field the selected mode cannot honour is a CONFIG_ERROR naming the fields it does honour - never silently ignored.'),
+          .describe('Which mode to run; default "search".'),
         query: z
           .string()
           .min(1)
           .optional()
           .describe(searchQueryDescription(ctx)),
-        resources: z
-          .array(resourceEnum(searchableResources))
+        resources: z.array(resourceEnum(searchableResources)).optional(),
+        topic: z.enum(HELP_TOPICS as [string, ...string[]]).optional(),
+        limit: z.number().int().min(1).max(25).optional().describe('1-25, default 8; larger is a CONFIG_ERROR.'),
+        snippetChars: z.number().int().min(0).max(400).optional(),
+        company_id: z.number().int().positive().optional(),
+        updated_since: z.string().optional(),
+        min_score: z
+          .number()
           .optional()
-          .describe(
-            `mode="search" only. Which resources to search; default ${JSON.stringify(defaultSearchScope)}. ` +
-              `The resources this deployment's credential may read (HUDU_SEARCH_RESOURCES), from the SDK's searchable set: ${searchableResources.join(', ')}.`,
-          ),
-        topic: z
-          .enum(HELP_TOPICS as [string, ...string[]])
-          .optional()
-          .describe('mode="help" only. Which help section to return (default "core"; "all" adds query syntax and scoring). Rejected in the other modes.'),
-        limit: z.number().int().min(1).max(25).optional().describe('mode="search" only. Ranked hits: 1-25, default 8. A larger value is a CONFIG_ERROR, never clamped.'),
-        snippetChars: z.number().int().min(0).max(400).optional().describe('mode="search" only. Snippet characters per hit: 0-400, default 200, 0 = no snippet.'),
-        company_id: z.number().int().positive().optional().describe('mode="search" only. Scope the scan to one company.'),
-        updated_since: z.string().optional().describe('mode="search" only. ISO 8601; only records updated at or after it.'),
-        min_score: z.number().optional().describe('mode="search" only. 0-100 score floor: hits below the floor are left out of the result, and NO count of them is reported - an empty result can be the floor, not absence. meta.scanned (candidates scored before the floor) and meta.returned separate absence from exclusion: scanned 0 = nothing scored at all; scanned > 0 with returned 0 = candidates scored but none returned - below the floor, or excluded by the company_id, updated_since or scope filters (lower or drop min_score, or relax those filters, to see what was left out).'),
-        exact_only: z.boolean().optional().describe('mode="search" only. true disables fuzzy matching, still ranked and snippeted. Default false.'),
+          .describe('0-100 floor. Dropped hits are NOT counted, so an empty result can be the floor: meta.scanned vs meta.returned, and the company_id/updated_since/scope filters exclude hits too.'),
+        exact_only: z.boolean().optional(),
         // Under `http` neither field is served: the tier decides whether a call may wait for a
         // corpus-wide walk, and the calling model can observe neither the index's warmth nor the
         // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead.
@@ -67,18 +161,26 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
                 .optional()
                 .describe(
                   !indexSearchable
-                    ? 'mode="search" only. This deployment excludes articles or assets, so the tool defaults to "vendor" and refuses "index", "auto" and refresh:true (the index walk is corpus-wide, and would walk an excluded resource). "vendor" answers from Hudu search alone.'
+                    ? '"vendor" only here: articles or assets are excluded, so "index", "auto" and refresh:true are refused (the walk is corpus-wide).'
                     : toolDefaultTier === 'auto'
-                      ? 'mode="search" only. THIS TOOL DEFAULTS TO "auto": it answers from Hudu search now and builds the body index in the background, so a later search is body-aware. Pass "index" to await a complete body-index answer, or "vendor" to force the vendor tier.'
-                      : 'mode="search" only. THIS TOOL DEFAULTS TO "index" (build or await the body index, so the answer is complete rather than body-blind). "auto" is the SDK default for programmatic callers; "vendor" answers from Hudu search alone.',
+                      ? 'Defaults to "auto": answers now, warming the body index in the background. "index" awaits a complete body-index answer.'
+                      : 'Defaults to "index": builds or awaits the body index, so answers are body-complete. "vendor" answers from Hudu alone.',
                 ),
-              refresh: z.boolean().optional().describe('mode="search" only. true forces a body-index rebuild before answering.'),
+              refresh: z
+                .boolean()
+                .optional()
+                .describe(
+                  'true rebuilds the server\'s local body index (nothing in Hudu changes; can take minutes; stdio only).',
+                ),
             }),
       }),
       outputSchema: SEARCH_OUTPUT,
+      // readOnlyHint stays true: the hint describes the TARGET SYSTEM (Hudu), which this tool never
+      // writes. `refresh` rebuilds this process's local body index — a cache — and changes nothing in
+      // Hudu, so a rebuild is still a read of the tenant.
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    async (args) => {
+    async (args, req) => {
       const mode = args.mode ?? 'search';
       const spec = SEARCH_MODES.find((m) => m.mode === mode);
       if (!spec) {
@@ -177,7 +279,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
       try {
         const refused = upfrontRefusal();
         if (refused !== undefined) return refused;
-        const result = await ops.searchKnowledge(args.query, {
+        const work = ops.searchKnowledge(args.query, {
           // An omitted `resources` resolves to the deployment's default scope, never to the SDK's
           // articles+assets default when those are outside `searchableResources`.
           scope: (args.resources ?? defaultSearchScope) as KnowledgeResource[],
@@ -190,6 +292,20 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           refresh,
           tier, // the TOOL's default: "index" under stdio, "auto" under http, "vendor" when the corpus is excluded
         });
+        // Only these two paths can WAIT on a corpus walk: an explicit "index" answer and a forced
+        // rebuild. "auto" answers at once (it warms in the background) and "vendor" never touches the
+        // index, so neither may emit progress. Warmth is not observable through the SDK (there is no
+        // engine-status accessor), so a warm index costs one immediate tick and nothing more — the
+        // ticker stops the moment the promise settles.
+        const searchWaits = !searchTierIsPolicy && (tier === 'index' || refresh === true);
+        let result;
+        if (searchWaits) {
+          const awaited = await awaitWithProgress(req.mcpReq as RequestContext, progressTokenOf(req.mcpReq as RequestContext), work, log);
+          if (awaited.aborted) return cancelledSearch(args.query, (args.resources ?? defaultSearchScope) as KnowledgeResource[]);
+          result = awaited.value;
+        } else {
+          result = await work;
+        }
         // The engine isolates per-resource failures, so a key Hudu 401s on every resource it
         // asked reaches the caller as a fully "successful" 0-hit result with auth-coded
         // `meta.failed` entries. Every other tool answers that refusal as a clean UNAUTHORIZED
