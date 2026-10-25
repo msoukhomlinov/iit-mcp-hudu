@@ -31,7 +31,7 @@ const SERVER_VERSION = (createRequire(import.meta.url)('../../package.json') as 
  * Each scoped client owns its own Hudu knowledge index. An unbounded map would let enough distinct
  * callers grow the heap past the container limit, so the cache is capped and evicts
  * least-recently-used first. The cap is the same number the process-wide index text budget is
- * divided by (`search-budget.ts`), so eight clients share one pool instead of each claiming it.
+ * divided by (`search-budget.ts`), so two clients share one pool instead of each claiming it.
  */
 export const MAX_SCOPED_CLIENTS = SCOPED_INDEX_BUDGET_DIVISOR;
 
@@ -488,7 +488,8 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
         : undefined;
     const scopedOptions = { ...options, mode, reveal: false, ...(allowOperations ? { allowOperations } : {}) };
     // ONE scoped client's share of the process pool: the cache can hold MAX_SCOPED_CLIENTS of them,
-    // so handing each the whole pool would let the process hold 8x the text it was sized for (#51).
+    // so handing each the whole pool would let the process hold MAX_SCOPED_CLIENTS times the text it
+    // was sized for (#51).
     // Only the per-(origin, credential) clients are divided — the parent keeps the pool, because
     // under `stdio` it is the only client and a deeper index is the point of serving that way.
     const scopedTextBytes = scopedIndexTextBudgetBytes(heapLimitBytes);

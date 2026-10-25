@@ -61,10 +61,10 @@ describe('scopedIndexTextBudgetBytes', () => {
     }
   });
 
-  it('sizes the measured heaps to 2 MiB and 6 MiB per client', () => {
-    // 259 MiB -> a 16 MiB pool; 816 MiB -> a 51 MiB pool. Eight clients either way.
-    expect(scopedIndexTextBudgetBytes(259 * MiB)).toBe(2 * MiB);
-    expect(scopedIndexTextBudgetBytes(816 * MiB)).toBe(6 * MiB);
+  it('sizes the measured heaps to 8 MiB and 25 MiB per client', () => {
+    // 259 MiB -> a 16 MiB pool; 816 MiB -> a 51 MiB pool. Two clients either way.
+    expect(scopedIndexTextBudgetBytes(259 * MiB)).toBe(8 * MiB);
+    expect(scopedIndexTextBudgetBytes(816 * MiB)).toBe(25 * MiB);
   });
 
   it('divides by the same cap the client cache enforces', async () => {
@@ -81,15 +81,15 @@ describe('scopedIndexMaxDocs', () => {
   });
 
   it('sizes the two measured heaps to the documented caps', () => {
-    // 512 MiB container: a 16 MiB pool, 2 MiB per scoped client -> 2,048 docs per client.
+    // 512 MiB container: a 16 MiB pool, 8 MiB per scoped client -> 8,192 docs per client.
     const smallHeap = 259 * MiB;
-    expect(scopedIndexTextBudgetBytes(smallHeap)).toBe(2 * MiB);
-    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap))).toBe(2048);
+    expect(scopedIndexTextBudgetBytes(smallHeap)).toBe(8 * MiB);
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap))).toBe(8192);
     expect(scopedIndexMaxDocs(indexTextBudgetBytes(smallHeap))).toBe(16_384);
-    // 1 GiB heap ceiling: the 64 MiB clamp, 8 MiB per client -> 8,192 docs per client.
+    // 1 GiB heap ceiling: the 64 MiB clamp, 32 MiB per client -> 32,768 docs per client.
     const largeHeap = 1024 * MiB;
-    expect(scopedIndexTextBudgetBytes(largeHeap)).toBe(8 * MiB);
-    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(largeHeap))).toBe(8192);
+    expect(scopedIndexTextBudgetBytes(largeHeap)).toBe(32 * MiB);
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(largeHeap))).toBe(32_768);
   });
 
   it('never exceeds the SDK default 50,000 documents, and floors at 1,500', () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix: each scoped client in the http cache now gets HALF the pooled index text budget instead of an eighth, so a 1 GiB deployment keeps a body index deep enough to search the articles it holds (measured on the production tenant, 2026-10-26: at the former division by eight a scope retained 4,666 assets and 1,478 of 3,204 articles, evicted 317 article bodies and indexed 1,036, because the SDK's document cap keeps the freshest `updated_at` across ALL resources and newer assets displaced older articles). At a ~816 MB V8 ceiling a scope now gets 25 MiB of text and 25,600 documents instead of 6 MiB and 6,144, which nearly covers the tenant's ~25,900 records; a 512 MiB container gets 8 MiB and 8,192 (it previously got 2 MiB and 2,048). The worst case is unchanged in total — two shares are the pool, exactly as eight shares were — and the trade is breadth for depth: at most two (origin, credential) pairs stay warm, so a deployment serving more distinct credentials rebuilds an evicted index on demand (searches stay non-blocking and answer from the vendor tier meanwhile), and a deployment needing both breadth and depth needs a larger heap. `SCOPED_INDEX_BUDGET_DIVISOR` and `MAX_SCOPED_CLIENTS` are the same constant, as before.
+
 ## 0.6.0
 
 **Upgrading from 0.5.1:** under `MCP_TRANSPORT=http` the served `hudu_search` schema no longer offers `tier` or `refresh`, and the tier is server-side policy: `auto` by default, so a call answers from the vendor tier while the index builds. Set `HUDU_SEARCH_TIER_POLICY=index` for an http deployment that should wait. The body-index text budget and document cap are now derived from the process heap (a sixteenth of the V8 ceiling) instead of the SDK's 64 MiB / 50,000 defaults; no configuration change is needed. Under `stdio` the default tier stays `index` and both fields are still served.
