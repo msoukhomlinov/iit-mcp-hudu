@@ -116,13 +116,18 @@ function malformedCredentialStrategy(anomalies: readonly CredentialAnomaly[]): A
     // parsing.
     name: 'x-hudu-api-key malformed',
     async headers() {
-      const refusal = new AuthError('this request presented a credential whose shape is malformed; nothing was dialed', {
-        suggestedAction: CREDENTIAL_LOAD_HINT,
-      });
-      (refusal as { anomalies?: readonly string[] }).anomalies = anomalies;
-      throw refusal;
+      throw malformedCredentialRefusal(anomalies);
     },
   };
+}
+
+/** The typed refusal a malformed credential answers with; `errorContent` maps it to CREDENTIAL_MALFORMED. */
+function malformedCredentialRefusal(anomalies: readonly string[]): AuthError {
+  const refusal = new AuthError('this request presented a credential whose shape is malformed; nothing was dialed', {
+    suggestedAction: CREDENTIAL_LOAD_HINT,
+  });
+  (refusal as { anomalies?: readonly string[] }).anomalies = anomalies;
+  return refusal;
 }
 
 /**
@@ -274,7 +279,7 @@ export function buildCredentialShapeView(config: Config, headers: ReturnType<typ
  * Under `stdio` the process boundary is the trust boundary and the parent already carries the
  * environment's credential and origin; the headers are never read on this path.
  */
-function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestContext, log: Logger): { client: HuduClient; origin?: string } {
+function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestContext, log: Logger): { client: HuduClient; origin?: string; refusal?: AuthError } {
   if (config.MCP_TRANSPORT === 'stdio') return { client: entry.parent, origin: new URL(config.HUDU_BASE_URL!).origin };
   const headers = ctx.requestInfo === undefined ? undefined : headerRecord(ctx.requestInfo.headers);
   const { headerKey, headerBase, callerNamed } = presentedCredential(config, headers);
@@ -287,7 +292,9 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
   const callerOriginAllowed = config.HUDU_ALLOWED_BASE_HOSTS === undefined
     ? defaultBase === undefined
     : baseHostAllowed(headerBase!, config.HUDU_ALLOWED_BASE_HOSTS);
-  if (callerNamed && !callerOriginAllowed) return { client: entry.baseRefused };
+  if (callerNamed && !callerOriginAllowed) {
+    return { client: entry.baseRefused, refusal: new AuthError(`Auth strategy "${BASE_URL_NOT_ALLOWED.name}" did not produce usable credential headers; no request was sent`) };
+  }
 
   const key = headerKey ?? (callerNamed ? undefined : config.HUDU_API_KEY);
   if (key === undefined) return { client: entry.parent };
@@ -311,7 +318,7 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
       client = entry.buildPlaceholder(malformedCredentialStrategy(anomalies));
       entry.malformed.set(id, client);
     }
-    return { client };
+    return { client, refusal: malformedCredentialRefusal(anomalies) };
   }
   if (base === undefined) return { client: entry.noBase };
   try {
@@ -333,7 +340,7 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
           client = entry.buildPlaceholder(malformedCredentialStrategy([]));
           entry.malformed.set(id, client);
         }
-        return { client };
+        return { client, refusal: malformedCredentialRefusal([]) };
       }
       return { client: entry.badBase };
     }
@@ -491,7 +498,7 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // Per serving unit (one stdio connection, or one HTTP request): the anomalies of the credential
     // this unit presents, published before the first tool can fail (see buildCredentialShapeView).
     const shapeView = buildCredentialShapeView(config, ctx.requestInfo === undefined ? undefined : headerRecord(ctx.requestInfo.headers));
-    const { client: hudu, origin: huduOrigin } = resolve(read);
+    const { client: hudu, origin: huduOrigin, refusal } = resolve(read);
     const mutationClients = mutations ? { write: resolve(mutations.write).client, delete: resolve(mutations.delete).client } : undefined;
     const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION, title: 'Hudu MCP Server' });
     answerRenamedTools(server);
@@ -499,7 +506,7 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // Every handler registered below runs inside this request's view scope (see results.ts).
     const register = server.registerTool.bind(server) as (name: string, config: unknown, cb: (...a: unknown[]) => unknown) => unknown;
     (server as { registerTool: unknown }).registerTool = (name: string, config: unknown, cb: (...a: unknown[]) => unknown) =>
-      register(name, config, (...a: unknown[]) => runWithCredentialShapeView(shapeView, () => cb(...a)));
+      register(name, config, (...a: unknown[]) => runWithCredentialShapeView(refusal === undefined ? shapeView : { ...shapeView, refusal }, () => cb(...a)));
     registerTools(server, { hudu, huduOrigin, config, log, ...(mutationClients ? { mutationClients } : {}) });
     return server;
   };
