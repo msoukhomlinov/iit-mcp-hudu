@@ -26,7 +26,7 @@ const SERVER_NAME = 'iit-mcp-hudu';
 const SERVER_VERSION = (createRequire(import.meta.url)('../../package.json') as { version: string }).version;
 
 /**
- * The maximum number of per-(origin, credential) scoped clients kept warm in one process.
+ * The maximum number of per-(origin, credential) scoped clients ONE mode cache keeps warm in a process.
  *
  * Each scoped client owns its own Hudu knowledge index. An unbounded map would let enough distinct
  * callers grow the heap past the container limit, so the cache is capped and evicts

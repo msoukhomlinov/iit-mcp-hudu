@@ -159,9 +159,9 @@ gate on who can use it. It is only ever presented to the default
 credential and fails closed, so a caller cannot aim the server's key at a host it controls. (A
 blank value, as a copied `.env.example` leaves it, is treated as unset.) Each (origin, credential)
 pair gets its own scoped client (its own search index) cached by the pair's hash and capped — at most
-two pairs stay warm, six when writes are enabled because read, write and delete each keep their own
-cache, and a further scope rebuilds its index on demand — so one caller's indexed article bodies can
-never answer another's search.
+two pairs stay warm in EACH mode cache, so a credential occupies one client per cache (read, plus
+write and delete when writes are enabled) and a further scope rebuilds its index on demand — so one
+caller's indexed article bodies can never answer another's search.
 
 `HUDU_ALLOWED_BASE_HOSTS` (`http` only; required unless `HUDU_ALLOW_ANY_BASE_HOST=true`) restricts which origins a caller may name in
 `X-Hudu-Base-Url`: a comma-separated list of exact hostnames or `*.example.com` subdomain suffixes
@@ -312,7 +312,10 @@ of heap and died with `Reached heap limit` mid-search. It measured the ~90 MB ba
 against the budget instead of the held text the same ratio would predict 90 + 4 x 64 = ~346 MB, which
 the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) now gets a 16 MiB pool and
 5 MiB per scoped client (1 MiB when writes are enabled: three per-mode caches divide the same pool
-by nine). A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
+by nine). The share is SIZED so the cache capacity plus one eviction of margin per cache fits the
+pool; it is not an enforced peak. A scope evicted by the LRU stays resident while an in-flight
+request that resolved it finishes, and because the SDK cannot revoke a live index, concurrent
+evictions of distinct credentials can exceed the pool until those requests settle. A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
 the real SDK client under a ~262 MB V8 ceiling (an uncommitted one-off probe; `--max-semi-space-size=1`
 brings V8's reported limit to ~262 MB, while `--max-old-space-size=259` alone reports ~451 MB in
 Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
