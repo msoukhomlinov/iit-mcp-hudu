@@ -664,12 +664,12 @@ describe('article content format', () => {
     }
   });
   it('hudu_write applies the Markdown loss guard: a body the dialect cannot hold is refused, no PUT', async () => {
-    const stored = '<p>Keep</p><svg width="1" height="1"></svg>';
+    const stored = '<p>Keep</p><video src="x.mp4"></video>';
     const session = await connect(() => Response.json({ article: { id: 22, name: 't', content: stored, updated_at: '2026-01-01T00:00:00Z' } }));
     try {
       const result = await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { content: 'Keep' } }, dry_run: false });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/markdown|lossy|svg/i);
+      expect(result.content[0].text).toMatch(/markdown|lossy|video/i);
       expect(session.methods).not.toContain('PUT');
     } finally {
       await session.close();
@@ -686,30 +686,34 @@ describe('lossy Markdown reads are signalled', () => {
     accordion: '<details class="mce-accordion"><summary class="mce-accordion-summary">Q</summary><div class="mce-accordion-body"><p>A</p></div></details>',
     'task list': `<ul data-type="taskList">${task(true, 'done')}${task(false, 'open')}</ul>`,
     mermaid: '<pre class="language-mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+    // node-hudu 0.17 keeps inline <svg> and <iframe> as raw HTML.
+    svg: '<p>Keep</p><svg width="1" height="1"><circle r="1"/></svg>',
+    iframe: '<p>Keep</p><iframe src="https://e.com/v"></iframe>',
     'plain markup': '<h2>Hi</h2><p>body <strong>x</strong> <a href="https://e.com">l</a></p><ul><li>a</li></ul>',
   };
 
-  it('hudu_read flags a stored inline <svg>, with a typed field and one sentence', async () => {
-    const session = await connect(article('<p>Keep</p><svg width="1" height="1"><circle r="1"/></svg>'));
+  it('hudu_read flags a stored <video>, with a typed field and one sentence', async () => {
+    const session = await connect(article('<p>Keep</p><video src="x.mp4"></video>'));
     try {
       const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22 } });
       expect(result.isError).toBeUndefined();
       expect(result.structuredContent.markdown_lossy).toBe(true);
       expect(result.structuredContent.markdown_lossy_codes).toContain('ROUNDTRIP_RAW_ELEMENT_LOST');
       expect(session.urls).toHaveLength(1); // one wire request for the read itself
+      expect(JSON.stringify(result.structuredContent.result)).not.toContain('content_loss'); // lifted into markdown_lossy_codes
       expect(result.content[0].text).toContain('markdown_lossy: true');
       expect(result.content[0].text).toContain('hudu_fetch_many {items:[{resource:');
-      // The pointer's literal shape is a valid call and returns the stored HTML, <svg> included.
+      // The pointer's literal shape is a valid call and returns the stored HTML, <video> included.
       const fetched = await session.call('hudu_fetch_many', { items: [{ resource: 'articles', id: 22 }] });
       expect(fetched.isError).toBeUndefined();
-      expect(JSON.stringify(fetched.structuredContent)).toContain('<svg');
+      expect(JSON.stringify(fetched.structuredContent)).toContain('<video');
     } finally {
       await session.close();
     }
   });
 
   it('hudu_get_article_context flags it too', async () => {
-    const session = await connect(article('<p>Keep</p><svg width="1" height="1"></svg>'));
+    const session = await connect(article('<p>Keep</p><video src="x.mp4"></video>'));
     try {
       const result = await session.call('hudu_get_article_context', { id: 22, opts: { expand: true } });
       expect(result.structuredContent.markdown_lossy).toBe(true);
@@ -757,7 +761,7 @@ describe('lossy Markdown reads are signalled', () => {
 
 describe('Markdown article reads: one fetch, caller format honoured', () => {
   const html = '<h2>Hi</h2><p>body <strong>x</strong></p>';
-  const svg = '<p>Keep</p><svg width="1" height="1"></svg>';
+  const lossy = '<p>Keep</p><video src="x.mp4"></video>';
   const body = (content: string) => () => Response.json({ article: { id: 22, name: 't', content }, articles: [{ id: 22, name: 't', content }] });
   const reads = {
     'articles.get': { id: 22 },
@@ -784,8 +788,8 @@ describe('Markdown article reads: one fetch, caller format honoured', () => {
     }
   });
 
-  it.each(['articles.get', 'articles.resolve'] as const)('%s flags an <svg> with exactly one wire request', async (operation) => {
-    const session = await connect(body(svg));
+  it.each(['articles.get', 'articles.resolve'] as const)('%s flags a <video> with exactly one wire request', async (operation) => {
+    const session = await connect(body(lossy));
     try {
       const result = await session.call('hudu_read', { operation, input: reads[operation] });
       expect(result.structuredContent.markdown_lossy).toBe(true);
@@ -795,11 +799,11 @@ describe('Markdown article reads: one fetch, caller format honoured', () => {
     }
   });
 
-  it('articles.get with format html and an <svg> returns HTML and no flag', async () => {
-    const session = await connect(body(svg));
+  it('articles.get with format html and a <video> returns HTML and no flag', async () => {
+    const session = await connect(body(lossy));
     try {
       const result = await session.call('hudu_read', { operation: 'articles.get', input: { id: 22, opts: { format: 'html' } } });
-      expect(text(result)).toContain('<svg');
+      expect(text(result)).toContain('<video');
       expect(result.structuredContent.markdown_lossy).toBeUndefined();
     } finally {
       await session.close();

@@ -6,7 +6,7 @@ import { dispatchOperation, META_TOOLS } from 'node-hudu/mcp';
 import { writeToolRegistered, assertNeverReachablePermitted, assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
 import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
-import { MARKDOWN_READ_OPERATIONS, callerWantsHtml, forceHtml, lossyNote, projectMarkdown } from './article-loss.js';
+import { lossyNote, takeContentLoss } from './article-loss.js';
 import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent } from './results.js';
 import { INVOKE_OUTPUT } from './schemas.js';
 import { FETCH_MANY_OPERATION, applyFetchManyPolicyToInvoke, SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
@@ -79,11 +79,10 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           const opts: { dryRun?: boolean; confirm?: string; contentFormat: 'markdown' } = { contentFormat: 'markdown' };
           if (typeof dry_run === 'boolean') opts.dryRun = dry_run;
           if (typeof confirm === 'string') opts.confirm = confirm;
-          // Markdown article reads: ONE fetch with HTML forced, converted (and loss-checked) locally.
-          const markdownRead = mode === 'read' && MARKDOWN_READ_OPERATIONS.has(operation) && !callerWantsHtml(bag);
-          let result = await dispatchOperation(client, effect, operation, markdownRead ? forceHtml(bag) : bag, opts);
+          let result = await dispatchOperation(client, effect, operation, bag, opts);
+          // A Markdown article read that lost content carries the SDK's content_loss (see article-loss.ts).
           let lossy: string[] = [];
-          if (markdownRead) ({ result, codes: lossy } = projectMarkdown(operation, result));
+          if (mode === 'read') ({ result, codes: lossy } = takeContentLoss(operation, result));
           if (operation === 'companies.getContext') {
             result = redactCompanyContextCredentials(result, operation, config, log);
           }
