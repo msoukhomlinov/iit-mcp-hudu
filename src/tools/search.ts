@@ -23,7 +23,7 @@ import { adjustHelpText, adjustedSearchModes, searchQueryDescription, searchTool
 // for programmatic callers; a TOOL under stdio must not hand an agent a degraded answer by default.
 export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
-  const { ops, searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier } = ctx;
+  const { ops, searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   server.registerTool(
     'hudu_search',
     {
@@ -56,17 +56,24 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         updated_since: z.string().optional().describe('mode="search" only. ISO 8601; only records updated at or after it.'),
         min_score: z.number().optional().describe('mode="search" only. 0-100 score floor: hits below the floor are left out of the result, and NO count of them is reported - an empty result can be the floor, not absence. meta.scanned (candidates scored before the floor) and meta.returned separate absence from exclusion: scanned 0 = nothing scored at all; scanned > 0 with returned 0 = candidates scored but none returned - below the floor, or excluded by the company_id, updated_since or scope filters (lower or drop min_score, or relax those filters, to see what was left out).'),
         exact_only: z.boolean().optional().describe('mode="search" only. true disables fuzzy matching, still ranked and snippeted. Default false.'),
-        tier: z
-          .enum(['auto', 'vendor', 'index'])
-          .optional()
-          .describe(
-            !indexSearchable
-              ? 'mode="search" only. This deployment excludes articles or assets, so the tool defaults to "vendor" and refuses "index", "auto" and refresh:true (the index walk is corpus-wide, and would walk an excluded resource). "vendor" answers from Hudu search alone.'
-              : toolDefaultTier === 'auto'
-                ? 'mode="search" only. THIS TOOL DEFAULTS TO "auto": it answers from Hudu search now and builds the body index in the background, so a later search is body-aware. Pass "index" to await a complete body-index answer, or "vendor" to force the vendor tier.'
-                : 'mode="search" only. THIS TOOL DEFAULTS TO "index" (build or await the body index, so the answer is complete rather than body-blind). "auto" is the SDK default for programmatic callers; "vendor" answers from Hudu search alone.',
-          ),
-        refresh: z.boolean().optional().describe('mode="search" only. true forces a body-index rebuild before answering.'),
+        // Under `http` neither field is served: the tier decides whether a call may wait for a
+        // corpus-wide walk, and the calling model can observe neither the index's warmth nor the
+        // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead.
+        ...(searchTierIsPolicy
+          ? {}
+          : {
+              tier: z
+                .enum(['auto', 'vendor', 'index'])
+                .optional()
+                .describe(
+                  !indexSearchable
+                    ? 'mode="search" only. This deployment excludes articles or assets, so the tool defaults to "vendor" and refuses "index", "auto" and refresh:true (the index walk is corpus-wide, and would walk an excluded resource). "vendor" answers from Hudu search alone.'
+                    : toolDefaultTier === 'auto'
+                      ? 'mode="search" only. THIS TOOL DEFAULTS TO "auto": it answers from Hudu search now and builds the body index in the background, so a later search is body-aware. Pass "index" to await a complete body-index answer, or "vendor" to force the vendor tier.'
+                      : 'mode="search" only. THIS TOOL DEFAULTS TO "index" (build or await the body index, so the answer is complete rather than body-blind). "auto" is the SDK default for programmatic callers; "vendor" answers from Hudu search alone.',
+                ),
+              refresh: z.boolean().optional().describe('mode="search" only. true forces a body-index rebuild before answering.'),
+            }),
       }),
       outputSchema: SEARCH_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -152,11 +159,15 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           ),
         );
       }
+      // The tier and refresh this call may use. Under `http` both are deployment policy (the schema
+      // omits them); under `stdio` the caller's own value wins, defaulting to the tool's tier.
+      const tier = searchTierIsPolicy ? toolDefaultTier : ((args as { tier?: 'auto' | 'vendor' | 'index' }).tier ?? toolDefaultTier);
+      const refresh = searchTierIsPolicy ? false : (args as { refresh?: boolean }).refresh;
       // The body index is corpus-wide and cannot be scoped. When the deployment excludes a corpus
       // resource, NO index-backed path may run: an explicit "index" or "auto" tier, or `refresh`
       // (which forces a full rebuild), would each walk the excluded endpoint. Refuse them rather
       // than silently downgrading, and never walk a resource the credential may not read.
-      if (!indexSearchable && (args.tier === 'index' || args.tier === 'auto' || args.refresh === true)) {
+      if (!indexSearchable && (tier === 'index' || tier === 'auto' || refresh === true)) {
         return errorContent(
           configError(
             'hudu_search: the body index is unavailable because HUDU_SEARCH_RESOURCES excludes articles or assets; its walk is corpus-wide. Use tier:"vendor" without refresh, or restore the corpus resources.',
@@ -176,8 +187,8 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           updated_since: args.updated_since,
           min_score: args.min_score,
           exact_only: args.exact_only,
-          refresh: args.refresh,
-          tier: args.tier ?? toolDefaultTier, // the TOOL's default: "index" under stdio, "auto" under http, "vendor" when the corpus is excluded
+          refresh,
+          tier, // the TOOL's default: "index" under stdio, "auto" under http, "vendor" when the corpus is excluded
         });
         // The engine isolates per-resource failures, so a key Hudu 401s on every resource it
         // asked reaches the caller as a fully "successful" 0-hit result with auth-coded

@@ -157,7 +157,7 @@ export function sanitizeIndexMeta<T>(index: T): T {
  * resolved to the deployment default rather than the SDK's articles+assets.
  */
 export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string, unknown>): Record<string, unknown> {
-  const { searchableResources, defaultSearchScope, indexSearchable } = ctx;
+  const { searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   const raw = input.opts;
   // Only `undefined` selects defaults. A non-object container (null, array, string, …) is left
   // untouched so the SDK's inputSchema refuses it before any request, rather than being replaced
@@ -175,6 +175,11 @@ export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string
         `hudu_read / hudu_write / hudu_delete: operations.searchKnowledge scope ${JSON.stringify(excluded)} is excluded by HUDU_SEARCH_RESOURCES; this deployment may search: ${searchableResources.join(', ')}. Use hudu_search, which applies the same policy.`,
       );
     }
+  }
+  // Under `http` the tier is deployment policy, so this path takes the same non-blocking route as
+  // `hudu_search`: a caller-supplied `tier` or `refresh` cannot make the call wait for a walk.
+  if (searchTierIsPolicy) {
+    return { ...input, opts: { ...opts, scope, tier: toolDefaultTier, refresh: false } };
   }
   if (!indexSearchable) {
     if (opts.tier === 'index' || opts.tier === 'auto' || opts.refresh === true) {

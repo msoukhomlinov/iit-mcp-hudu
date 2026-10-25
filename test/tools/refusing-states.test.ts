@@ -3,7 +3,7 @@
  * CREDENTIAL_MALFORMED) envelope on the search and batch-read paths, before any request (issue #35).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connectForRequest, type Json } from '../helpers/mcp-session.js';
+import { connect, connectForRequest, type Json } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -116,8 +116,11 @@ describe.each(Object.entries(states))('%s: local validation and policy refusals 
 });
 
 describe('a refusing request keeps the excluded-tier error', () => {
-  it('hudu_search tier:index with a corpus-excluding scope is its CONFIG_ERROR', async () => {
-    const s = await connectForRequest('caller-key', never, [], { HUDU_SEARCH_RESOURCES: ['companies'] }, null);
+  it('stdio hudu_search tier:index with a corpus-excluding scope is its CONFIG_ERROR', async () => {
+    // Under `stdio` the caller still names the tier, so an index walk over an excluded resource is
+    // refused. Under `http` the tier is deployment policy and no caller can name one — see
+    // search-http-tier-policy.test.ts.
+    const s = await connect(undefined, { HUDU_SEARCH_RESOURCES: ['companies'] });
     const r = await s.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index' });
     expect(r.isError).toBe(true);
     const body = JSON.parse(r.content[0]!.text);

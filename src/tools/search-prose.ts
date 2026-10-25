@@ -93,10 +93,12 @@ function narrowedSearchSummary(ctx: ToolContext): string {
  * never computes, so the correction applies to every deployment, full set included.
  */
 export function adjustHelpText(ctx: ToolContext, text: string): string {
-  const { defaultSearchScope, indexSearchable, toolDefaultTier } = ctx;
+  const { defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   const tier = !indexSearchable
     ? 'tool default "vendor"; "index", "auto" and refresh are refused because HUDU_SEARCH_RESOURCES excludes articles or assets.'
-    : toolDefaultTier === 'auto'
+    : searchTierIsPolicy
+      ? `tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter.`
+      : toolDefaultTier === 'auto'
       ? 'tool default "auto" (answers from Hudu search now; builds the body index in the background so a later search is body-aware); "index" waits for a complete body-index answer before returning.'
       : 'tool default "index" (complete answer); "auto" = the SDK default.';
   let adjusted = text
@@ -204,7 +206,7 @@ export function adjustedSearchModes(ctx: ToolContext) {
  * sentences the policy falsifies are rewritten; the drift test asserts the rewrite lands.
  */
 export function searchToolDescription(ctx: ToolContext): string {
-  const { searchableResources, indexSearchable, toolDefaultTier } = ctx;
+  const { searchableResources, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   const base = TOOL_DESCRIPTIONS['hudu_search'];
   const searchableSet = new Set(searchableResources);
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
@@ -213,7 +215,9 @@ export function searchToolDescription(ctx: ToolContext): string {
     'As a tool it defaults to tier "index" (builds/awaits the body index), so results are body-complete.';
   const replacement = !indexSearchable
     ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
-    : toolDefaultTier === 'auto'
+    : searchTierIsPolicy
+      ? serverPolicyTierSentence(ctx)
+      : toolDefaultTier === 'auto'
       ? 'As a TOOL it defaults to tier "auto": it answers from Hudu search now and builds the body index in the background, so a later search is body-aware rather than body-blind. Pass tier:"index" to wait for a complete first answer.'
       : defaultSentence;
   let out = base;
@@ -226,6 +230,23 @@ export function searchToolDescription(ctx: ToolContext): string {
   // Fail loudly, not silently: a missed anchor would advertise a default tier this deployment refuses.
   if (!out.includes(defaultSentence)) throw new Error('hudu_search description: SDK default-tier sentence changed; update defaultSentence');
   return out.replace(defaultSentence, replacement);
+}
+
+/**
+ * The `hudu_search` tier sentence for a deployment that sets the tier server-side (`http`).
+ *
+ * The field is not in the served schema there, so the description may not invite a caller to pass
+ * one: it describes what the deployment does with the tier it resolved.
+ */
+function serverPolicyTierSentence(ctx: ToolContext): string {
+  const { toolDefaultTier } = ctx;
+  if (toolDefaultTier === 'index') {
+    return 'This deployment sets the search tier server-side to "index", so a call may wait for a complete body-index answer before it returns.';
+  }
+  if (toolDefaultTier === 'vendor') {
+    return 'This deployment sets the search tier server-side to "vendor": Hudu search answers every call immediately and no body index is built.';
+  }
+  return 'This deployment sets the search tier server-side: the tool answers from Hudu search now and builds the body index in the background, so a later search is body-aware; meta.index reports the index state and a body-blind answer says so in meta.degraded.';
 }
 
 /** The `query` field description, adjusted so it does not promise a body search it cannot run. */
@@ -282,7 +303,7 @@ function narrowedSearchProse(ctx: ToolContext) {
 export function applySearchDescribePolicy<
   T extends { op: string; input_schema: Readonly<Record<string, unknown>>; usage: string | null; purpose: string | null; preferred_when: string | null },
 >(ctx: ToolContext, described: T): T {
-  const { searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier } = ctx;
+  const { searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   if (described.op !== SEARCH_KNOWLEDGE_OPERATION) return described;
   const narrowed = searchPolicyNarrowed(ctx);
   // The tier default also differs under `http` even when nothing is narrowed, so the discovery
@@ -301,7 +322,9 @@ export function applySearchDescribePolicy<
       'it defaults to tier "index" when called as the MCP tool (the SDK default stays lazy)',
       !indexSearchable
         ? 'this deployment excludes articles or assets, so it defaults to tier "vendor" and refuses "index", "auto" and refresh'
-        : toolDefaultTier === 'auto'
+        : searchTierIsPolicy
+          ? `the tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter`
+          : toolDefaultTier === 'auto'
           ? 'it defaults to tier "auto" when called as the MCP tool: it answers from Hudu search now and builds the body index in the background (pass tier:"index" to wait for a complete first answer; the SDK default stays lazy)'
           : 'it defaults to tier "index" when called as the MCP tool (the SDK default stays lazy)',
     );

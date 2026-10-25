@@ -440,6 +440,8 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // private IP. No env override: it is a security property, not a deployment preference.
     profile: 'agent',
     cache: 'recommended',
+    // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
+    ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { search: { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL } }),
     timeoutMs: 30000,
     cooldown: { enabled: true },
     // One line per Hudu request, on the success and the error path. The SDK redacts every
