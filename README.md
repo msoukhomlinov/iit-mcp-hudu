@@ -267,7 +267,9 @@ caller's later search is body-aware without the first one awaiting a corpus-wide
 decides whether a call may *wait*, and the calling model can observe neither the index's warmth nor
 the walk's duration, so under `http` the tier is deployment policy, not a call parameter: the served
 schema offers neither `tier` nor `refresh`, and a request that still sends either is answered by the
-policy path and returns immediately. `meta.index` reports the index state (`state`: `cold`,
+policy path. That path returns immediately only when the resolved policy is `auto` or `vendor`:
+with `HUDU_SEARCH_TIER_POLICY=index` an `http` call still waits for a complete body-index answer,
+which is exactly that knob's documented purpose. `meta.index` reports the index state (`state`: `cold`,
 `refreshing`, `partial`, `warm`), and `meta.degraded` says when the answer was body-blind. Under
 `stdio` the one long-lived index stays warm, both fields stay in the schema, and the default is
 `"index"`; a caller there can still pass `tier:"index"` for a complete first answer.
@@ -280,12 +282,16 @@ articles or assets the policy is `vendor` and no index path runs, whatever the v
 it a search still answers from the index it has and rebuilds in the background.
 
 The body index's text budget is derived from the process's V8 heap ceiling: a tenth of the heap,
-clamped to 8-64 MiB. The 4x text-to-structure ratio and the ~90 MB baseline heap behind that tenth
-are an ESTIMATE inferred from a crash trace (252 MB peak at a 64 MiB text budget), not a
-measurement; on that estimate a small container (a 512 MiB limit leaves roughly a 259 MB heap
-ceiling) gets a 25 MiB budget and a large one keeps the SDK's 64 MiB default. When the budget bites, the SDK reports `index-partial` and the
-search degrades to a shorter index — it no longer grows the heap until Node dies with
-`Reached heap limit` and restarts the container mid-search.
+clamped to 8-64 MiB. That tenth rests on the ~4x structure-to-text ratio and the ~90 MB baseline
+heap measured in the #51 crash trace (a 252 MB peak at a 64 MiB text budget on the production
+tenant). Only that 64 MiB profile has ever been measured, so the bound is an ESTIMATE, not a proof
+that a build cannot exhaust the heap: a 512 MiB deployment's peak was never observed. On that
+estimate a 512 MiB container (roughly a 259 MB heap ceiling) gets a 25 MiB pool, which is 3 MiB per
+scoped client; a 1 GiB heap ceiling reaches the 64 MiB cap, 8 MiB per client. When the budget bites
+the SDK reports `index-partial` and the search degrades to a shorter index; at the measured 64 MiB
+profile that replaced the earlier `Reached heap limit` death and mid-search restart, and whether a
+512 MiB profile behaves the same is unmeasured. FOLLOW-UP (open): measure the peak at a 512 MiB
+profile, and review the SDK's `maxDocs` default (50,000).
 
 The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for

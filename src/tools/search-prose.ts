@@ -118,6 +118,12 @@ export function adjustHelpText(ctx: ToolContext, text: string): string {
       .replace(SEARCH_DEFAULT_INDEX_SENTENCE, SEARCH_DEFAULT_VENDOR_SENTENCE);
   }
   adjusted = adjusted.replace(`\n  ${CREDENTIAL_REDACTION_LINE}`, credentialRedactionLine(ctx));
+  // The article-format rule the tool descriptions no longer carry: the write-side passthrough is a
+  // fact a caller needs BEFORE it writes, and help is the surface with room for it. Byte-for-byte
+  // surface cost on `tools/list` is zero, which is why the rule lives here.
+  adjusted +=
+    '\n\n  ARTICLE FORMAT: a write whose content opens with block HTML (<p>, <div>, <h1>-<h6>, <table>, <ul>/<ol>, <pre>, <blockquote>, <hr>) is sent as HTML instead of being parsed as Markdown.' +
+    ' Re-read the stored article with articles.get before editing it.';
   // `refresh` is a stdio-only field: it rebuilds this process's local body index, not anything in
   // Hudu. Help is the one surface where the cost can be stated in full.
   if (!searchTierIsPolicy && indexSearchable) {

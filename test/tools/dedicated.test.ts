@@ -71,6 +71,15 @@ describe('hudu_describe_operation steers a mapped read to its ungated tool', () 
     await session.close();
   });
 
+  it('states the resource -> operation mapping on the hudu_list help surface', async () => {
+    // PR #52 dropped the mapping from the served prose; it belongs in the tool's own description
+    // (the help surface a caller reads), never in an inputSchema field description.
+    const session = await connect();
+    const tool = (await session.list()).find((t: { name: string }) => t.name === 'hudu_list');
+    expect(tool.description).toContain('backed by companies.list / articles.list / assets.listAcrossCompanies / asset_layouts.list');
+    await session.close();
+  });
+
   it('presents the dedicated tool schema, not the operation schema', async () => {
     // assets.listAcrossCompanies accepts `include`; hudu_list does not. The describe must
     // present the tool's arguments so a caller cannot supply one the tool would refuse.

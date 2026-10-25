@@ -12,6 +12,7 @@ import {
 import { registerDispatchTools } from './dispatch.js';
 import type { ToolContext } from './context.js';
 import { applyDedicatedToolCatalog, applyDedicatedToolDescribe, nullUnservedToolCatalog, nullUnservedToolDescribe } from './dedicated.js';
+import { ARTICLE_BODY_READS, FETCH_MANY_RECOVERY_HINT } from './article-loss.js';
 import { errorContent, metaSpec, createResultBuilders } from './results.js';
 import { CATALOG_OUTPUT } from './schemas.js';
 import { applyAcrossDescribePolicy, applyResolveDescribePolicy, applySearchCatalogPolicy, applySearchDescribePolicy } from './search-prose.js';
@@ -90,7 +91,11 @@ export function registerMetaTools(server: McpServer, ctx: ToolContext): void {
           : described.exposed_tool !== null
             ? ` — use ${described.exposed_tool}`
             : '';
-        return ok(`${operation}: ${described.effect}${steer}`, { ...described });
+        // The article-format recovery rule has no home in `tools/list` any more (PR #52 compacted it
+        // away); this ON-DEMAND surface carries it, so a caller reading up on an article read learns
+        // where the stored HTML is before a lossy read ever tells it.
+        const recovery = ARTICLE_BODY_READS.has(operation) ? ` — ${FETCH_MANY_RECOVERY_HINT}` : '';
+        return ok(`${operation}: ${described.effect}${steer}${recovery}`, { ...described });
 
       } catch (err) {
         return errorContent(err);

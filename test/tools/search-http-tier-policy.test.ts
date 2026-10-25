@@ -53,6 +53,24 @@ describe('hudu_search schema and the search tier', () => {
     await session.close();
   });
 
+  it('answers from the vendor tier in well under a second while the index walk never settles', async () => {
+    // The incident is a corpus walk that HANGS, not a corpus that answers empty instantly: a stub
+    // that settles at once would let a wrongly-awaited build return just as fast. The walk request
+    // here never resolves, so only a path that refuses to await it can answer at all.
+    const session = await connectForRequest(
+      'key-a',
+      (_key, url) => (url.includes('search=') ? Response.json([]) : new Promise<Response>(() => {})),
+    );
+    const started = Date.now();
+    const result = await session.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index', refresh: true, limit: 1, snippetChars: 0 });
+    const elapsed = Date.now() - started;
+    expect(result.isError).toBeUndefined();
+    expect(elapsed).toBeLessThan(500);
+    expect(['cold', 'refreshing']).toContain(result.structuredContent.meta.index.state);
+    expect(result.structuredContent.meta.degraded).toBeTruthy();
+    await session.close();
+  });
+
   it('holds the raw invoke path to the same policy', async () => {
     // `hudu_read` of operations.searchKnowledge reaches the SDK directly, so it is the escape hatch
     // the tier gate must also close under http.

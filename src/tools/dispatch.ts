@@ -101,6 +101,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
               limit: typeof searchOpts.limit === 'number' ? searchOpts.limit : SEARCH_DEFAULT_LIMIT,
               elapsedMs: 0,
               waited: false,
+              transport: config.MCP_TRANSPORT,
             });
             return ok(cancelled.text, { simulated: false, operation, result: cancelled.data });
           }
@@ -115,6 +116,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
                 limit: typeof searchOpts.limit === 'number' ? searchOpts.limit : SEARCH_DEFAULT_LIMIT,
                 elapsedMs: awaited.elapsedMs,
                 waited: awaited.waited,
+                transport: config.MCP_TRANSPORT,
               });
               return ok(cancelled.text, { simulated: false, operation, result: cancelled.data });
             }

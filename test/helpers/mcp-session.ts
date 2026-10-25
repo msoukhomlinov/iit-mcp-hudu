@@ -127,7 +127,7 @@ export async function connect(respond?: (url: string) => Response, override: Par
  */
 export async function connectForRequest(
   apiKey: string | undefined,
-  respond: (key: string | null) => Response,
+  respond: (key: string | null, url: string) => Response | Promise<Response>,
   logs: Json[] = [],
   override: Partial<Config> = {},
   base: string | null = 'https://hudu.invalid',
@@ -161,7 +161,9 @@ export async function connectForRequest(
   vi.stubGlobal('fetch', async (url: unknown, init?: RequestInit) => {
     urls.push(String(url));
     const key = new Headers(init?.headers).get('x-api-key');
-    return respond(key);
+    // The URL rides along so a test can make ONE kind of request (the index walk) hang while the
+    // vendor tier answers: the incident is a walk that never returns, not a fast empty corpus.
+    return respond(key, String(url));
   });
 
   let id = 0;

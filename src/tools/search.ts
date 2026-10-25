@@ -104,13 +104,19 @@ export async function awaitWithProgress<T>(
 }
 
 
-/** The facts a cancelled wait reports: the call's own scope, plus how long it waited. */
+/** The facts a cancelled wait reports: the call's own scope, how long it waited, and its transport. */
 export interface CancelledSearch {
   query: string;
   scope: KnowledgeResource[];
   limit: number;
   elapsedMs: number;
   waited: boolean;
+  /**
+   * Which tier advice the caller can act on. Under `stdio` the caller holds `tier`, so "vendor" is
+   * an immediate alternative. Under `http` no tier is served: the body index keeps building in the
+   * background, so the honest advice is to retry and get a body-backed answer.
+   */
+  transport: 'stdio' | 'http';
 }
 
 /**
@@ -119,23 +125,26 @@ export interface CancelledSearch {
  * The caller's request was cancelled while the body index was still building, so no body search
  * ran. `hits: []` with `meta.complete: false` and the in-vocabulary `meta.degraded` reason
  * (`body-not-indexed`, because that is factually what was not searched) says exactly that; the
- * cancellation itself is named in `meta.reasons` (`index-build-cancelled`), and the advice points
- * at the immediate alternative instead of inviting a silent retry loop.
+ * cancellation itself is named in `meta.reasons` (`index-build-cancelled`), and the advice names the
+ * alternative the CALLER's transport actually serves instead of inviting a silent retry loop:
+ * `tier:"vendor"` under stdio, a retry under http (where no tier field is served and the background
+ * build makes a later search body-backed).
  *
  * Shared with the raw invoke path (`hudu_read` of `operations.searchKnowledge`), which can wait on
  * the same walk and must answer a cancellation the same honest way. It returns the text and data
  * rather than a built result so each caller keeps its own result builder and envelope.
  */
 export function cancelledSearchContent(cancel: CancelledSearch): { text: string; data: Record<string, unknown> } {
-  const { query, scope, limit, elapsedMs, waited } = cancel;
+  const { query, scope, limit, elapsedMs, waited, transport } = cancel;
   const hits: unknown[] = [];
   // The SDK's own normalisation is not reachable here (no result was produced), so the terms are the
   // query's raw split rather than a claim about what the engine would have matched.
   const terms = query.trim().split(/\s+/).filter((term) => term.length > 0);
   // The SDK's KnowledgeIndexMeta, exactly: status()-only fields (watermarks, requestsLastBuild,
   // lastBuildError) are not part of it and would misstate what an answer knows. The SDK types
-  // builtAt/ageMs as optional, so they are published here as explicit nulls — "no generation to
-  // describe" — rather than dropped: a reader must not have to guess which keys are missing.
+  // builtAt/ageMs as optional, so they are OMITTED here: no generation was scored, so publishing a
+  // null for either would describe a generation instead of saying there is none. `docs` is a
+  // required record, so it stays an empty object — "no generation recorded", never "zero documents".
   const index: KnowledgeIndexMeta = {
     state: waited ? 'refreshing' : 'cold',
     staleness: 'unknown',
@@ -145,8 +154,17 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
     lastCompleteFullAt: null,
     fullWalkDue: false,
   };
+  // Transport-aware advice: the two paths serve different fields and different next steps.
+  const text =
+    transport === 'http'
+      ? 'Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry — the body index keeps building in the background, so a later search is body-backed.'
+      : 'Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.';
+  const advice =
+    transport === 'http'
+      ? 'The request was cancelled while the body index built, so article bodies were not searched. Retry: the body index keeps building in the background, so a later search is body-backed.'
+      : 'The request was cancelled while the body index built, so article bodies were not searched. Retry, or use tier:"vendor" for an immediate body-blind answer.';
   return {
-    text: 'Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.',
+    text,
     data: {
       mode: 'search',
       query,
@@ -166,7 +184,7 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         // the cancellation-specific fact is carried by `reasons`, which is an open string array.
         degraded: {
           reason: 'body-not-indexed',
-          advice: 'The request was cancelled while the body index built, so article bodies were not searched. Retry, or use tier:"vendor" for an immediate body-blind answer.',
+          advice,
         },
         errors: [],
         failed: [],
@@ -174,10 +192,11 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         scoreScope: 'per-resource',
         // Serialised size of the (empty) hits array, as the SDK reports it for a real answer.
         bytes: Buffer.byteLength(JSON.stringify(hits), 'utf8'),
-        // No generation was scored, so nothing about one is claimed. "refreshing" only when this
+        // No generation was scored, so nothing about one is claimed — not even a null builtAt/ageMs
+        // pair ("no generation recorded" is said by their absence). "refreshing" only when this
         // call actually joined a build; a request cancelled before any work started awaited
         // nothing, so the index is simply "cold".
-        index: { ...index, builtAt: null, ageMs: null },
+        index,
         indexAge: null,
       },
     },
@@ -370,7 +389,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         // first would report a cold index for a request whose build this process had already begun.
         // Nothing is started for a caller that is gone.
         if (searchWaits && signalOf(req)?.aborted === true) {
-          const cancelled = cancelledSearchContent({ query: args.query, scope, limit: args.limit ?? SEARCH_DEFAULT_LIMIT, elapsedMs: 0, waited: false });
+          const cancelled = cancelledSearchContent({ query: args.query, scope, limit: args.limit ?? SEARCH_DEFAULT_LIMIT, elapsedMs: 0, waited: false, transport: ctx.config.MCP_TRANSPORT });
           return ok(cancelled.text, cancelled.data);
         }
         const work = ops.searchKnowledge(args.query, {
@@ -390,7 +409,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         if (searchWaits) {
           const awaited = await awaitWithProgress(req, progressTokenOf(req), work, log);
           if (awaited.aborted) {
-            const cancelled = cancelledSearchContent({ query: args.query, scope, limit: args.limit ?? SEARCH_DEFAULT_LIMIT, elapsedMs: awaited.elapsedMs, waited: awaited.waited });
+            const cancelled = cancelledSearchContent({ query: args.query, scope, limit: args.limit ?? SEARCH_DEFAULT_LIMIT, elapsedMs: awaited.elapsedMs, waited: awaited.waited, transport: ctx.config.MCP_TRANSPORT });
             return ok(cancelled.text, cancelled.data);
           }
           result = awaited.value;

@@ -34,6 +34,25 @@ describe('fixed SDK client options', () => {
   });
 });
 
+describe('HUDU_SEARCH_INDEX_TTL', () => {
+  it('reaches the SDK client as search.indexTtlMs, and stays unset when the env is unset', async () => {
+    captured.length = 0;
+    const session = await connect(undefined, { HUDU_SEARCH_INDEX_TTL: 45_000 });
+    await session.close();
+    expect(captured.length).toBeGreaterThan(0);
+    for (const options of captured) {
+      expect((options.search as { indexTtlMs?: number }).indexTtlMs).toBe(45_000);
+    }
+    captured.length = 0;
+    const defaults = await connect();
+    await defaults.close();
+    for (const options of captured) {
+      // Absent, not undefined-with-a-value: the SDK's own 10 minute default must win.
+      expect(options.search as Record<string, unknown>).not.toHaveProperty('indexTtlMs');
+    }
+  });
+});
+
 describe('body-index text budget is pooled per process', () => {
   it('gives the parent the pool and every scoped client its share', async () => {
     captured.length = 0;

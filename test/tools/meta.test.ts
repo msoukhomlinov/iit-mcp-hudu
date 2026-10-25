@@ -101,6 +101,20 @@ describe('meta discovery and credential tool surface', () => {
     await allowed.close();
   });
 
+  it('carries the hudu_fetch_many recovery hint on an article body read', async () => {
+    // The rule went missing from every served surface when the tool descriptions were compacted;
+    // hudu_describe_operation is the on-demand home, so it is stated before a loss is ever hit.
+    const session = await connect();
+    for (const operation of ['articles.get', 'articles.getSection', 'articles.resolve', 'articles.getContext']) {
+      const result = await session.call('hudu_describe_operation', { operation });
+      expect(JSON.parse(String(result.content[0].text)).text, operation).toContain('hudu_fetch_many {items:[{resource:"articles", id}]}');
+    }
+    // A read with no body conversion never advertises it.
+    const plain = await session.call('hudu_describe_operation', { operation: 'companies.get' });
+    expect(JSON.parse(String(plain.content[0].text)).text).not.toContain('hudu_fetch_many');
+    await session.close();
+  });
+
   it('steers operations.fetchMany to the dedicated hudu_fetch_many tool', async () => {
     const session = await connect();
     const result = await session.call('hudu_describe_operation', { operation: 'operations.fetchMany' });

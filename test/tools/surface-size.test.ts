@@ -11,7 +11,8 @@ import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured after the compact tool prose and field descriptions, plus the restored prose facts: 27,295 / 22,567.
+// Measured after the compact tool prose, the restored prose facts and the hudu_list resource -> operation
+// mapping: 27,387 / 22,659 (write / read-only), http 27,339 / 22,611.
 /** Per-profile totals: the write-enabled profile carries two more tools, so it gets its own ceiling. */
 const BUDGET_WRITE = 27_500;
 const BUDGET_READ_ONLY = 23_000;

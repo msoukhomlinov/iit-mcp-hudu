@@ -70,6 +70,18 @@ describe('hudu_search help prose', () => {
     await session.close();
   });
 
+  it('carries the block-HTML passthrough rule on the on-demand help surface', async () => {
+    // The compact tool descriptions no longer carry it (PR #52), so help is where a caller learns
+    // that a body opening with block HTML is sent as HTML rather than parsed as Markdown.
+    const session = await connect();
+    const result = await session.call('hudu_search', { mode: 'help' });
+    const text: string = result.structuredContent.help.text;
+    expect(text).toContain('ARTICLE FORMAT');
+    expect(text).toContain('is sent as HTML instead of being parsed as Markdown');
+    expect(text).toContain('articles.get');
+    await session.close();
+  });
+
   it('names only the credential resources that remain searchable', async () => {
     const session = await connect(undefined, { HUDU_SEARCH_RESOURCES: ['articles', 'assets', 'asset_passwords'] });
     const result = await session.call('hudu_search', { mode: 'help', topic: 'followup' });

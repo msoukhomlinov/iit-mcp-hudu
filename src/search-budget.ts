@@ -20,12 +20,13 @@ export const SCOPED_INDEX_BUDGET_DIVISOR = 8;
 /**
  * The total extracted text the PROCESS's body indexes may hold, from the V8 heap ceiling in bytes.
  *
- * A tenth of the heap, rounded down to whole MiB and clamped to 8-64 MiB. ESTIMATE (not a
- * measurement), inferred from issue #51's crash trace — a 252 MB peak heap at a 64 MiB text budget:
- * the index structures cost roughly 4x the text they hold, and the process carries roughly 90 MB of
- * baseline heap, so a 10% share keeps a small container under its ceiling — and the SDK reports
- * `index-partial` honestly when the budget bites, so a short index degrades the answer instead of
- * crashing the process.
+ * A tenth of the heap, rounded down to whole MiB and clamped to 8-64 MiB. ESTIMATE, not a proof
+ * that a build cannot exhaust the heap: the ~4x structure-to-text ratio and the ~90 MB baseline
+ * heap come from issue #51's crash trace — a 252 MB peak heap at a 64 MiB text budget on the
+ * production tenant — and that 64 MiB profile is the ONLY one measured, so a 512 MiB deployment's
+ * peak has never been observed. On that estimate a 10% share keeps a small container under its
+ * ceiling, and the SDK reports `index-partial` honestly when the budget bites, so a short index
+ * degrades the answer instead of crashing the process.
  *
  * This is the pooled budget for the whole process, not for one client: a deployment serving several
  * credentials keeps up to {@link SCOPED_INDEX_BUDGET_DIVISOR} scoped clients warm, and each one owns

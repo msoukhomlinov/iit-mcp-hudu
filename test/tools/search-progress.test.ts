@@ -178,15 +178,15 @@ describe('hudu_search progress while awaiting the body index', () => {
     expect(meta.index.state).toBe('refreshing');
     expect(meta.index.staleness).toBe('unknown');
     expect(meta.index.docs).toEqual({});
-    expect(meta.index.builtAt).toBeNull();
-    expect(meta.index.ageMs).toBeNull();
+    // The SDK declares builtAt/ageMs optional: no generation was scored, so they are OMITTED
+    // rather than published as nulls that would describe a generation.
+    expect(meta.index).not.toHaveProperty('builtAt');
+    expect(meta.index).not.toHaveProperty('ageMs');
     expect(meta.index.indexChangedSinceScore).toBe(false);
     expect(meta.index.lastFullAt).toBeNull();
     expect(meta.index.lastCompleteFullAt).toBeNull();
     expect(meta.index.fullWalkDue).toBe(false);
     expect(Object.keys(meta.index).sort()).toEqual([
-      'ageMs',
-      'builtAt',
       'docs',
       'fullWalkDue',
       'indexChangedSinceScore',
@@ -220,6 +220,38 @@ describe('hudu_search progress while awaiting the body index', () => {
     expect(result.structuredContent.meta.reasons).toEqual(['index-build-cancelled']);
     expect(result.structuredContent.meta.timings.localMs).toBe(0);
     build.resolve(RESULT);
+  });
+
+  it('advises tier:"vendor" on a cancelled stdio wait, a field stdio actually serves', async () => {
+    const build = deferred<typeof RESULT>();
+    const handler = harness({ searchKnowledge: () => build.promise as never });
+    const controller = new AbortController();
+    const call = handler({ mode: 'search', query: 'reset', tier: 'index' }, request(controller.signal, async () => {}));
+    controller.abort();
+    const result = await call;
+    build.resolve(RESULT);
+    expect(JSON.parse(String(result.content[0].text)).text).toContain('tier:"vendor"');
+    expect(result.structuredContent.meta.degraded.advice).toContain('tier:"vendor"');
+  });
+
+  it('advises a retry, not tier:"vendor", on a cancelled http wait', async () => {
+    // Under `http` no tier field is served, and the policy path is exactly where cancellation fires:
+    // the honest advice is that the background build continues, so a later search is body-backed.
+    const build = deferred<typeof RESULT>();
+    const handler = harness(
+      { searchKnowledge: () => build.promise as never },
+      { config: { MCP_TRANSPORT: 'http' } as ToolContext['config'], searchTierIsPolicy: true, toolDefaultTier: 'index' },
+    );
+    const controller = new AbortController();
+    const call = handler({ mode: 'search', query: 'reset' }, request(controller.signal, async () => {}));
+    controller.abort();
+    const result = await call;
+    build.resolve(RESULT);
+    const answered = JSON.parse(String(result.content[0].text)).text as string;
+    expect(answered).not.toContain('tier:"vendor"');
+    expect(answered).toContain('body index keeps building in the background');
+    expect(result.structuredContent.meta.degraded.advice).not.toContain('tier:"vendor"');
+    expect(result.structuredContent.meta.degraded.advice).toContain('body index keeps building in the background');
   });
 
   it('waits, ticks and cancels on the http policy path when HUDU_SEARCH_TIER_POLICY is index', async () => {
