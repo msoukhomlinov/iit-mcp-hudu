@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Docs: the Mermaid form written by the Hudu UI editor is now verified. It stores `<pre class="language-mermaid" data-id="…"><code class="language-mermaid">…</code></pre>`, the same shape the SDK writes plus editor `data-id` attributes; a Markdown round trip keeps the diagram text and drops the `data-id` attributes. Replaces the earlier "unverified" caveat.
+
 ## 0.5.1
 
 **Upgrading from 0.5.0:** no configuration or client changes needed; behaviour only. A record read (get, getSection, fetch_many, article context) after a `hudu_write` / `hudu_delete` in the same server process now returns the written data instead of the cached pre-write record. A write from another process or deployment can still be served stale for up to the cache TTL (caches are per process). The `hudu_search` body index is a separate store that a write does not refresh: after a write, pass `refresh: true` or wait for the index TTL (SDK default 10 min) before relying on a body search to find new text.
