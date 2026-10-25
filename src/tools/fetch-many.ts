@@ -30,7 +30,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { ToolContext } from './context.js';
-import { ARTICLE_FORMAT_NOTE, errorContent, metaSpec, createResultBuilders } from './results.js';
+import { ARTICLE_FORMAT_NOTE, errorContent, metaSpec, createResultBuilders, upfrontRefusal } from './results.js';
 import { applyFetchManyPolicyToInvoke } from './search-policy.js';
 
 /**
@@ -92,6 +92,9 @@ export function registerFetchManyTool(server: McpServer, ctx: ToolContext): void
         // The deployment's authority, asserted per item BEFORE any request — the same wrapper the
         // hudu_read dispatch of operations.fetchMany applies, so both paths gate identically.
         applyFetchManyPolicyToInvoke(ctx, { items: args.items });
+        // A refusing client fails every item alike: answer once, as every other tool does.
+        const refused = upfrontRefusal();
+        if (refused !== undefined) return refused;
         const result = await ctx.ops.fetchMany(args.items);
         return ok(
           `${result.ok} of ${args.items.length} item(s) fetched${result.failed > 0 ? `; ${result.failed} failed — the typed per-item error is on each row` : ''}.`,
