@@ -109,8 +109,9 @@ const INDEX_DOC_BYTES = 1024;
  * walked document and applies the cap only AFTER the walk, so this bounds what the index RETAINS,
  * not the walk's peak (the heap ceiling and the text budget's eviction bound that). A capped index
  * reports index state "partial", as it already does when the text budget bites. Resulting numbers: a 512 MiB container gets a 16 MiB pool and 2 MiB per scoped
- * client, so 2,048 documents per scoped client (16,384 for the stdio pool); a 1 GiB heap ceiling
- * reaches the 64 MiB cap and 8 MiB per client, so 8,192 documents (50,000 for the stdio pool). All
+ * client, so 2,048 documents per scoped client (16,384 for the stdio pool); a 1 GiB container's
+ * ~816 MB V8 ceiling gets a 51 MiB pool and 6 MiB per client, so 6,144 documents (50,000 for the
+ * stdio pool), while a 1024 MB ceiling is what reaches the 64 MiB cap and 8,192. All
  * ~3,300 articles of the production tenant fit at the 1 GiB figure. WHICH documents a small heap's
  * cap truncates first is INFERRED, not measured: title-only assets are expected to go first because
  * they cost a record without carrying text, but at 512 MiB the 2,048-document cap already sits below

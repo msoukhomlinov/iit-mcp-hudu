@@ -314,13 +314,13 @@ the real SDK client under a ~262 MB V8 ceiling (`node --max-old-space-size=259 -
 probe.mjs`; the second flag brings V8's reported limit to ~262 MB, while the first alone reports
 ~451 MB in Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
 64 MiB / 50,000 settings peaked at ~147 MiB. Both survived. That probe's baseline is lower than the
-server's ~90 MB. A 1 GiB heap ceiling reaches the 64 MiB cap, 8 MiB per client.
+server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling gets a 51 MiB pool and 6 MiB per scoped client; a 1024 MB heap ceiling is what reaches the 64 MiB cap.
 
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
 evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
 reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
-container indexes up to 2,048 documents per scoped client (16,384 for the stdio pool), a 1 GiB heap
-ceiling 8,192 per client (50,000 for the pool). The per-document cost is an ESTIMATE (~1 KB of record
+container indexes up to 2,048 documents per scoped client (16,384 for the stdio pool), a 1 GiB
+container's ~816 MB ceiling 6,144 per client (50,000 for the pool), and only a 1024 MB ceiling 8,192. The per-document cost is an ESTIMATE (~1 KB of record
 plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
 peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
 `maxDocs` bounds the RETAINED index, not the build-time peak; the peak during a walk is bounded by
