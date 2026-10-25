@@ -15,7 +15,6 @@ vi.mock('node-hudu', async (importOriginal) => {
 });
 
 const { connect, connectForRequest } = await import('../helpers/mcp-session.js');
-const { MAX_SCOPED_CLIENTS } = await import('../../src/tools/server.js');
 const { MAX_SCOPED_INDEX_CACHES, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } = await import('../../src/search-budget.js');
 const { getHeapStatistics } = await import('node:v8');
 
@@ -73,9 +72,23 @@ describe('body-index text budget is pooled per process', () => {
     expect(budgets).toContain(pool);
     const scoped = budgets.filter((b) => b === share);
     expect(scoped.length).toBeGreaterThan(0);
-    // All the per-mode caches together cannot hold more than the pool.
-    expect(scoped.length * MAX_SCOPED_CLIENTS * MAX_SCOPED_INDEX_CACHES).toBeLessThanOrEqual(pool);
+    // All the clients the three caches materialised together hold no more text than the pool.
+    expect(scoped.length * share).toBeLessThanOrEqual(pool);
     expect(budgets.every((b) => b <= pool)).toBe(true);
+  });
+
+  it('divides by one cache when writes are denied, so the share is the one-cache share', async () => {
+    captured.length = 0;
+    const session = await connectForRequest('key-a', () => Response.json([]), [], { HUDU_WRITE_POLICY: 'deny' });
+    await session.call('hudu_search', { mode: 'search', query: 'reset', limit: 1, snippetChars: 0 });
+    await session.close();
+    const heap = getHeapStatistics().heap_size_limit;
+    const budgets = captured.map((options) => (options.search as { maxIndexTextBytes: number }).maxIndexTextBytes);
+    const oneCache = scopedIndexTextBudgetBytes(heap, 1);
+    const threeCaches = scopedIndexTextBudgetBytes(heap, MAX_SCOPED_INDEX_CACHES);
+    expect(oneCache).not.toBe(threeCaches);
+    expect(budgets).toContain(oneCache);
+    expect(budgets).not.toContain(threeCaches);
   });
 
   it('pairs every text budget with its doc cap, so search.maxDocs reaches the client', async () => {

@@ -24,19 +24,28 @@ export const MAX_INDEX_TEXT_BYTES = 64 * MIB;
  * indexed (MEASURED on the live server, 2026-10-26).
  *
  * RESULTING DEPTH: a read-only deployment (one cache, `HUDU_WRITE_POLICY=deny`) gives each scope
- * 25 MiB and 25,600 documents at a ~816 MB ceiling; that is INFERRED to cover the tenant's ~19 MB of
- * article bodies and nearly all of its ~25,900 records (25,600 < 25,900, so a few hundred of the
- * oldest records can still fall outside). A write-enabled deployment has three caches, so the same
- * pool is divided by six and each scope gets 8 MiB and 8,192 documents.
+ * 17 MiB and 17,408 documents at a ~816 MB ceiling; that is INFERRED to cover the tenant's ~19 MB of
+ * article bodies almost entirely (about 2,800 of 3,204) and to keep all 3,204 articles, because the
+ * measured run retained articles at roughly a quarter of the freshest-document density. A
+ * write-enabled deployment has three caches, so the same pool is divided by nine and each scope gets
+ * 5 MiB and 5,120 documents.
  *
- * WORST CASE: MAX_SCOPED_CLIENTS x caches x share <= pool in every profile, because
- * {@link scopedIndexTextBudgetBytes} divides by both factors. This also CORRECTS a pre-existing
- * oversubscription: with eight shares, three caches could hold 3 x 8 x 6 = 144 MiB of text against a
- * 51 MiB pool. The trade is still breadth for depth: an evicted scope rebuilds on demand (answers
- * stay non-blocking and fall back to the vendor tier meanwhile), and a deployment needing both
- * breadth and depth needs a larger heap.
+ * WORST CASE, INCLUDING EVICTION: clients x caches x share <= pool at ALL times, because
+ * {@link scopedIndexTextBudgetBytes} divides by the per-cache client count and the cache count, and
+ * that client count is the cache capacity PLUS one eviction transient — the scope the LRU just
+ * dropped, which an in-flight request keeps alive until it finishes (`ScopedClientCache.for()`).
+ * This also CORRECTS a pre-existing oversubscription: with eight shares, three caches could hold
+ * 3 x 8 x 6 = 144 MiB of text against a 51 MiB pool. The trade is still breadth for depth: an
+ * evicted scope rebuilds on demand (answers stay non-blocking and fall back to the vendor tier
+ * meanwhile), and a deployment needing both breadth and depth needs a larger heap.
  */
 export const SCOPED_INDEX_BUDGET_DIVISOR = 2;
+
+/**
+ * One extra client per cache: a scope evicted by the LRU stays reachable while an in-flight request
+ * that resolved it finishes, so the cache's text can briefly be (capacity + 1) shares.
+ */
+export const SCOPED_INDEX_EVICTION_TRANSIENT = 1;
 
 /** The per-mode scoped-client caches the factory builds: read, plus write and delete with writes on. */
 export const MAX_SCOPED_INDEX_CACHES = 3;
@@ -85,24 +94,37 @@ export function indexTextBudgetBytes(heapLimitBytes: number): number {
 }
 
 /**
- * The text budget for ONE scoped client: the process pool divided by the per-cache client cap AND by
- * the number of per-mode caches.
+ * The text budget for ONE scoped client: the process pool divided by the per-cache client count AND
+ * by the number of per-mode caches.
  *
  * `caches` is the number of scoped-client caches the process creates: 1 under
  * `HUDU_WRITE_POLICY=deny` (read only), up to {@link MAX_SCOPED_INDEX_CACHES} otherwise (read, write,
- * delete). Each cache can hold {@link SCOPED_INDEX_BUDGET_DIVISOR} clients, so dividing by the product
- * is what keeps `clients x share <= pool`.
+ * delete). Each cache can hold its capacity PLUS the eviction transient
+ * ({@link SCOPED_INDEX_EVICTION_TRANSIENT}), so dividing by the product is what keeps
+ * `clients x caches x share <= pool` at all times, not only in the steady state.
  *
  * A whole-MiB share with a 1 MiB floor, never above the pool itself (a pool smaller than the cap
  * would otherwise be oversubscribed). Small pools get a share below the single-client
  * {@link MIN_INDEX_TEXT_BYTES} on purpose — the clients cannot each hold the single-client floor out
- * of an 8 MiB pool.
+ * of an 8 MiB pool. In the smallest pool the client count is reduced to the number of whole MiB the
+ * pool holds, so the floor cannot oversubscribe it either.
  */
 export function scopedIndexTextBudgetBytes(heapLimitBytes: number, caches = 1): number {
   const total = indexTextBudgetBytes(heapLimitBytes);
-  const clients = SCOPED_INDEX_BUDGET_DIVISOR * Math.max(1, caches);
+  const clients = scopedIndexClientCount(heapLimitBytes, caches);
   const share = Math.floor(total / clients / MIB) * MIB;
   return Math.min(total, Math.max(MIB, share));
+}
+
+/**
+ * How many clients' text the pool must fund: the per-cache client count (capacity plus the eviction
+ * transient) times the number of per-mode caches, reduced to the whole MiB the pool holds so the
+ * 1 MiB floor cannot oversubscribe the smallest pool.
+ */
+export function scopedIndexClientCount(heapLimitBytes: number, caches = 1): number {
+  const total = indexTextBudgetBytes(heapLimitBytes);
+  const wanted = (SCOPED_INDEX_BUDGET_DIVISOR + SCOPED_INDEX_EVICTION_TRANSIENT) * Math.max(1, caches);
+  return Math.min(wanted, Math.max(1, Math.floor(total / MIB)));
 }
 
 /** 1,500: a doc cap below this would truncate a small tenant's whole corpus, so a tiny budget keeps a floor. */
@@ -136,22 +158,22 @@ const INDEX_DOC_BYTES = 1024;
  * not the walk's peak (the heap ceiling and the text budget's eviction bound that). A capped index
  * reports index state "partial", as it already does when the text budget bites. Resulting numbers,
  * read-only profile / write-enabled profile (one cache / three caches):
- * a 512 MiB container (MEASURED ~50.6% container-to-heap ratio: ~259 MB) gets a 16 MiB pool, so 8 MiB
- * / 8,192 documents per scoped client read-only, 2 MiB / 2,048 with writes (16,384 for the stdio
+ * a 512 MiB container (MEASURED ~50.6% container-to-heap ratio: ~259 MB) gets a 16 MiB pool, so 5 MiB
+ * / 5,120 documents per scoped client read-only, 1 MiB / 1,500 with writes (16,384 for the stdio
  * pool); a 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% ratio, not a measurement — gets a
- * 51 MiB pool, so 25 MiB / 25,600 read-only, 8 MiB / 8,192 with writes (50,000 for the stdio pool);
- * a 1024 MB ceiling reaches the 64 MiB cap, so 32 MiB / 32,768 read-only, 10 MiB / 10,240 with
- * writes.
+ * 51 MiB pool, so 17 MiB / 17,408 read-only, 5 MiB / 5,120 with writes (50,000 for the stdio pool);
+ * a 1024 MB ceiling reaches the 64 MiB cap, so 21 MiB / 21,504 read-only, 7 MiB / 7,168 with writes.
  *
  * WHICH documents the cap truncates is the SDK's choice, not this module's: it keeps the freshest
  * `updated_at` across ALL resources, so assets can outrank older articles. MEASURED on the production
  * tenant at the former division by eight (6,144 documents): 4,666 assets and 1,478 of the 3,204
  * articles were retained; 1,036 article bodies were indexed, 317 had been evicted by the text budget
  * and 3 truncated (the counts do not decompose the 1,478 — some retained articles carry no body
- * text). At the 1 GiB read-only figures above (25 MiB and 25,600 documents) the tenant's ~25,900
- * records nearly all fit, so that article loss is expected mostly to disappear (INFERRED, not
- * measured at this division); at 512 MiB (8,192 documents) it does not — 3,204 articles leave 4,988
- * document slots for assets, and only the freshest are kept. The order is the SDK's.
+ * text). At the 1 GiB read-only figures above (17 MiB and 17,408 documents) the measured article
+ * density (1,478 of the freshest 6,144) implies all 3,204 articles now fall inside the cap, so the
+ * article loss is expected to disappear (INFERRED, not measured at this division); at 512 MiB
+ * (5,120 documents) 3,204 articles would leave only 1,916 slots for assets, so the loss remains. The
+ * order is the SDK's.
  *
  * Named for its scoped use because that is where it matters: the pool is divided per client, and the
  * cap travels the same `search` object as `maxIndexTextBytes`.

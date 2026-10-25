@@ -15,7 +15,7 @@ import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
-import { MAX_SCOPED_INDEX_CACHES, SCOPED_INDEX_BUDGET_DIVISOR, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } from '../search-budget.js';
+import { SCOPED_INDEX_BUDGET_DIVISOR, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } from '../search-budget.js';
 import { runWithCredentialShapeView, type CredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 import { answerRenamedTools } from './renamed.js';
@@ -216,8 +216,8 @@ interface ModeEntry {
    *
    * Lazily built and cached rather than one per mode: the strategy carries the anomaly names,
    * the anomaly set is small and bounded (`CREDENTIAL_ANOMALIES`), and a fresh `HuduClient` per
-   * malformed request would let a caller allocate a client (and its 64 MB text budget) per request
-   * — which is the resource the scoped-client cap exists to protect. The cache is bounded by the
+   * malformed request would let a caller allocate a client (and its share of the pooled index text
+   * budget) per request — which is the resource the scoped-client cap exists to protect. The cache is bounded by the
    * power set of the anomalies in `CREDENTIAL_ANOMALIES` plus the empty set, i.e. it cannot grow
    * with request volume.
    */
@@ -488,13 +488,14 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
         ? [...reads, ...config.HUDU_WRITE_ALLOW.filter((key) => getCapability(key)?.effect === (mode === 'delete' ? 'destructive' : 'write')).flatMap((key) => withWriteDependencies(key, mode === 'delete' ? 'destructive' : 'write'))]
         : undefined;
     const scopedOptions = { ...options, mode, reveal: false, ...(allowOperations ? { allowOperations } : {}) };
-    // ONE scoped client's share of the process pool: the process can hold MAX_SCOPED_CLIENTS clients
-    // in EACH per-mode cache (read, plus write and delete when writes are enabled), so handing each
-    // the whole pool would let it hold that many times the text it was sized for (#51). Divide by
-    // both factors, using the cache count the policy implies rather than how many are warm.
+    // ONE scoped client's share of the process pool: each per-mode cache holds MAX_SCOPED_CLIENTS
+    // clients plus one eviction transient, and the process builds one cache per mode (`modes`
+    // above), so handing each the whole pool would let it hold that many times the text it was
+    // sized for (#51). Divide by both factors, using the cache count the policy implies rather than
+    // how many are warm.
     // Only the per-(origin, credential) clients are divided — the parent keeps the pool, because
     // under `stdio` it is the only client and a deeper index is the point of serving that way.
-    const indexCaches = config.HUDU_WRITE_POLICY === 'deny' ? 1 : MAX_SCOPED_INDEX_CACHES;
+    const indexCaches = modes.length;
     const scopedTextBytes = scopedIndexTextBudgetBytes(heapLimitBytes, indexCaches);
     const scopedSearch = { ...options.search, maxIndexTextBytes: scopedTextBytes, maxDocs: scopedIndexMaxDocs(scopedTextBytes) };
     const parent = config.MCP_TRANSPORT === 'stdio'
@@ -527,8 +528,14 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
       ),
     };
   };
-  const read = build('read');
-  const mutations = config.HUDU_WRITE_POLICY === 'deny' ? undefined : { write: build('write'), delete: build('delete') };
+  // The per-mode caches this factory builds. ONE list drives both the caches built and the pool
+  // division (`indexCaches` above), so a change to the policy mapping cannot leave the budget
+  // describing a different number of caches than the process creates.
+  const writeModes: readonly ('write' | 'delete')[] = config.HUDU_WRITE_POLICY === 'deny' ? [] : ['write', 'delete'];
+  const modes = ['read', ...writeModes] as const;
+  const built = new Map(modes.map((mode) => [mode, build(mode)] as const));
+  const read = built.get('read')!;
+  const mutations = writeModes.length === 0 ? undefined : { write: built.get('write')!, delete: built.get('delete')! };
 
   return (ctx: McpRequestContext) => {
     const resolve = (entry: ModeEntry) => resolveHuduClient(entry, config, ctx, log);

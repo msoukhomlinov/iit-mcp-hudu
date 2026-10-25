@@ -311,21 +311,21 @@ of heap and died with `Reached heap limit` mid-search. It measured the ~90 MB ba
 ~41 MB of text out of its 64 MiB budget, and the peak reconciles as ~90 + 4 x 41 = ~254 MB. Read
 against the budget instead of the held text the same ratio would predict 90 + 4 x 64 = ~346 MB, which
 the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) now gets a 16 MiB pool and
-8 MiB per scoped client (2 MiB when writes are enabled: three per-mode caches divide the same pool
-by six). A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
+5 MiB per scoped client (1 MiB when writes are enabled: three per-mode caches divide the same pool
+by nine). A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
 the real SDK client under a ~262 MB V8 ceiling (an uncommitted one-off probe; `--max-semi-space-size=1`
 brings V8's reported limit to ~262 MB, while `--max-old-space-size=259` alone reports ~451 MB in
 Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
 64 MiB / 50,000 settings peaked at ~147 MiB. Both survived. That probe's baseline is lower than the
-server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% container-to-heap ratio; the MEASURED ratio for the 512 MiB container is ~50.6% (259 MB) — gets a 51 MiB pool and 25 MiB per scoped client (8 MiB with writes enabled); a 1024 MB heap ceiling is
+server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% container-to-heap ratio; the MEASURED ratio for the 512 MiB container is ~50.6% (259 MB) — gets a 51 MiB pool and 17 MiB per scoped client (5 MiB with writes enabled); a 1024 MB heap ceiling is
 what reaches the 64 MiB cap.
 
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
 evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
 reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
-container indexes up to 8,192 documents per scoped client read-only, 2,048 with writes (16,384 for
-the stdio pool), a 1 GiB container's ~816 MB ceiling (assumed ~80%) 25,600 per client read-only,
-8,192 with writes (50,000 for the pool), and only a 1024 MB ceiling 32,768 read-only, 10,240 with
+container indexes up to 5,120 documents per scoped client read-only, 1,500 with writes (16,384 for
+the stdio pool), a 1 GiB container's ~816 MB ceiling (assumed ~80%) 17,408 per client read-only,
+5,120 with writes (50,000 for the pool), and only a 1024 MB ceiling 21,504 read-only, 7,168 with
 writes. The per-document cost is an ESTIMATE (~1 KB of record
 plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
 peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
@@ -337,9 +337,9 @@ articles. MEASURED on the production tenant with the former division by eight (6
 4,666 assets and 1,478 of 3,204 articles retained; 1,036 article bodies indexed, 317 evicted by the
 text budget and 3 truncated (the counts do not decompose the 1,478 — some retained articles carry no
 body text). The same measurement is why a read-only scope now gets half the pool instead of an
-eighth: 25 MiB and 25,600 documents at 1 GiB are expected (INFERRED, not measured at this division)
-to cover nearly all of the tenant's ~25,900 records, while at 512 MiB (8,192 documents) 3,204 articles
-leave only 4,988 slots for assets and the loss remains.
+eighth: 17 MiB and 17,408 documents at 1 GiB are expected (INFERRED, not measured at this division)
+to keep all 3,204 articles and about 2,800 of their bodies, while at 512 MiB (5,120 documents) 3,204
+articles leave only 1,916 slots for assets and the loss remains.
 
 BEFORE THE DIVISOR CHANGE. The round-10 end-to-end run measured the real server (`dist/main.js`) under
 a 259 MiB V8 ceiling: peak heapUsed 187.96 MB with a 24.6 MB baseline, so the INDEX STRUCTURES cost
