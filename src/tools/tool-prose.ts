@@ -28,7 +28,7 @@ const DESCRIPTIONS: Record<string, string> = {
   hudu_describe_operation:
     "Full input contract, effect, dry-run support, errors and usage for ONE operation, by exact catalog key (never a tool name); an unknown key is CONFIG_ERROR naming the nearest.",
   hudu_resolve_any:
-    "Resolve an identifier across several resources when the type is unknown; otherwise use hudu_get_<singular>. Resources the key may not read (401/403) are listed in `unauthorized`; it fails only if all are refused. Narrow `resources` to skip asset_passwords/password_folders.",
+    "Resolve an identifier across resources when the type is unknown; else use hudu_get_<singular>. Unreadable resources are listed in `unauthorized`; fails only if all are refused. Narrow `resources` to skip asset_passwords/password_folders.",
   hudu_get_api_info:
     "Return the API information document. Prefer api_info.get. Omit `identifier` for the tenant-wide document; expand:true returns the full record.",
   hudu_get_company_context:

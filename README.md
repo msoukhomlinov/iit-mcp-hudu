@@ -286,10 +286,15 @@ the stale-rebuild behaviour.
 
 A request cancelled while a call waits on a body-index build answers instead of throwing.
 `meta.degraded.reason` stays `body-not-indexed` (the SDK's closed union), `meta.cancelled` records
-`{ during: "index-build", waited }`, and `meta.reasons` stays empty because no bound bit — the answer
+`{ during: "index-build", waited }` as a deliberate SERVER extension (the SDK's meta has no
+cancellation field; it travels in the open `meta` object beside the SDK vocabulary, and
+`meta.policyOverride` is the same kind of extension on the http path), and `meta.reasons` stays empty because no bound bit — the answer
 was cancelled, not bounded. Its `meta.index.state` is `cold` or `refreshing`; `cold` here means no
 generation was observed by THIS call, not that the process has no warm index (under `stdio` a warm
-index is possible, and this answer does not claim otherwise).
+index is possible, and this answer does not claim otherwise). The served `hudu_search` outputSchema
+types `meta` as an open object on purpose (a closed union costs about 1.1 KB against ~233 B of
+surface headroom); the meta vocabulary is enforced by the tests that publish it
+(`test/tools/search-progress.test.ts`), not by the outputSchema.
 
 The body index is bounded by TWO caps derived from the same heap estimate: a text budget and a
 document cap. The text budget is a tenth of the process's V8 heap ceiling, clamped to 8-64 MiB;
@@ -322,10 +327,23 @@ peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only
 `maxDocs` bounds the RETAINED index, not the build-time peak; the peak during a walk is bounded by
 the heap ceiling and the text budget's eviction, not by `maxDocs`. A capped index reports index state
 `partial`, exactly as it already does when the text budget bites. All ~3,300 articles of the
-production tenant fit at the 1 GiB figure; what the cap truncates first on a small heap is title-only
-assets, which cost a record without carrying text.
+production tenant fit at the 1 GiB figure; which documents the cap truncates first on a small heap is
+INFERRED, not measured: title-only assets are the expected first loss, because they cost a record
+without carrying text. The measured end-to-end walk kept 26,624 of 28,300 documents and never
+observed which ones went first.
 
-Measured: the standalone probe above (not committed); issue #51's trace remains the only production
+END-TO-END MEASURED (this repo's own probe, not committed): the built server (`dist/main.js`) ran as a
+separate process under `node --max-old-space-size=259 --max-semi-space-size=1 --import
+./mem-probe.mjs dist/main.js`, served over stdio against a stub Hudu tenant of 25,000 assets (250
+pages x 100 rows) and 3,300 articles with HTML bodies. A `hudu_search` call with `tier:"index"` built
+the body index and answered. Peak sampled `process.memoryUsage().heapUsed` was 187.96 MB (179.25
+MiB), about 69% of the 259 MiB ceiling: ~80 MiB of headroom. The process survived (exit 0) and the
+call took 12.0 s. The build walked 28,300 documents and retained 26,624 (the document cap bound;
+articles 3,183, assets 23,441) and reported index state `partial`. The text budget did not evict any
+body text in this run (`bodiesEvicted: 0`), so this peak does not exercise eviction. The stub's
+corpus is synthetic and its bodies are smaller than production's, and its ~24.6 MB baseline heapUsed
+is lower than the ~90 MB production baseline, so the ~253 MB production extrapolation stays
+UNVERIFIED. The fraction shipped remains a tenth. Issue #51's trace remains the only PRODUCTION
 measurement (~252 MB peak on the old 64 MiB profile).
 
 The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.

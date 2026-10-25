@@ -174,7 +174,7 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
     (transport === 'http'
       ? 'The request was cancelled while the body index built, so article bodies were not scored. Retry: the body index keeps building in the background, so a later search is body-backed.'
       : 'The request was cancelled while the body index built, so article bodies were not scored. Retry, or use tier:"vendor" for an immediate body-blind answer.') +
-    ' timings.localMs is the local body-index wait this call spent (the wait is local time, so it is reported there); timings.vendorMs is 0 because no vendor-tier scoring ran; request counts are NOT TRACKED for a cancelled wait, so timings.requests is not a count of Hudu requests.' +
+    ' timings.localMs is the local body-index wait this call spent (the wait is local time, so it is reported there); timings.vendorMs is 0 because no vendor-tier scoring ran; request counts are NOT TRACKED for a cancelled wait: timings.requests is ALWAYS 0 as a placeholder (the SDK type requires a number), so it is not a count of Hudu requests.' +
     ' meta.cancelled records this cancellation ({ during: "index-build", waited }); meta.reasons stays empty because no bound bit — the answer was cancelled, not bounded.';
   return {
     text,
@@ -196,6 +196,8 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         // event, not a bound. The cancellation has its own field (`meta.cancelled`), so the answer
         // stays truthful without inventing a reason code.
         reasons: [],
+        // `cancelled` is a deliberate SERVER extension, not SDK vocabulary: the SDK's KnowledgeSearchMeta
+        // has no cancellation field. It travels in the open `meta` object beside the SDK fields.
         cancelled: { during: 'index-build', waited },
         // `reason` stays inside the SDK's closed union (`no-index | vendor-only | body-not-indexed`).
         degraded: {
@@ -210,7 +212,7 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         // vendor tier was scored. `requests` cannot be honest: the SDK counts a completed call's
         // requests, this one never completed, and the walk it started keeps issuing requests in the
         // background, so the field stays at its only representable value (the type requires a
-        // number) and the answer text says the count is NOT TRACKED for a cancelled wait.
+        // number; 0 means "always 0 for a cancelled wait", not "no requests were made") and the answer text says the count is NOT TRACKED for a cancelled wait.
         timings: { vendorMs: 0, localMs: elapsedMs, requests: 0 },
         scoreScope: 'per-resource',
         // Serialised size of the (empty) hits array, as the SDK reports it for a real answer.

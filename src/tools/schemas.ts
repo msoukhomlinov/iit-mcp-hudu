@@ -142,9 +142,9 @@ export const HITS_OUTPUT = z.object({
  * `degraded.reason` / `index.state` / `index.staleness` unions plus every published field — costs
  * about 1.1 KB there. `hudu_search` has 228 B of headroom under its 2,900 B ceiling in the binding
  * configuration, so a validation-only schema would break the served-surface gate it is not part of.
- * The vocabulary is asserted where it is published instead: `test/tools/search-progress.test.ts`
+ * The meta vocabulary is enforced where it is PUBLISHED, by the tests — not by this outputSchema: `test/tools/search-progress.test.ts`
  * pins every meta field of a real answer AND of the cancelled one, including the closed
- * `degraded.reason` union, and the SDK owns the type.
+ * `degraded.reason` union, and the SDK owns the type. A reader looking for the meta guarantee should look there, not here.
  */
 export const SEARCH_OUTPUT = z.union([
   z.object({ mode: z.literal('search'), query: z.string(), hits: ROWS, meta: z.unknown() }),

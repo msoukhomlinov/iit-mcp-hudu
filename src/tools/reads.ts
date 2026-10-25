@@ -22,7 +22,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
       title: 'Resolve Any',
       description: toolDescription('hudu_resolve_any'),
       inputSchema: z.object({
-        identifier: IDENTIFIER,
+        identifier: IDENTIFIER.describe('Id, name/slug, or object'),
         opts: z
           .object({
             resources: z
