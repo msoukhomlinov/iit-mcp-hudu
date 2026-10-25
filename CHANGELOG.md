@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.4.0
 
 **Upgrading from 0.3.0:** `hudu_list` now returns compact summary rows by default. Callers that read custom `fields`, article `content` or layout `fields` from list rows must pass `expand: true`. Everything else is additive or a fix.

@@ -1,5 +1,12 @@
 # Repo-audit configuration (intellectit-repo-audit skill).
-# version_surfaces: package.json only (the default). Thresholds: defaults.
+# Thresholds: defaults.
+version_surfaces:
+  - file: package.json
+    pattern: '"version":\s*"([^"]+)"'
+  - file: server.json
+    pattern: '"version":\s*"([^"]+)"'
+  - file: capabilities.json
+    pattern: '"version":\s*"([^"]+)"'
 publish:
   registry: npm
   package: iit-mcp-hudu
