@@ -42,3 +42,9 @@ Only needed if the link is to be reconsidered; none block Entra work.
 3. Refresh rotation: does a refresh token rotate on use, and does the 8 hour TTL apply to refreshed access tokens?
 4. `/mcp` stability: record tool names and argument shapes across a Hudu upgrade; does `/external_apps` keep accepting MCP tokens?
 5. Per-IP rate limit: measure the generic limit value and behaviour when several users share this server's egress IP.
+
+Sandbox data points (2026-10-25), Hudu 2.48.1 tenant, unauthenticated requests only:
+
+- `GET /mcp` returns 401 with `application/json`, so the MCP endpoint exists.
+- `GET /external_apps` returns 302 with `text/html` (a redirect, probably to login).
+- The five experiments above remain NOT run: they need OAuth client registration and a second Hudu user.

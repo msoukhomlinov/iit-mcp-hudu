@@ -196,6 +196,8 @@ Discovery reports deployment-policy refusals as unreachable.
 `HUDU_READ_ONLY=true` is a hard override of the write policy: no `hudu_write` / `hudu_delete` tool is
 registered and every mutation is refused, whatever `HUDU_WRITE_POLICY` and `HUDU_WRITE_ALLOW` say. Unset or
 `false` leaves `HUDU_WRITE_POLICY` in charge (default `deny`). The effective policy is logged once at boot.
+Because the two tools are not registered, a client that calls them gets the protocol-level JSON-RPC error
+`-32602` (`Tool hudu_write not found`), not a tool error envelope.
 
 `HUDU_WRITE_POLICY` stays a **deployment-wide** decision, not a per-caller one. Per-caller
 credentials make each caller's Hudu role an external authority too, but that authority is not ours
@@ -229,6 +231,8 @@ them. Under `allow`, `listShares` / `getShare` work and the share `url` (a beare
 `createShare` is never runnable here: the SDK refuses it (`POLICY_DENIED`, `reveal_required`, dry-run
 included, no request) without its `reveal` capability, this server never grants `reveal`, and
 `hudu_list_operations` marks the row unreachable. Link-shaped text is scrubbed from share errors.
+`deleteShare` of a share that does not exist returns `404 NOT_FOUND` on every attempt, repeats included; the
+server never deletes a real share because `createShare` is unreachable by design.
 
 `hudu_get_company_context` accepts `opts.skip` (`assets`, `articles`, `websites`, `asset_passwords`); pass
 `["asset_passwords"]` when the key cannot read credentials. The skipped list comes back empty with
@@ -269,9 +273,9 @@ caller-named origins — a security property, not a deployment preference.
 ## Article bodies are Markdown (node-hudu 0.14+)
 
 `hudu_read` and `hudu_write` pass `contentFormat: 'markdown'` to the SDK, and `hudu_get_article_context`
-asks for Markdown, so single-article bodies (`articles.get`, `articles.getContext`, `articles.resolve`,
-`create`, `update`) are returned and accepted as Markdown. Hudu callouts (`> [!INFO]`), accordions, task
-lists and Mermaid fences (stored as the editor-native `<pre class="language-mermaid">` form) round-trip as the dialect documents. Rows from `hudu_fetch_many`, `hudu_read` `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
+asks for Markdown, so single-article bodies (`articles.get`, `articles.resolve`, `create`, `update`, and
+`articles.getContext` only with `opts.expand: true`) are returned and accepted as Markdown. Hudu callouts (`> [!INFO]`), accordions, task
+lists and Mermaid fences round-trip as the dialect documents. Observed live (Hudu 2.48.1), a ```` ```mermaid ```` fence is stored as `<pre class="language-mermaid"><code class="language-mermaid">...</code></pre>` (entity-escaped, indentation preserved) and reads back as the identical fence, including through `articles.patchSection`. The read path matches the `<pre>` by class and takes its text, so it accepts both that form and the bare `<pre class="language-mermaid">` form. A save made in the Hudu UI editor itself is not yet verified. Rows from `hudu_fetch_many`, `hudu_read` `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
 those operations take no format. Rules a caller needs:
 
 - A write's `data.content` is parsed as Markdown unless it opens with block-level HTML (`<p>`, `<div>`,
@@ -284,9 +288,8 @@ those operations take no format. Rules a caller needs:
   `articles.getSection` carries the same `markdown_lossy` / `markdown_lossy_codes` signal as `articles.get`;
   it describes the whole article, so the loss may be in another section.
 - A Markdown read can be incomplete: anything the dialect cannot express is dropped or reduced
-  (`<video>` and `<script>` are dropped entirely). `hudu_read` (`articles.get` / `getContext` / `getSection` / `resolve`) and
-  `hudu_get_article_context` then set `markdown_lossy: true` (with `markdown_lossy_codes`, the SDK's
-  `diffArticleRoundTrip` content-loss codes) and add one sentence to the result text; fetch the stored
+  (`<video>` and `<script>` are dropped entirely). `hudu_read` (`articles.get` / `getSection` / `resolve`) then sets `markdown_lossy: true` (with `markdown_lossy_codes`, the SDK's
+  `diffArticleRoundTrip` content-loss codes) and adds one sentence to the result text; fetch the stored
   HTML with `hudu_fetch_many` (`{items:[{resource:"articles", id}]}`) to see the full body. The read is one
   fetch: the SDK converts the body and reports the loss on the record (no second request); a caller's own
   `opts.format: "html"` returns the stored HTML untouched with no flag. Callouts, accordions, task
@@ -294,6 +297,10 @@ those operations take no format. Rules a caller needs:
   A body that converts to nothing (only `<video>`, `<input>`, `<p></p>`) reads as `content: ""` with
   `markdown_lossy_codes` containing `ROUNDTRIP_BODY_EMPTY` (it used to fail with `CONVERSION_EMPTY_OUTPUT`).
   The SDK fails a Markdown read with `CONFIG_ERROR` when the Markdown form exceeds 256 KiB.
+- `articles.getContext` / `hudu_get_article_context` carry no lossy signal in the default mode: the result
+  holds an article summary (no body), so there is nothing to convert. Only with `opts.expand: true` does
+  `article` become the full record with a Markdown body, and then the same `markdown_lossy` /
+  `markdown_lossy_codes` signal applies.
 
 ## SDK behaviour (0.12.0)
 
