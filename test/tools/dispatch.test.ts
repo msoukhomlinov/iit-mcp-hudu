@@ -731,22 +731,39 @@ describe('lossy Markdown reads are signalled', () => {
     try {
       const result = await session.call('hudu_get_article_context', { id: 22, opts: { expand: true } });
       expect(result.structuredContent.markdown_lossy).toBe(true);
-      expect(result.content[0].text).toContain('markdown_lossy: true');
+      expect(result.content[0].text).toContain('the Markdown body is incomplete; fetch the stored HTML');
+      expect(result.content[0].text).not.toContain('another section');
     } finally {
       await session.close();
     }
   });
 
-  // Pinned, documented behaviour: the SDK's getSection drops content_loss, so a section read carries
-  // no markdown_lossy signal (and costs no extra request). Callers read the whole article for it.
-  it('articles.getSection carries no markdown_lossy signal, and makes one request', async () => {
+  // The SDK's getSection reports whole-body content_loss; it is lifted like the other article reads (no extra request).
+  it('articles.getSection lifts the whole-body loss into markdown_lossy and never passes content_loss through', async () => {
     const session = await connect(article('<h2>Intro</h2><p>Keep</p><video src="x.mp4"></video>'));
     try {
       const result = await session.call('hudu_read', { operation: 'articles.getSection', input: { id: 22, heading: 'Intro' } });
       expect(result.isError).toBeUndefined();
-      expect(result.structuredContent.markdown_lossy).toBeUndefined();
-      expect(result.content[0].text).not.toContain('markdown_lossy');
-      // The SDK's per-record signal must never cross the boundary either.
+      expect(result.structuredContent.markdown_lossy).toBe(true);
+      expect(result.structuredContent.markdown_lossy_codes.length).toBeGreaterThan(0);
+      expect(result.content[0].text).toContain('(the loss may be in another section); fetch the stored HTML');
+      expect(JSON.stringify(result)).not.toContain('content_loss');
+      expect(session.urls).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it.each([
+    ['clean body', '<h2>Intro</h2><p>Keep</p>'],
+    ['svg/iframe-only body', '<h2>Intro</h2><svg width="1" height="1"><rect width="1" height="1"/></svg><iframe src="https://example.com"></iframe>'],
+  ])('articles.getSection on a %s carries no markdown_lossy key and no content_loss', async (_n, html) => {
+    const session = await connect(article(html));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.getSection', input: { id: 22, heading: 'Intro' } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).not.toHaveProperty('markdown_lossy');
+      expect(JSON.stringify(result)).not.toContain('markdown_lossy');
       expect(JSON.stringify(result)).not.toContain('content_loss');
       expect(session.urls).toHaveLength(1);
     } finally {

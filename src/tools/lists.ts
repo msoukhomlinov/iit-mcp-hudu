@@ -38,6 +38,7 @@
  */
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
+import { SUMMARY_FIELDS } from 'node-hudu';
 import { getCapability } from 'node-hudu/capabilities';
 import { configError } from 'node-hudu/mcp';
 import { assertSecretReadPermitted, assertWritePermitted } from '../policy.js';
@@ -160,14 +161,30 @@ function assertNonSearchableListReadPermitted(operation: string, ctx: ToolContex
 
 
 /**
- * Compact row fields per resource: the node-hudu `*Summary` shapes plus `created_at`. The SDK exports no
- * runtime projection, so `test/tools/lists-compact.test.ts` only pins these lists to a literal copy: it forces a reviewer to revisit them on a node-hudu bump, it does not detect SDK drift itself. `hudu_list` projects each row onto these unless `expand: true`.
+ * Extras beyond the SDK's `SUMMARY_FIELDS` (the keys of the node-hudu `*Summary` shapes). Timestamps go last
+ * in the served row, so `updated_at` (an SDK key where present) is moved after these extras.
+ */
+const COMPACT_EXTRAS = {
+  companies: ['created_at'],
+  articles: ['url', 'created_at'],
+  assets: ['created_at'],
+  asset_layouts: ['url', 'created_at', 'updated_at'],
+} as const;
+
+const compactFields = <R extends keyof typeof COMPACT_EXTRAS>(r: R): string[] => {
+  const base: readonly string[] = SUMMARY_FIELDS[r];
+  return [...base.filter((k) => k !== 'updated_at'), ...COMPACT_EXTRAS[r], ...(base.includes('updated_at') ? ['updated_at'] : [])];
+};
+
+/**
+ * Compact row fields per resource: `SUMMARY_FIELDS` plus `COMPACT_EXTRAS`. `test/tools/lists-compact.test.ts`
+ * derives them from the SDK and also pins the final lists literally. `hudu_list` projects each row onto these unless `expand: true`.
  */
 export const COMPACT_FIELDS = {
-  companies: ['id', 'name', 'nickname', 'slug', 'website', 'phone_number', 'city', 'state', 'id_number', 'archived', 'url', 'created_at', 'updated_at'],
-  articles: ['id', 'name', 'slug', 'company_id', 'folder_id', 'draft', 'enable_sharing', 'url', 'created_at', 'updated_at'],
-  assets: ['id', 'name', 'company_id', 'company_name', 'asset_layout_id', 'primary_serial', 'asset_type', 'archived', 'url', 'created_at', 'updated_at'],
-  asset_layouts: ['id', 'name', 'slug', 'active', 'icon', 'color', 'url', 'created_at', 'updated_at'],
+  companies: compactFields('companies'),
+  articles: compactFields('articles'),
+  assets: compactFields('assets'),
+  asset_layouts: compactFields('asset_layouts'),
 } as const;
 
 /** Project rows onto the compact fields; a field the row lacks is omitted, not nulled. */
