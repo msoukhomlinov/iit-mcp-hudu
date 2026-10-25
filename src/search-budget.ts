@@ -137,11 +137,19 @@ export const MIN_INDEX_MAX_DOCS = 1;
  * node-hudu 0.20.0's `maxDocsByResource` makes a named resource's cap a HARD reservation inside
  * `maxDocs`, and the global pass then trims only the unreserved remainder. Naming articles with the
  * whole cap therefore means "articles first, assets take whatever is left", which is what the index
- * is for: article rows carry the long text, asset rows do not. A smaller reservation would also be a
- * hard CEILING on articles, so an article-heavy account would drop articles while its cap sat
- * half empty (MEASURED with a probe against the SDK: 300 articles and 5 assets at a 100-document cap
- * retain 30 documents with a quarter reserved, and 100 with the whole cap reserved; an asset-heavy
- * corpus keeps the full cap either way).
+ * is for: article rows carry the long text, asset rows do not.
+ *
+ * THE ASSET SHARE IS DERIVED, AND CAN BE ZERO: assets keep `maxDocs - min(articles, maxDocs)` slots.
+ * On the production tenant that is 18,641 of 21,845, but wherever the article corpus meets or
+ * exceeds the cap the assets get none — the 512 MiB write-enabled profile derives a 1,820-document
+ * cap against 3,204 articles, so `docs.assets.indexed` is 0 there and asset hits come from Hudu's
+ * own title/custom-field search alone (which every call runs). The response names the loss:
+ * `meta.index.docs.<resource>.capped` is the SDK's count of documents the caps dropped.
+ *
+ * A smaller fraction was rejected because a reservation is also a hard CEILING on the named
+ * resource: with a quarter reserved, 300 articles and 5 assets at a 100-document cap retained 30
+ * documents (25 + 5), and the whole cap retains 100 (MEASURED with a probe against the SDK; an
+ * asset-heavy corpus fills the cap either way, 10 articles + 500 assets -> 10 + 90).
  */
 export function indexDocCaps(maxDocs: number): Record<string, number> {
   return { articles: maxDocs };

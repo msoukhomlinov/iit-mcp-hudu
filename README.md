@@ -31,7 +31,7 @@ four old names. Rows are compact summaries by default (id, name, key scalar fiel
 25-row assets page under 20,000 characters instead of ~88,000; pass `expand: true` for the full
 records (`hudu_read` `articles.list` rows are always full). Article rows carry no body unless expanded. Paging is unchanged (`asset_layouts` still takes no `page_size`).
 
-These tools run on node-hudu 0.19.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
+These tools run on node-hudu 0.20.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -345,10 +345,19 @@ the older articles have no index entry at all. `maxDocsByResource` (node-hudu 0.
 reservation inside `maxDocs`: the server names `articles` with the whole cap, which makes it
 articles-first — each article keeps its slot up to the cap, and assets fill whatever room is left,
 in the SDK's `updated_at` order. That is the resource split the index exists for: article rows carry
-the long text, asset rows do not. A smaller reservation would also be a hard ceiling on articles, so
-an article-heavy account would drop articles while its cap sat half empty (measured against the SDK:
-300 articles and 5 assets at a 100-document cap retain 30 documents with a quarter reserved and 100
-with the whole cap; an asset-heavy corpus fills the cap either way). The reservation tracks the cap,
+the long text, asset rows do not.
+A smaller reservation would also be a hard ceiling on articles, so an article-heavy account would
+drop articles while its cap sat half empty (measured against the SDK: 300 articles and 5 assets at a
+100-document cap retain 30 documents with a quarter reserved and 100 with the whole cap; an
+asset-heavy corpus fills the cap either way).
+
+THE ASSET SHARE IS DERIVED, AND CAN BE ZERO: assets keep `maxDocs - min(articles, maxDocs)` slots.
+On the production corpus that is 18,641 of 21,845; where the article corpus meets or exceeds the cap
+the assets get none — the 512 MiB write-enabled profile derives a 1,820-document cap against 3,204
+articles, so `docs.assets.indexed` is 0 there and asset hits come from Hudu's own title/custom-field
+search, which every call runs. `meta.index.docs.<resource>.capped` (node-hudu 0.20.0) names the
+documents the caps dropped, per resource, so the loss is visible in the answer. The reservation
+tracks the cap,
 so it deepens with the heap like the rest of the budget: 17,408 article slots at a 1 GiB container's
 assumed ~816 MB heap ceiling, 21,845 at a 1024 MB one, 50,000 in a stdio parent. This is what the
 Unreleased CHANGELOG entry measures.
@@ -506,7 +515,7 @@ pnpm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.19.0`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.20.0`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `pnpm install --frozen-lockfile`.
 
 ## Deployment
