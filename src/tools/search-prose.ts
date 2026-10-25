@@ -243,7 +243,7 @@ export function searchToolDescription(ctx: ToolContext): string {
   // TIER is a caller choice ("As a tool it defaults to tier \"index\""), while the field is not
   // served at all. Policy wins over the byte saving (#50 review 7).
   if (fullSet && toolDefaultTier === 'index' && !searchTierIsPolicy) return base;
-  const defaultSentence = 'As a tool it defaults to tier "index", so results are body-complete.';
+  const defaultSentence = 'defaults to tier "index": body-complete.';
   // Same order as the help text: under `http` the tier field is not served, so the corpus refusal
   // (which names refused field values) would describe a schema the caller never sees.
   const replacement = searchTierIsPolicy
@@ -251,16 +251,16 @@ export function searchToolDescription(ctx: ToolContext): string {
     : !indexSearchable
       ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
       : toolDefaultTier === 'auto'
-      ? 'As a TOOL it defaults to tier "auto": answers now, warms the index for later calls; "index" waits.'
+      ? 'defaults to tier "auto": answers now, warms the index; "index" waits.'
       : toolDefaultTier === 'vendor'
-      ? 'As a TOOL it defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY); tier:"index" or refresh:true uses the body index.'
+      ? 'defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY); "index"/refresh:true uses the body index.'
       : defaultSentence;
   let out = base;
   if (!fullSet) {
     // Fail loudly: a stale anchor would keep advertising a search set this deployment refuses.
-    const scopeAnchor = 'ranked, fuzzy search over article TITLE and BODY, asset names, custom-field VALUES, identifiers and record names.';
+    const scopeAnchor = 'ranked fuzzy search over article TITLE and BODY, asset names, fields, identifiers.';
     if (!out.includes(scopeAnchor)) throw new Error('hudu_search description: SDK scope sentence changed; update scopeAnchor');
-    out = out.replace(scopeAnchor, `ranked, fuzzy search over the resources this deployment may read: ${searchableResources.join(', ')}.`);
+    out = out.replace(scopeAnchor, `ranked fuzzy search over resources this deployment may read: ${searchableResources.join(', ')}.`);
   }
   // Fail loudly, not silently: a missed anchor would advertise a default tier this deployment refuses.
   if (!out.includes(defaultSentence)) throw new Error('hudu_search description: SDK default-tier sentence changed; update defaultSentence');

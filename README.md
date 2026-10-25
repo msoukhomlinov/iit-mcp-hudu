@@ -302,9 +302,15 @@ of heap and died with `Reached heap limit` mid-search. It measured the ~90 MB ba
 4 bytes of index structures per byte of text ACTUALLY HELD, not per byte of budget: that index held
 ~41 MB of text out of its 64 MiB budget, and the peak reconciles as ~90 + 4 x 41 = ~254 MB. Read
 against the budget instead of the held text the same ratio would predict 90 + 4 x 64 = ~346 MB, which
-the trace never saw. So on the estimate a 512 MiB container (roughly a 259 MB heap ceiling) gets a
-25 MiB pool, which is 3 MiB per scoped client, and the estimated peak is ~90 + 4 x 25 = ~190 MB. A
-1 GiB heap ceiling reaches the 64 MiB cap, 8 MiB per client.
+the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) gets a 25 MiB pool, which is 3 MiB per scoped
+client. A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through the real SDK
+client under a ~262 MB V8 ceiling (`node --max-old-space-size=259 --max-semi-space-size=1 probe.mjs`;
+the second flag brings V8's reported limit to ~262 MB, while the first alone reports ~451 MB in Node
+24) peaked at ~136 MiB with these settings; the same walk with the OLD 64 MiB / 50,000 settings
+peaked at ~147 MiB. Both survived. That probe's baseline is lower than the server's ~90 MB, so the
+production peak is a LOWER BOUND near ~233 MB — close to the ceiling, not comfortably under it. The
+measurement does not prove a production build cannot exhaust the heap. A 1 GiB heap ceiling reaches
+the 64 MiB cap, 8 MiB per client.
 
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
 evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
@@ -319,8 +325,8 @@ the heap ceiling and the text budget's eviction, not by `maxDocs`. A capped inde
 production tenant fit at the 1 GiB figure; what the cap truncates first on a small heap is title-only
 assets, which cost a record without carrying text.
 
-FOLLOW-UP (open): measure the peak under this budget in a 512 MiB container. The only measurement so
-far is the old 64 MiB profile's ~252 MB peak (issue #51's trace).
+Measured: the standalone probe above (not committed); issue #51's trace remains the only production
+measurement (~252 MB peak on the old 64 MiB profile).
 
 The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for

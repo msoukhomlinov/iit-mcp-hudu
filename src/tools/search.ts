@@ -247,7 +247,8 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
   const inputFields = {
         mode: z
           .enum(['search', 'help', 'resources'])
-          .default('search'),
+          .default('search')
+          .describe('search|help|resources; help documents fields'),
         query: z
           .string()
           .min(1)
@@ -255,20 +256,23 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           .describe(searchQueryDescription(ctx)),
         // Omitting `resources` searches every resource the deployment may read, which is exactly the
         // enum below plus the `resources` mode's list, so the field carries no prose of its own.
-        resources: z.array(resourceEnum(searchableResources)).optional(),
+        resources: z
+          .array(resourceEnum(searchableResources))
+          .optional()
+          .describe('Default: all searchable; enum lists it'),
         topic: z
           .enum(HELP_TOPICS as [string, ...string[]])
           .optional()
-          .describe('mode="help" only; "all" adds syntax.'),
-        limit: z.number().int().min(1).max(25).optional().describe('1-25, default 8; larger is CONFIG_ERROR.'),
+          .describe('help only; "all" adds syntax'),
+        limit: z.number().int().min(1).max(25).optional().describe('1-25, default 8; larger is CONFIG_ERROR'),
         snippetChars: z.number().int().min(0).max(400).optional().describe('0 = no snippet.'),
-        company_id: z.number().int().positive().optional().describe('One company.'),
-        updated_since: z.string().optional().describe('ISO timestamp; newer only.'),
+        company_id: z.number().int().positive().optional().describe('One company'),
+        updated_since: z.string().optional().describe('ISO timestamp; newer only'),
         min_score: z
           .number()
           .optional()
           .describe(
-            '0-100 floor; 0 hits may be the floor (meta.scanned vs. meta.returned) or the company_id/updated_since filters; drops are not counted.',
+            '0-100; 0 hits may be floor/filter; meta.scanned/meta.returned; company_id/updated_since; drops uncounted.',
           ),
         exact_only: z.boolean().optional().describe('No fuzzy match.'),
         // Under `http` neither field is served: the tier decides whether a call may wait for a
@@ -290,21 +294,21 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
                     : toolDefaultTier === 'auto'
                       ? 'Defaults to "auto"; "index" waits; "vendor" is body-blind.'
                       : toolDefaultTier === 'vendor'
-                        ? 'Defaults to "vendor" (HUDU_SEARCH_TIER_POLICY); "index" waits, "auto" builds.'
+                        ? 'Defaults to "vendor" (policy); "index" waits; "auto" builds.'
                         : 'Defaults to "index": builds or awaits the body index. "vendor" is body-blind.',
                 ),
               refresh: z
                 .boolean()
                 .optional()
                 .describe(
-                  'true rebuilds the local body index (stdio only; minutes; no Hudu change).',
+                  'rebuilds local body index (stdio only; no Hudu change).',
                 ),
             }),
   };
   server.registerTool(
     'hudu_search',
     {
-      title: 'Search Hudu',
+      title: 'Search Hudu (search | help | resources)',
       description: searchToolDescription(ctx),
       // http: loose (report an override rather than reject the field); stdio: strict (all fields served).
       inputSchema: searchTierIsPolicy ? z.object(inputFields).loose() : z.object(inputFields).strict(),

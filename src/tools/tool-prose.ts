@@ -14,7 +14,7 @@
 
 const DESCRIPTIONS: Record<string, string> = {
   hudu_search:
-    "Search Hudu first; see mode=\"help\".\nmode=\"search\": ranked, fuzzy search over article TITLE and BODY, asset names, custom-field VALUES, identifiers and record names. As a tool it defaults to tier \"index\", so results are body-complete.\nEmpty: read meta.degraded; an unhonoured field is CONFIG_ERROR.",
+    "Search Hudu; help\nmode=\"search\": ranked fuzzy search over article TITLE and BODY, asset names, fields, identifiers. defaults to tier \"index\": body-complete.\nEmpty: read meta.degraded; unhonoured field is CONFIG_ERROR",
   hudu_read:
     "Execute READ operations only, by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. Results mask credentials and custom fields. Article bodies: single-article reads are Markdown, other rows stored HTML; a lossy read sets markdown_lossy.",
   hudu_write:

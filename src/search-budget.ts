@@ -29,10 +29,18 @@ export const SCOPED_INDEX_BUDGET_DIVISOR = 8;
  * That index held ~41 MB of text out of its 64 MiB budget, and the measured peak reconciles as
  * ~90 MB baseline + 4 x 41 MB = ~254 MB. Read against the budget instead of the held text it
  * would predict 90 + 4 x 64 = ~346 MB, which the trace never saw — hence "held", not "budget".
- * The peak under THIS budget (about 25 MiB of text on a 512 MiB heap, so ~190 MB on the same
- * arithmetic) has not been measured, so it stays an open follow-up. On the estimate a 10% share
- * keeps a small container under its ceiling, and the SDK reports index state "partial" honestly when the
- * budget bites, so a short index degrades the answer instead of crashing the process.
+ * MEASURED for the standalone walk (not the full server): a synthetic 25,000-asset / 3,300-article
+ * tenant walked through the real SDK client under a ~262 MB V8 ceiling (`node --max-old-space-size=259
+ * --max-semi-space-size=1 probe.mjs`; the second flag brings V8's reported limit to ~262 MB, while the
+ * first alone reports ~451 MB in Node 24) peaked at 142,854,040 bytes (~136 MiB) with this 25 MiB pool
+ * and 25,600 docs. The same walk with the OLD 64 MiB / 50,000 settings peaked at 154,639,520 bytes
+ * (~147 MiB). Both survived; the new settings used ~12 MiB less peak. This is a LOWER BOUND for the
+ * production container: the standalone probe's baseline is far below the ~90 MB server baseline in the
+ * #51 trace, so adding that baseline puts the real peak near ~233 MB on the same arithmetic — close
+ * to, not comfortably under, the ~262 MB ceiling. The measurement therefore does not prove a
+ * production build cannot exhaust the heap; it shows the new budget reduces the peak and that the
+ * cap/eviction path works. The SDK reports index state "partial" when the budget bites, so a short
+ * index degrades the answer instead of crashing the process.
  *
  * This is the pooled budget for the whole process, not for one client: a deployment serving several
  * credentials keeps up to {@link SCOPED_INDEX_BUDGET_DIVISOR} scoped clients warm, and each one owns

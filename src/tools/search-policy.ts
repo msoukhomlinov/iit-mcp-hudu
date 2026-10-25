@@ -139,6 +139,13 @@ export function credentialRefused(meta: { resources?: unknown; failed?: unknown;
  * The SDK records the raw build error in `meta.index.lastBuildError` (and in `meta.errors`); on a
  * 401 it names the credential's missing scope. Sanitizing `errors`/`failed` alone would leave the
  * nested copy untouched, so the whole `index` block is passed through the same reducer.
+ *
+ * `lastBuildError` is the only `KnowledgeIndexMeta` field that can echo upstream detail. The rest
+ * of the type is closed vocabulary, ISO timestamps or counts (`state`, `staleness`, `builtAt`,
+ * `ageMs`, `docs`, `indexChangedSinceScore`, `lastFullAt`, `lastCompleteFullAt`, `fullWalkDue`).
+ * Per-resource `errors`/`failed` are sanitized at their own call sites. Extending this reducer to
+ * the closed fields would sanitize numbers and enums, not internal detail; it would not weaken
+ * credential redaction, but it would add no protection either.
  */
 export function sanitizeIndexMeta<T>(index: T): T {
   if (index === null || typeof index !== 'object') return index;
