@@ -1,6 +1,7 @@
 /**
  * tools/results.ts — the `ToolReturn` shape every handler answers with, and its builders.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { redact } from 'node-hudu';
 import { META_TOOLS } from 'node-hudu/mcp';
 import { normalizeResultUrls } from './result-urls.js';
@@ -22,11 +23,12 @@ export type ToolReturn =
  * branch), but the server's gate stays the boundary guard even with the SDK gate — defense in
  * depth. The values are never stored — only their anomalies, which name no character of them.
  *
- * Deliberately a module-level, set-once registry rather than a parameter threaded through every
- * `errorContent` caller: there are ~20 call sites in eight handler modules, and a diagnostic this
- * narrow is not worth changing every signature (and every test) for. `undefined` — the state every
- * unit test starts in — means "no view of the credentials", which keeps the envelope exactly as it
- * was; nothing is inferred from the absence of evidence.
+ * Bound to the call, not the process: the server factory runs each tool handler inside
+ * `runWithCredentialShapeView`, an AsyncLocalStorage scope, so `errorContent` (~20 call sites) reads
+ * the view of the serving unit that made THIS call. Under http the unit is the request, and
+ * concurrent requests each see their own. `setCredentialShapeView` is only the fallback for code
+ * running outside any scope (unit tests); empty means "no view of the credentials", which keeps the
+ * envelope exactly as it was; nothing is inferred from the absence of evidence.
  */
 export interface CredentialShapeView {
   readonly env?: readonly CredentialAnomaly[];
@@ -34,6 +36,12 @@ export interface CredentialShapeView {
 }
 
 let credentialShapeView: CredentialShapeView = {};
+const viewScope = new AsyncLocalStorage<CredentialShapeView>();
+
+/** Run `fn` (and everything it awaits) with `view` as the credential view `errorContent` reads. */
+export function runWithCredentialShapeView<T>(view: CredentialShapeView, fn: () => T): T {
+  return viewScope.run(view, fn);
+}
 
 /** Publish (or clear) this serving unit's view of the credentials it dials with. */
 export function setCredentialShapeView(view: CredentialShapeView): void {
@@ -42,8 +50,9 @@ export function setCredentialShapeView(view: CredentialShapeView): void {
 
 /** The anomalies from the credentials the CURRENT serving unit presented, if any were seen. */
 function observedCredentialAnomalies(): readonly CredentialAnomaly[] {
-  const env = credentialShapeView.env ?? [];
-  const request = credentialShapeView.request ?? [];
+  const view = viewScope.getStore() ?? credentialShapeView;
+  const env = view.env ?? [];
+  const request = view.request ?? [];
   const both = [...env, ...request];
   return [...new Set(both)];
 }

@@ -13,6 +13,7 @@ import {
   credentialMalformedContent,
   errorContent,
   resolveErrorContent,
+  runWithCredentialShapeView,
   searchErrorContent,
   setCredentialShapeView,
   unauthorizedContent,
@@ -171,5 +172,27 @@ describe('the SDK 401 shape diagnostic (node-hudu 0.13.2, node-hudu#93)', () => 
     const body = JSON.parse(errorContent(artifact()).content[0]!.text);
     expect(body.anomalies).toEqual(['embedded_quotes']);
     expect(body.credentialShapeDiagnostic).toBeUndefined();
+  });
+});
+
+describe('shape view is bound to the call, not the process (#16)', () => {
+  const unauthorized = () => new UnauthorizedError('Bad credentials', 'https://hudu.invalid/articles');
+  const bodyOf = (result: ReturnType<typeof errorContent>) => result.content[0]!.text;
+  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  it("a 401 awaiting in request A carries only A's anomalies while request B publishes its own", async () => {
+    const a = runWithCredentialShapeView({ request: ['embedded_quotes'] }, async () => {
+      await wait(10); // the vendor round trip, during which B starts
+      return errorContent(unauthorized());
+    });
+    const b = runWithCredentialShapeView({ request: ['edge_whitespace'] }, async () => {
+      await wait(2);
+      return errorContent(unauthorized());
+    });
+    const [ra, rb] = [await a, await b];
+    expect(bodyOf(ra)).toContain('embedded_quotes');
+    expect(bodyOf(ra)).not.toContain('edge_whitespace');
+    expect(bodyOf(rb)).toContain('edge_whitespace');
+    expect(bodyOf(rb)).not.toContain('embedded_quotes');
   });
 });
