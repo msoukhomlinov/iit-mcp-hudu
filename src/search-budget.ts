@@ -24,9 +24,9 @@ export const MAX_INDEX_TEXT_BYTES = 64 * MIB;
  * indexed (MEASURED on the live server, 2026-10-26).
  *
  * RESULTING DEPTH: a read-only deployment (one cache, `HUDU_WRITE_POLICY=deny`) gives each scope
- * 17 MiB and 17,408 documents at a ~816 MB ceiling; that is INFERRED to cover the tenant's ~19 MB of
- * article bodies almost entirely (about 2,800 of 3,204) and to keep all 3,204 articles, because the
- * measured run retained articles at roughly a quarter of the freshest-document density. A
+ * 17 MiB and 17,408 documents at a ~816 MB ceiling; that is INFERRED to cover the tenant's article
+ * bodies almost entirely (about 2,800 of its 3,204 articles) and to keep all 3,204 articles, because
+ * the measured run retained articles at roughly a quarter of the freshest-document density. A
  * write-enabled deployment has three caches, so the same pool is divided by nine and each scope gets
  * 5.67 MiB and 5,802 documents.
  *

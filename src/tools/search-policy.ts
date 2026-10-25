@@ -193,8 +193,8 @@ export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string
   // `hudu_search`: a caller-supplied `tier` or `refresh` cannot widen it. Whether that route waits
   // for a corpus walk is policy, not the caller: `auto` (the default) answers from the vendor tier,
   // `HUDU_SEARCH_TIER_POLICY=index` waits for a complete index on both paths. That override is
-  // REPORTED, never silent: the dispatcher appends `tier-policy-override` to
-  // `meta.reasons` and a clause to the response text.
+  // REPORTED, never silent: the dispatcher adds `meta.policyOverride` (`{ stripped, appliedTier }`)
+  // and a clause to the response text.
   if (searchTierIsPolicy) {
     return {
       bag: { ...input, opts: { ...opts, scope, tier: toolDefaultTier, refresh: false } },

@@ -148,10 +148,14 @@ describe('scopedIndexMaxDocs', () => {
   });
 
   it('grows with the text budget, so the two caps derive from one pool', () => {
+    // 259 MiB: a 16 MiB pool and a 5,592,405-byte read-only share, both under the SDK's 50,000
+    // document cap. The three counted clients' caps fit inside the whole pool's cap (16,383 of
+    // 16,384 documents) — the coupling the shared derivation exists for.
     const heap = 259 * MiB;
     const pool = indexTextBudgetBytes(heap);
     const share = scopedIndexTextBudgetBytes(heap, 1);
-    expect(scopedIndexMaxDocs(pool)).toBeGreaterThan(scopedIndexMaxDocs(share));
-    expect(scopedIndexMaxDocs(share) * SCOPED_INDEX_BUDGET_DIVISOR).toBeLessThanOrEqual(scopedIndexMaxDocs(pool));
+    expect(scopedIndexMaxDocs(pool)).toBe(16_384);
+    expect(scopedIndexMaxDocs(share)).toBe(5_461);
+    expect(scopedIndexMaxDocs(share) * 3).toBeLessThanOrEqual(scopedIndexMaxDocs(pool));
   });
 });
