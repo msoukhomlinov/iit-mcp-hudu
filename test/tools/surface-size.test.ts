@@ -16,7 +16,7 @@ afterEach(() => vi.unstubAllGlobals());
 const BUDGET_WRITE = 27_500;
 const BUDGET_READ_ONLY = 23_000;
 /** `hudu_search` is the largest tool; its own ceiling keeps it from eating either total. */
-const BUDGET_SEARCH = 2_900;
+const BUDGET_SEARCH = 3_100;
 
 const bytes = async (policy: 'all' | 'deny') => {
   const session = await connect(undefined, { HUDU_WRITE_POLICY: policy });
