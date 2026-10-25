@@ -5,6 +5,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SEARCH_HELP } from 'node-hudu/mcp';
 import { connect, connectForRequest } from '../helpers/mcp-session.js';
+import { registerSearchTool } from '../../src/tools/search.js';
+import { runWithCredentialShapeView } from '../../src/tools/results.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -373,5 +375,33 @@ describe('hudu_search min_score threshold-empty', () => {
     expect(minScore).toContain('company_id');
     expect(minScore).toContain('updated_since');
     await session.close();
+  });
+});
+
+describe('hudu_search credential refusal annotation', () => {
+  it('annotates a fully-refused scope with the presented credential anomalies, like every other tool', async () => {
+    // The refusal branch used to answer with no view, so it never carried the annotation the
+    // thrown path does. Driven at the handler with a stubbed engine because a malformed presented
+    // key is refused pre-dial and so cannot 401 end to end.
+    let handler!: (args: Record<string, unknown>) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+    const server = { registerTool: (_n: string, _c: unknown, cb: typeof handler) => { handler = cb; } };
+    const ops = {
+      searchKnowledge: async () => ({
+        hits: [],
+        meta: { resources: ['articles'], complete: true, reasons: [], failed: [{ resource: 'articles', code: 'UNAUTHORIZED', message: 'Bad credentials' }] },
+      }),
+    };
+    registerSearchTool(server as never, {
+      ops, searchableResources: ['articles'], defaultSearchScope: ['articles'], indexSearchable: false, toolDefaultTier: 'vendor',
+      config: {}, hudu: {}, log: {},
+    } as never);
+    const args = { mode: 'search', query: 'reset', tier: 'vendor' };
+    const annotated = await runWithCredentialShapeView({ env: ['surrounding_single_quotes'] }, () => handler(args));
+    const body = JSON.parse(annotated.content[0]!.text);
+    expect(annotated.isError).toBe(true);
+    expect(body).toMatchObject({ code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials', credentialShape: 'anomalous' });
+    expect(body.anomalies).toEqual(['surrounding_single_quotes']);
+    // No view: byte-identical legacy envelope.
+    expect(JSON.parse((await handler(args)).content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
   });
 });

@@ -14,7 +14,7 @@ import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
-import { runWithCredentialShapeView } from './results.js';
+import { runWithCredentialShapeView, type CredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 import { answerRenamedTools } from './renamed.js';
 import { slimToolSchemas } from './slim.js';
@@ -213,6 +213,42 @@ interface ModeEntry {
   malformed: Map<string, HuduClient>;
 }
 
+/** A header value that is present and non-blank; anything else is treated as not sent. */
+const usable = (v: string | undefined) => (v === undefined || v.trim().length === 0 ? undefined : v);
+
+/**
+ * Which credential an http request presents: the usable header key and base, and whether the
+ * origin is caller-named. The request key wins; the server-held `HUDU_API_KEY` is dialed only when
+ * no header key came and the origin is not caller-named. One rule, shared by the dispatcher
+ * ({@link resolveHuduClient}) and the 401 shape view ({@link buildCredentialShapeView}).
+ */
+function presentedCredential(config: Config, headers: ReturnType<typeof headerRecord> | undefined) {
+  const headerKey = usable(headers === undefined ? undefined : readHuduKey(headers));
+  const headerBase = usable(headers === undefined ? undefined : readHuduBase(headers));
+  const defaultOrigin = config.HUDU_BASE_URL === undefined ? undefined : originOf(config.HUDU_BASE_URL);
+  const headerOrigin = headerBase === undefined ? undefined : originOf(headerBase);
+  // An unparsable header value is caller-named even when there is no default to differ from: two
+  // `undefined` origins must not read as "the default", or the default key would be paired with it.
+  const callerNamed = headerBase !== undefined && (headerOrigin === undefined || headerOrigin !== defaultOrigin);
+  return { headerKey, headerBase, callerNamed, envKeyPresented: headerKey === undefined && !callerNamed };
+}
+
+/**
+ * The credential anomalies a 401 on this serving unit may be annotated with: ONLY those of the
+ * credential actually presented. Under stdio that is the env key; under http the request key wins,
+ * and the env key's anomalies join only when it is the one that would be dialed. (A malformed key
+ * from either source is refused pre-dial, so a real 401 is almost always clean-shape.)
+ */
+export function buildCredentialShapeView(config: Config, headers: ReturnType<typeof headerRecord> | undefined): CredentialShapeView {
+  const anomaliesOf = (k: string | undefined) => {
+    const a = k === undefined ? [] : detectCredentialShape(k);
+    return a.length > 0 ? a : undefined;
+  };
+  if (config.MCP_TRANSPORT === 'stdio') return { env: anomaliesOf(config.HUDU_API_KEY) };
+  const { headerKey, envKeyPresented } = presentedCredential(config, headers);
+  return { env: envKeyPresented ? anomaliesOf(config.HUDU_API_KEY) : undefined, request: anomaliesOf(headerKey) };
+}
+
 /**
  * The client a request's tools should use.
  *
@@ -241,18 +277,11 @@ interface ModeEntry {
 function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestContext, log: Logger): { client: HuduClient; origin?: string } {
   if (config.MCP_TRANSPORT === 'stdio') return { client: entry.parent, origin: new URL(config.HUDU_BASE_URL!).origin };
   const headers = ctx.requestInfo === undefined ? undefined : headerRecord(ctx.requestInfo.headers);
-  const usable = (v: string | undefined) => (v === undefined || v.trim().length === 0 ? undefined : v);
-  const headerKey = usable(headers === undefined ? undefined : readHuduKey(headers));
-  const headerBase = usable(headers === undefined ? undefined : readHuduBase(headers));
+  const { headerKey, headerBase, callerNamed } = presentedCredential(config, headers);
   const defaultBase = config.HUDU_BASE_URL;
 
   const base = headerBase ?? defaultBase;
   // Only a caller-named origin is subject to the allow-list, and naming the default one is free.
-  const defaultOrigin = defaultBase === undefined ? undefined : originOf(defaultBase);
-  const headerOrigin = headerBase === undefined ? undefined : originOf(headerBase);
-  // An unparsable header value is caller-named even when there is no default to differ from: two
-  // `undefined` origins must not read as "the default", or the default key would be paired with it.
-  const callerNamed = headerBase !== undefined && (headerOrigin === undefined || headerOrigin !== defaultOrigin);
   // Keep `undefined` distinct from an explicit list in config: with a configured default, an
   // omitted list means default-only; without one it preserves documented BYO-origin mode.
   const callerOriginAllowed = config.HUDU_ALLOWED_BASE_HOSTS === undefined
@@ -457,25 +486,11 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
   const read = build('read');
   const mutations = config.HUDU_WRITE_POLICY === 'deny' ? undefined : { write: build('write'), delete: build('delete') };
 
-  // The server-held credential's anomalies, computed once: the auth-failure envelope annotates a
-  // refusal with them so a 401 on a value this server already knows is malformed is diagnosable
-  // without another dial. `undefined` when the value is clean, so nothing is added to the envelope.
-  const envAnomalies = config.HUDU_API_KEY === undefined ? undefined : detectCredentialShape(config.HUDU_API_KEY);
-  const envView = envAnomalies !== undefined && envAnomalies.length > 0 ? envAnomalies : undefined;
-
   return (ctx: McpRequestContext) => {
     const resolve = (entry: ModeEntry) => resolveHuduClient(entry, config, ctx, log);
-    // Per serving unit (one stdio connection, or one HTTP request): which of the credentials this
-    // unit is about to present look malformed. Published before the first tool can fail, so the
-    // auth-failure branch can answer with it. A clean value contributes nothing.
-    const headerKey = config.MCP_TRANSPORT === 'stdio' || ctx.requestInfo === undefined
-      ? undefined
-      : readHuduKey(headerRecord(ctx.requestInfo.headers));
-    const requestAnomalies = headerKey === undefined ? undefined : detectCredentialShape(headerKey);
-    const shapeView = {
-      env: envView,
-      request: requestAnomalies !== undefined && requestAnomalies.length > 0 ? requestAnomalies : undefined,
-    };
+    // Per serving unit (one stdio connection, or one HTTP request): the anomalies of the credential
+    // this unit presents, published before the first tool can fail (see buildCredentialShapeView).
+    const shapeView = buildCredentialShapeView(config, ctx.requestInfo === undefined ? undefined : headerRecord(ctx.requestInfo.headers));
     const { client: hudu, origin: huduOrigin } = resolve(read);
     const mutationClients = mutations ? { write: resolve(mutations.write).client, delete: resolve(mutations.delete).client } : undefined;
     const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION, title: 'Hudu MCP Server' });

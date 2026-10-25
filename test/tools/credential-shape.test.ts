@@ -14,6 +14,8 @@ import { config, connect, connectForRequest } from '../helpers/mcp-session.js';
 import { createLogger } from '../../src/logger.js';
 import { createMcpServerFactory } from '../../src/tools.js';
 import { loadConfig } from '../../src/config.js';
+import { buildCredentialShapeView } from '../../src/tools/server.js';
+import { runWithCredentialShapeView, unauthorizedContent } from '../../src/tools/results.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -139,31 +141,60 @@ describe('C1c: auth-failure diagnostics on an anomalous credential', () => {
     await session.close();
   });
 
-  it('annotates a genuine 401 whose credential was clean on the wire', async () => {
-    // The annotation half of C1c: a value this server holds and has already measured as ANOMALOUS
-    // (its shape was recorded when the serving unit started) is named in the refusal — value-free —
-    // so a mangled load is distinguishable from a rotated key without another dial.
-    //
-    // The wire 401 below is deliberately produced for a CLEAN request-time key while the
-    // environment's default is anomalous: the annotation reads the server's own view of the values
-    // it holds, which is exactly what the control specifies (node-hudu 0.12.0 carries no shape
-    // diagnostic of its own).
+  it('does not annotate a 401 on a clean request key with the unused env key anomalies (#16)', async () => {
+    // A 401 is annotated only with anomalies of the credential actually presented. Here the request
+    // key wins over the server-held default, so the (anomalous) env key was never dialed and its
+    // shape says nothing about this refusal.
     const s = await connectForRequest(CLEAN_KEY, refused, [], { HUDU_API_KEY: "'env$secret'", HUDU_BASE_URL: 'https://default.hudu.invalid' }, 'https://default.hudu.invalid');
     const result = await s.call('hudu_get_api_info', {});
     expect(result.isError).toBe(true);
-    const body = JSON.parse(result.content[0]!.text);
-    // The code, the status and the message stay EXACTLY today's: existing tests pin those bytes.
-    expect(body.code).toBe('UNAUTHORIZED');
-    expect(body.httpStatus).toBe(401);
-    expect(body.message).toBe('Bad credentials');
-    // The diagnostic is additive.
-    expect(body.credentialShape).toBe('anomalous');
-    expect(body.anomalies).toContain('surrounding_single_quotes');
-    expect(body.suggestedAction).toContain('shell sourcing');
-    // It says what to suspect, and it says not to re-dial — the account may lock.
-    expect(body.suggestedAction).toContain('do NOT re-dial');
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
     expect(JSON.stringify(result)).not.toContain('env$secret');
     await s.close();
+  });
+
+  describe('buildCredentialShapeView: only the presented credential', () => {
+    const http = { ...config, MCP_TRANSPORT: 'http' as const, HUDU_API_KEY: "'env$secret'", HUDU_BASE_URL: 'https://default.hudu.invalid' };
+    const hdr = (key?: string, base?: string) => ({
+      ...(key === undefined ? {} : { 'x-hudu-api-key': key }),
+      ...(base === undefined ? {} : { 'x-hudu-base-url': base }),
+    });
+
+    it('header key wins: env anomalies are absent', () => {
+      expect(buildCredentialShapeView(http, hdr(CLEAN_KEY)).env).toBeUndefined();
+      expect(buildCredentialShapeView(http, hdr(CLEAN_KEY, 'https://default.hudu.invalid')).env).toBeUndefined();
+    });
+
+    it('a malformed header key is the request anomaly, and the env key is still not presented', () => {
+      const v = buildCredentialShapeView(http, hdr(QUOTED_KEY));
+      expect(v.request).toContain('surrounding_single_quotes');
+      expect(v.env).toBeUndefined();
+    });
+
+    it('no usable header key and the env key presented: env anomalies are in the view', () => {
+      expect(buildCredentialShapeView(http, hdr()).env).toContain('surrounding_single_quotes');
+      expect(buildCredentialShapeView(http, hdr('   ')).env).toContain('surrounding_single_quotes');
+      expect(buildCredentialShapeView(http, undefined).env).toContain('surrounding_single_quotes');
+      expect(buildCredentialShapeView(http, hdr(undefined, 'https://default.hudu.invalid')).env).toContain('surrounding_single_quotes');
+    });
+
+    it('a caller-named origin never pairs with the env key, so its anomalies are absent', () => {
+      expect(buildCredentialShapeView(http, hdr(undefined, 'https://other.example.com')).env).toBeUndefined();
+    });
+
+    it('stdio: the env key is the presented one', () => {
+      expect(buildCredentialShapeView({ ...http, MCP_TRANSPORT: 'stdio' }, hdr(CLEAN_KEY)).env).toContain('surrounding_single_quotes');
+    });
+
+    it('where reachable, the presented env key annotates an unauthorized refusal', () => {
+      const body = JSON.parse(runWithCredentialShapeView(buildCredentialShapeView(http, hdr()), () => unauthorizedContent()).content[0]!.text);
+      expect(body.credentialShape).toBe('anomalous');
+      expect(body.anomalies).toContain('surrounding_single_quotes');
+      expect(body.suggestedAction).toContain('do NOT re-dial');
+      expect(JSON.stringify(body)).not.toContain('env$secret');
+      const clean = JSON.parse(runWithCredentialShapeView(buildCredentialShapeView(http, hdr(CLEAN_KEY)), () => unauthorizedContent()).content[0]!.text);
+      expect(clean).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
+    });
   });
 
   it('refuses a malformed server-held credential on the stdio path before dialing', async () => {
