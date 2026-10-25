@@ -67,6 +67,19 @@ describe('hudu_search schema and the search tier', () => {
     await session.close();
   });
 
+  it('reports a caller tier/refresh the http policy overrode instead of silently dropping it', async () => {
+    const session = await connectForRequest('key-a', () => Response.json([]));
+    const result = await session.call('hudu_read', {
+      operation: 'operations.searchKnowledge',
+      input: { query: 'reset', opts: { tier: 'index', refresh: true, limit: 1, snippetChars: 0 } },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent.result.meta.reasons).toContain('tier-policy-override');
+    expect(String(result.content[0].text)).toContain('overridden by the server search tier policy');
+    await new Promise((r) => setTimeout(r, 100));
+    await session.close();
+  });
+
   it('takes the tier from HUDU_SEARCH_TIER_POLICY when the deployment sets one', async () => {
     const http = await connectForRequest('key-a', () => Response.json([]), [], { HUDU_SEARCH_TIER_POLICY: 'vendor' });
     const help = await http.call('hudu_search', { mode: 'help' });

@@ -1,11 +1,12 @@
 /**
  * tools.ts — the CORE tool surface, registered once against a caller-supplied `McpServer`.
  *
- * Productised from `node-hudu/examples/mcp-server.ts`. That file is the reference the SDK's
- * `mcp:project --check-example` drift gate walks, so the names, titles and descriptions here are
- * NOT ours to improve: they are curated upstream in `MCP_TOOL_OVERRIDES.json` and taken verbatim
- * from `node-hudu/mcp` wherever the SDK publishes them (`META_TOOLS`, `TOOL_DESCRIPTIONS`). A
- * description that reads wrong is an SDK issue, not a local edit.
+ * Productised from `node-hudu/examples/mcp-server.ts`, the reference the SDK's
+ * `mcp:project --check-example` drift gate walks. Tool names and titles stay SDK-owned, and an
+ * SDK-published description is still honoured where one exists. The served prose is ours:
+ * `src/tools/tool-prose.ts` states what each tool does once (keeping the SDK's published facts
+ * where it has them, in our wording), and `src/tools/search-prose.ts` applies this deployment's
+ * policy — tier, resources, schema — on top.
  *
  * Two boundaries this module must never cross:
  *

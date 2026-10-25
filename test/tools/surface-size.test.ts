@@ -10,9 +10,9 @@ import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured after the compact tool prose and field descriptions (issue #52): 26,178 / 21,492.
-const BUDGET_ALL = 26_300;
-const BUDGET_DENY = 21_700;
+// Measured after the compact tool prose and field descriptions, plus the restored prose facts: 26,577 / 21,891.
+const BUDGET_ALL = 27_500;
+const BUDGET_DENY = 22_800;
 /** The whole served surface, either profile, in tokens a client pays before its first call. */
 const BUDGET_TOTAL = 23_000;
 /** `hudu_search` is the largest tool; its own ceiling keeps it from eating the total. */

@@ -59,9 +59,11 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           // scope as its tool rather than bypassing the narrowed schema. `operations.fetchMany` is
           // the same kind of read edge, through items: its key is not a secret operation, so the
           // assert above passes it, and only the item-level check closes the credential-read gap.
+          const searchPolicy = operation === SEARCH_KNOWLEDGE_OPERATION ? applySearchPolicyToInvoke(ctx, input ?? {}) : undefined;
+          const tierOverridden = searchPolicy?.tierOverridden === true;
           const bag =
-            operation === SEARCH_KNOWLEDGE_OPERATION
-              ? applySearchPolicyToInvoke(ctx, input ?? {})
+            searchPolicy !== undefined
+              ? searchPolicy.bag
               : operation === RESOLVE_ANY_OPERATION
                 ? applyResolvePolicyToInvoke(ctx, input ?? {})
                 : operation === SEARCH_ACROSS_OPERATION
@@ -110,9 +112,17 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
               // and the narrowed hudu_search schema must not be bypassable into the old behaviour.
               if (credentialRefused(meta, (result as { hits?: readonly unknown[] }).hits)) return unauthorizedContent();
               const failures = sanitizeSearchFailures(meta.failed ?? meta.errors);
+              // A tier/refresh the deployment policy overrode is announced, never silently swapped.
+              const reasons = Array.isArray(meta.reasons) ? meta.reasons : [];
               result = {
                 ...(result as Record<string, unknown>),
-                meta: { ...meta, errors: failures, failed: failures, index: sanitizeIndexMeta(meta.index) },
+                meta: {
+                  ...meta,
+                  ...(tierOverridden ? { reasons: [...reasons, 'tier-policy-override'] } : {}),
+                  errors: failures,
+                  failed: failures,
+                  index: sanitizeIndexMeta(meta.index),
+                },
               };
             }
           }
@@ -126,7 +136,8 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           }
           const simulated = result !== null && typeof result === 'object' && (result as { simulated?: unknown }).simulated === true;
           // A Markdown article read that lost content says so; a lossless read is byte-identical to before.
-          return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + (lossy.length ? lossyNote(lossy, operation) : ''), {
+          const overrideNote = tierOverridden ? ' The tier/refresh this call carried were overridden by the server search tier policy.' : '';
+          return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + overrideNote + (lossy.length ? lossyNote(lossy, operation) : ''), {
             simulated,
             operation,
             result: result ?? null,

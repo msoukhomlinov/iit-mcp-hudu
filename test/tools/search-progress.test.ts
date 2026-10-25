@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { createLogger } from '../../src/logger.js';
 import { registerSearchTool } from '../../src/tools/search.js';
+import { SEARCH_OUTPUT } from '../../src/tools/schemas.js';
 import type { ToolContext } from '../../src/tools/context.js';
 import { connect } from '../helpers/mcp-session.js';
 
@@ -31,7 +32,7 @@ const RESULT = {
 };
 
 /** Register `hudu_search` on a fake server and hand back its handler. */
-function harness(options: { searchKnowledge: ToolContext['ops']['searchKnowledge'] }) {
+function harness(options: { searchKnowledge: ToolContext['ops']['searchKnowledge'] }, overrides: Partial<ToolContext> = {}) {
   let handler!: Handler;
   const server = {
     registerTool: (_name: string, _spec: unknown, h: Handler) => {
@@ -49,6 +50,7 @@ function harness(options: { searchKnowledge: ToolContext['ops']['searchKnowledge
     indexSearchable: true,
     toolDefaultTier: 'index',
     searchTierIsPolicy: false,
+    ...overrides,
   } as ToolContext;
   registerSearchTool(server, ctx);
   return handler;
@@ -59,22 +61,53 @@ function request(signal: AbortSignal, notify: (n: Notify) => Promise<void>, toke
 }
 
 describe('hudu_search progress while awaiting the body index', () => {
-  it('ticks at once when the caller sent a progress token and the call waits', async () => {
-    const build = deferred<typeof RESULT>();
-    const handler = harness({ searchKnowledge: () => build.promise as never });
-    const received: Notify[] = [];
-    const call = handler({ mode: 'search', query: 'reset', tier: 'index' }, request(new AbortController().signal, async (n) => received.push(n), 'tok-1'));
-    // The first tick is immediate: a caller must not stare at silence for the first 10s.
-    expect(received).toHaveLength(1);
-    build.resolve(RESULT);
-    await call;
-    const params = received[0]!.params!;
-    expect(received[0]!.method).toBe('notifications/progress');
-    expect(params.progressToken).toBe('tok-1');
-    expect(params.progress).toBe(0);
-    expect(String(params.message)).toContain('body index build');
-    // Time is the only measure: no invented total, no percentage.
-    expect(params).not.toHaveProperty('total');
+  it('ticks first at 2s and then every 10s when the caller sent a progress token', async () => {
+    vi.useFakeTimers();
+    try {
+      const build = deferred<typeof RESULT>();
+      const handler = harness({ searchKnowledge: () => build.promise as never });
+      const received: Notify[] = [];
+      const call = handler({ mode: 'search', query: 'reset', tier: 'index' }, request(new AbortController().signal, async (n) => received.push(n), 'tok-1'));
+      // A fast build must not pay for a notification a caller never needed.
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(received).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(received).toHaveLength(1);
+      expect(received[0]!.params!.progress).toBe(2);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(received).toHaveLength(2);
+      expect(received[1]!.params!.progress).toBe(12);
+      build.resolve(RESULT);
+      await call;
+      const params = received[0]!.params!;
+      expect(received[0]!.method).toBe('notifications/progress');
+      expect(params.progressToken).toBe('tok-1');
+      expect(String(params.message)).toBe('body index build: 2s elapsed');
+      // Time is the only measure: no invented total, no percentage.
+      expect(params).not.toHaveProperty('total');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not let a synchronously throwing notify escape the timer', async () => {
+    vi.useFakeTimers();
+    try {
+      const build = deferred<typeof RESULT>();
+      const handler = harness({ searchKnowledge: () => build.promise as never });
+      const call = handler(
+        { mode: 'search', query: 'reset', tier: 'index' },
+        request(new AbortController().signal, () => {
+          throw new Error('stream already closed');
+        }, 'tok-sync'),
+      );
+      // If the throw escaped the timer callback, this advance would reject.
+      await vi.advanceTimersByTimeAsync(2_000);
+      build.resolve(RESULT);
+      await expect(call).resolves.toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('sends nothing when the caller sent no progress token', async () => {
@@ -105,26 +138,100 @@ describe('hudu_search progress while awaiting the body index', () => {
     controller.abort();
     const result = await call;
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent.meta.degraded.reason).toBe('index-build-cancelled');
+    expect(result.structuredContent.meta.degraded.reason).toBe('body-not-indexed');
+    expect(result.structuredContent.meta.reasons).toEqual(['index-build-cancelled']);
     expect(result.structuredContent.meta.complete).toBe(false);
     expect(result.structuredContent.hits).toEqual([]);
     expect(result.content[0].text).toContain('DEGRADED');
     build.resolve(RESULT);
   });
 
+  it('answers the cancelled wait with a complete KnowledgeSearchMeta that validates', async () => {
+    // A cancelled answer is a real search answer: every field the SDK publishes is present, the
+    // degraded reason is in the SDK's closed union, and the shape validates against SEARCH_OUTPUT.
+    const build = deferred<typeof RESULT>();
+    const handler = harness({ searchKnowledge: () => build.promise as never });
+    const controller = new AbortController();
+    const call = handler({ mode: 'search', query: 'reset the vpn', tier: 'index', limit: 3 }, request(controller.signal, async () => {}, 'tok-5'));
+    controller.abort();
+    const result = await call;
+    build.resolve(RESULT);
+    const { meta } = result.structuredContent;
+    for (const field of ['query', 'terms', 'resources', 'scanned', 'returned', 'limit', 'complete', 'reasons', 'index', 'degraded', 'errors', 'failed', 'timings', 'scoreScope', 'bytes', 'indexAge']) {
+      expect(meta, field).toHaveProperty(field);
+    }
+    expect(meta.query).toBe('reset the vpn');
+    expect(meta.terms).toEqual(['reset', 'the', 'vpn']);
+    expect(meta.resources).toEqual(['articles', 'assets']);
+    expect(meta.limit).toBe(3);
+    expect(meta.scanned).toBe(0);
+    expect(meta.returned).toBe(0);
+    expect(meta.timings).toMatchObject({ vendorMs: 0, requests: 0 });
+    expect(meta.indexAge).toBeNull();
+    expect(meta.index.state).toBe('refreshing');
+    expect(meta.degraded.reason).toBe('body-not-indexed');
+    // The SDK's closed union: no invented degraded reason value.
+    expect(['no-index', 'vendor-only', 'body-not-indexed']).toContain(meta.degraded.reason);
+    expect(SEARCH_OUTPUT.safeParse(result.structuredContent).success).toBe(true);
+  });
+
+  it('waits, ticks and cancels on the http policy path when HUDU_SEARCH_TIER_POLICY is index', async () => {
+    // The one http configuration that still blocks: the wait condition is transport-independent, so
+    // it must get progress and cancellation like the stdio tier:"index" path.
+    vi.useFakeTimers();
+    try {
+      const build = deferred<typeof RESULT>();
+      const handler = harness(
+        { searchKnowledge: () => build.promise as never },
+        { config: { MCP_TRANSPORT: 'http' } as ToolContext['config'], searchTierIsPolicy: true, toolDefaultTier: 'index' },
+      );
+      const received: Notify[] = [];
+      const controller = new AbortController();
+      const call = handler({ mode: 'search', query: 'reset' }, request(controller.signal, async (n) => received.push(n), 'tok-http'));
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(received).toHaveLength(1);
+      controller.abort();
+      const result = await call;
+      expect(result.structuredContent.meta.reasons).toEqual(['index-build-cancelled']);
+      build.resolve(RESULT);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the answer when the client refuses the notification', async () => {
-    const handler = harness({ searchKnowledge: async () => RESULT as never });
-    const result = await handler(
-      { mode: 'search', query: 'reset', tier: 'index' },
-      request(new AbortController().signal, async () => {
-        throw new Error('client closed its stream');
-      }, 'tok-4'),
-    );
-    expect(result.structuredContent.meta.complete).toBe(true);
+    vi.useFakeTimers();
+    try {
+      const build = deferred<typeof RESULT>();
+      const handler = harness({ searchKnowledge: () => build.promise as never });
+      const call = handler(
+        { mode: 'search', query: 'reset', tier: 'index' },
+        request(new AbortController().signal, async () => {
+          throw new Error('client closed its stream');
+        }, 'tok-4'),
+      );
+      await vi.advanceTimersByTimeAsync(2_000);
+      build.resolve(RESULT);
+      const result = await call;
+      expect(result.structuredContent.meta.complete).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('carries the token across the real stdio transport', async () => {
-    const session = await connect(() => Response.json([]));
+    // The build must outlive the 2s first tick for a notification to cross the wire at all.
+    // Only the first request is slow: the build must outlive the 2s first tick, and the helper
+    // polls for the reply for 2.5s.
+    let first = true;
+    const slow = (async () => {
+      if (first) {
+        first = false;
+        await new Promise((r) => setTimeout(r, 2_050));
+      }
+      return Response.json([]);
+    }) as unknown as (url: string) => Response;
+    const session = await connect(slow);
     const result = await session.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index', limit: 1, snippetChars: 0 }, { progressToken: 'wire-1' });
     expect(result.isError).toBeUndefined();
     const ticks = session.notifications().filter((n) => n.method === 'notifications/progress');

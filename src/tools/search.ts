@@ -11,8 +11,14 @@ import { HELP_TOPICS, SEARCH_OUTPUT, resourceEnum } from './schemas.js';
 import { credentialRefused, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
 import { adjustHelpText, adjustedSearchModes, searchQueryDescription, searchToolDescription } from './search-prose.js';
 
-/** How often a waiting call reports elapsed time. A cold walk takes minutes, not seconds. */
+/** The first tick is deferred: a fast build should not pay for a notification, but 2s of silence reads as a hang. */
+const PROGRESS_FIRST_TICK_MS = 2_000;
+
+/** How often a waiting call reports elapsed time after that. A cold walk takes minutes, not seconds. */
 const PROGRESS_TICK_MS = 10_000;
+
+/** The tool's `limit` default, stated in prose: 1-25, default 8. */
+const SEARCH_DEFAULT_LIMIT = 8;
 
 /** A caller's progress token: the spec allows a string or a number, nothing else. */
 type ProgressToken = string | number;
@@ -52,32 +58,43 @@ async function awaitWithProgress<T>(
   token: ProgressToken | undefined,
   work: Promise<T>,
   log: { debug(msg: string, fields?: Record<string, unknown>): void },
-): Promise<{ aborted: false; value: T } | { aborted: true }> {
+): Promise<{ aborted: false; value: T } | { aborted: true; elapsedMs: number }> {
   const signal = req?.signal;
+  const started = Date.now();
   if (signal?.aborted === true) {
     void work.catch(() => {});
-    return { aborted: true };
+    return { aborted: true, elapsedMs: 0 };
   }
-  const started = Date.now();
   const tick = (): void => {
     if (token === undefined) return;
-    const elapsed = Math.floor((Date.now() - started) / 1000);
-    void req
-      ?.notify({ method: 'notifications/progress', params: { progressToken: token, progress: elapsed, message: `body index build: ${elapsed}s elapsed` } })
-      .catch((err: unknown) => log.debug('progress notification rejected; search continues', { error: err instanceof Error ? err.message : String(err) }));
+    // A notify that throws SYNCHRONOUSLY (a client whose stream is already closed) must not escape a
+    // timer callback: an uncaught exception there would take the whole process down.
+    try {
+      const elapsed = Math.floor((Date.now() - started) / 1000);
+      void req
+        ?.notify({ method: 'notifications/progress', params: { progressToken: token, progress: elapsed, message: `body index build: ${elapsed}s elapsed` } })
+        .catch((err: unknown) => log.debug('progress notification rejected; search continues', { error: err instanceof Error ? err.message : String(err) }));
+    } catch (err) {
+      log.debug('progress notification threw; search continues', { error: err instanceof Error ? err.message : String(err) });
+    }
   };
-  // The first tick is immediate: waiting with no signal at all for 10s reads as a hang.
-  tick();
-  const timer = setInterval(tick, PROGRESS_TICK_MS);
+  // The first tick is deferred, then the cadence takes over. Both timers are cleared in `finally`:
+  // a settled or cancelled wait must leave nothing running.
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const first = setTimeout(() => {
+    tick();
+    timer = setInterval(tick, PROGRESS_TICK_MS);
+  }, PROGRESS_FIRST_TICK_MS);
   let onAbort: (() => void) | undefined;
   try {
-    const aborted = new Promise<{ aborted: true }>((resolve) => {
-      onAbort = () => resolve({ aborted: true });
+    const aborted = new Promise<{ aborted: true; elapsedMs: number }>((resolve) => {
+      onAbort = () => resolve({ aborted: true, elapsedMs: Date.now() - started });
       signal?.addEventListener('abort', onAbort, { once: true });
     });
     return await Promise.race([work.then((value) => ({ aborted: false as const, value })), aborted]);
   } finally {
-    clearInterval(timer);
+    clearTimeout(first);
+    if (timer !== undefined) clearInterval(timer);
     if (onAbort !== undefined) signal?.removeEventListener('abort', onAbort);
     void work.catch(() => {});
   }
@@ -100,30 +117,62 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
    * The answer a cancelled wait gets: a complete, honest DEGRADED result, never a throw.
    *
    * The caller's request was cancelled while the body index was still building, so no body search
-   * ran. `hits: []` with `meta.complete: false` and a named `meta.degraded` reason says exactly that,
-   * and points at the immediate alternative instead of inviting a silent retry loop.
+   * ran. `hits: []` with `meta.complete: false` and the in-vocabulary `meta.degraded` reason
+   * (`body-not-indexed`, because that is factually what was not searched) says exactly that; the
+   * cancellation itself is named in `meta.reasons` (`index-build-cancelled`), and the advice points
+   * at the immediate alternative instead of inviting a silent retry loop.
    */
-  const cancelledSearch = (query: string, scope: KnowledgeResource[]) =>
-    ok(`Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.`, {
+  const cancelledSearch = (query: string, scope: KnowledgeResource[], limit: number, elapsedMs: number) => {
+    const hits: unknown[] = [];
+    // The SDK's own normalisation is not reachable here (no result was produced), so the terms are the
+    // query's raw split rather than a claim about what the engine would have matched.
+    const terms = query.trim().split(/\s+/).filter((term) => term.length > 0);
+    return ok(`Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.`, {
       mode: 'search',
       query,
       resources: scope,
-      hits: [],
+      hits,
       meta: {
         mode: 'search',
-        complete: false,
-        reasons: ['cancelled'],
-        degraded: {
-          reason: 'index-build-cancelled',
-          advice: 'The request was cancelled while the body index built, so article bodies were not searched. Retry, or use tier:"vendor" for an immediate body-blind answer.',
-        },
-        failed: [],
-        errors: [],
-        index: { state: 'cold' },
+        query,
+        terms,
+        resources: scope,
         scanned: 0,
         returned: 0,
+        limit,
+        complete: false,
+        reasons: ['index-build-cancelled'],
+        // `reason` stays inside the SDK's closed union (`no-index | vendor-only | body-not-indexed`);
+        // the cancellation-specific fact is carried by `reasons`, which is an open string array.
+        degraded: {
+          reason: 'body-not-indexed',
+          advice: 'The request was cancelled while the body index built, so article bodies were not searched. Retry, or use tier:"vendor" for an immediate body-blind answer.',
+        },
+        errors: [],
+        failed: [],
+        timings: { vendorMs: 0, localMs: elapsedMs, requests: 0 },
+        scoreScope: 'per-resource',
+        // Serialised size of the (empty) hits array, as the SDK reports it for a real answer.
+        bytes: Buffer.byteLength(JSON.stringify(hits), 'utf8'),
+        // The SDK status() shape for a build in flight on an empty store: no generation was scored,
+        // so nothing about one is claimed.
+        index: {
+          state: 'refreshing',
+          builtAt: null,
+          ageMs: null,
+          staleness: 'unknown',
+          docs: {},
+          watermarks: { articles: null, assets: null },
+          requestsLastBuild: 0,
+          lastFullAt: null,
+          lastCompleteFullAt: null,
+          fullWalkDue: false,
+          lastBuildError: null,
+        },
+        indexAge: null,
       },
     });
+  };
   server.registerTool(
     'hudu_search',
     {
@@ -152,7 +201,9 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         exact_only: z.boolean().optional(),
         // Under `http` neither field is served: the tier decides whether a call may wait for a
         // corpus-wide walk, and the calling model can observe neither the index's warmth nor the
-        // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead.
+        // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead. This schema path
+        // cannot see stripped fields — a caller-supplied tier/refresh is gone before the handler runs,
+        // so only the invoke path (applySearchPolicyToInvoke) can announce the override.
         ...(searchTierIsPolicy
           ? {}
           : {
@@ -297,11 +348,14 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         // index, so neither may emit progress. Warmth is not observable through the SDK (there is no
         // engine-status accessor), so a warm index costs one immediate tick and nothing more — the
         // ticker stops the moment the promise settles.
-        const searchWaits = !searchTierIsPolicy && (tier === 'index' || refresh === true);
+        // Transport-independent on purpose: `http` usually forces `refresh` false and the tier to
+        // "auto", but HUDU_SEARCH_TIER_POLICY=index makes even that caller wait, and a wait must
+        // always have progress and cancellation.
+        const searchWaits = tier === 'index' || refresh === true;
         let result;
         if (searchWaits) {
           const awaited = await awaitWithProgress(req.mcpReq as RequestContext, progressTokenOf(req.mcpReq as RequestContext), work, log);
-          if (awaited.aborted) return cancelledSearch(args.query, (args.resources ?? defaultSearchScope) as KnowledgeResource[]);
+          if (awaited.aborted) return cancelledSearch(args.query, (args.resources ?? defaultSearchScope) as KnowledgeResource[], args.limit ?? SEARCH_DEFAULT_LIMIT, awaited.elapsedMs);
           result = awaited.value;
         } else {
           result = await work;

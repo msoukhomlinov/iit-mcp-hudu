@@ -22,13 +22,13 @@ const DESCRIPTIONS: Record<string, string> = {
   hudu_delete:
     "Execute a DESTRUCTIVE operation by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. dry_run:true previews without deleting; confirm is the SDK confirmation string, not human consent.",
   hudu_list:
-    "List ONE bounded page of companies, articles, assets (all companies) or asset_layouts. It takes no operation argument, so it cannot become a write, and it never pages the tenant. Each collection accepts only its own filters (hudu_describe_operation lists them); another is refused naming the accepted ones. Article bodies: compact rows carry none; expand:true returns stored HTML. The ungated read path: prefer it, or hudu_search, over hudu_read.",
+    "List ONE bounded page of companies, articles, assets (all companies) or asset_layouts. It takes no operation argument, so it cannot become a write, and it never pages the tenant. Each collection accepts only its own filters (hudu_describe_operation lists them); another is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor's own size, returned whole, has_more is conservative (true for any non-empty page) — stop when a page comes back empty. Article bodies: compact rows carry none; expand:true returns stored HTML. The ungated read path: prefer it, or hudu_search, over hudu_read.",
   hudu_list_operations:
     "List SDK operations with the tool exposing each, its effect, dry-run/confirm need and required arguments. This server is a curated SUBSET: hudu_describe_operation gives one operation's contract, hudu_read/hudu_write/hudu_delete run it. Bounded 1-100 rows (default 40), offset pages; the catalog is ~10k tokens, so filter or page.",
   hudu_describe_operation:
     "Full input contract, effect, dry-run support, errors and usage for ONE operation, by exact catalog key (never a tool name). An unknown key is a CONFIG_ERROR naming the nearest.",
   hudu_resolve_any:
-    "Resolve an identifier across several resources when the resource type is unknown; otherwise call that resource's hudu_get_<singular>. Unreadable resources are listed in `unauthorized`; it fails only if all are refused.",
+    "Resolve an identifier across several resources when the resource type is unknown; otherwise call that resource's hudu_get_<singular>. Resources the key may not read (401/403) are listed in `unauthorized`; it fails only if all are refused. Narrow `resources` to skip asset_passwords/password_folders.",
   hudu_get_api_info:
     "Return the API information document. Prefer api_info.get.",
   hudu_get_company_context:
@@ -65,7 +65,3 @@ export function toolDescription(name: string, extra = ''): string {
   return extra === '' ? base : `${base} ${extra}`;
 }
 
-/** Whether the table has an entry for `name` (the weight test checks the surface against it). */
-export function hasToolDescription(name: string): boolean {
-  return DESCRIPTIONS[name] !== undefined;
-}
