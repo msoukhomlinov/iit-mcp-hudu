@@ -89,6 +89,14 @@ function main(): void {
 
   const log = createLogger(config.LOG_LEVEL);
   logEffectiveWritePolicy(config, log, process.env);
+  // `HUDU_SEARCH_TIER_POLICY=index` under `http` re-introduces the #49 blocking wait on purpose:
+  // every caller's scope starts cold, so each first call can wait on a corpus-wide body-index walk.
+  // Make the trade visible to the operator who set it; never fail the boot over it.
+  if (config.MCP_TRANSPORT === 'http' && config.HUDU_SEARCH_TIER_POLICY === 'index') {
+    log.warn(
+      'HUDU_SEARCH_TIER_POLICY=index over http: a call may block on a corpus-wide body-index walk (the #49 wait). HUDU_SEARCH_TIER_POLICY=auto answers immediately and warms the index in the background; vendor never builds one.',
+    );
+  }
 
   if (
     config.MCP_TRANSPORT === 'http'

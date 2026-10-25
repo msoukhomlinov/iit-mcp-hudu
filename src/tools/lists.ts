@@ -261,6 +261,11 @@ const LIST_RESOURCE_NAMES = Object.keys(LIST_RESOURCES) as [ListResource, ...Lis
 /** The accepted filter names of one resource, for refusals and for `hudu_describe_operation`. */
 export const listFilterNames = (resource: ListResource): string[] => Object.keys(LIST_RESOURCES[resource].filters.shape);
 
+/** Every resource's filter names, derived: the served `filters` description must not be a retyped list. */
+export const LIST_FILTER_LIST = (Object.keys(LIST_RESOURCES) as ListResource[])
+  .map((resource) => `${resource}: ${listFilterNames(resource).join(', ')}`)
+  .join('; ');
+
 /** Register `hudu_list`. */
 export function registerListTools(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
@@ -286,7 +291,10 @@ export function registerListTools(server: McpServer, ctx: ToolContext): void {
         page: LIST_PAGE,
         page_size: z.number().int().min(1).max(MAX_LIMIT).optional().describe(`Rows per page (1-${MAX_LIMIT}, default ${DEFAULT_LIMIT}); refused for asset_layouts, never clamped.`),
         expand: EXPAND,
-        filters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe('Resource-specific; see hudu_describe_operation.'),
+        filters: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .optional()
+          .describe(`Resource-specific, closed per resource: ${LIST_FILTER_LIST}. A filter outside its resource's set is refused naming the accepted ones.`),
       }),
       outputSchema: LIST_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },

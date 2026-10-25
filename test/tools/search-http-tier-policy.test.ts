@@ -24,7 +24,7 @@ describe('hudu_search schema and the search tier', () => {
     expect(tool.inputSchema.properties).not.toHaveProperty('refresh');
     // The schema and the prose agree: nothing invites a caller to await a body-index walk.
     expect(tool.description).not.toContain('Pass "index"');
-    expect(tool.description).toContain('sets the search tier server-side');
+    expect(tool.description).toContain('set server-side');
     await session.close();
   });
 
@@ -42,6 +42,10 @@ describe('hudu_search schema and the search tier', () => {
     const result = await session.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index', refresh: true, limit: 1, snippetChars: 0 });
     const elapsed = Date.now() - started;
     expect(result.isError).toBeUndefined();
+    // The tool path tells the same story as the invoke path: the fields it sent were overridden by
+    // deployment policy, so `meta.reasons` names it and the text says so.
+    expect(result.structuredContent.meta.reasons).toContain('tier-policy-override');
+    expect(result.content[0].text).toContain('overridden by the server search tier policy');
     // No walk completed before the answer: the index is still cold (or building in the background).
     // An awaited build would return "warm" — and at production corpus size it would return past the
     // consumer's call timeout, which is the incident this asserts against.
@@ -81,6 +85,15 @@ describe('hudu_search schema and the search tier', () => {
     });
     expect(result.isError).toBeUndefined();
     expect(['cold', 'refreshing']).toContain(result.structuredContent.result.meta.index.state);
+    await new Promise((r) => setTimeout(r, 100));
+    await session.close();
+  });
+
+  it('reports no override when the caller sent neither field', async () => {
+    const session = await connectForRequest('key-a', () => Response.json([]));
+    const result = await session.call('hudu_search', { mode: 'search', query: 'reset', limit: 1, snippetChars: 0 });
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent.meta.reasons).not.toContain('tier-policy-override');
     await new Promise((r) => setTimeout(r, 100));
     await session.close();
   });

@@ -160,9 +160,10 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
       ? 'Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry — the body index keeps building in the background, so a later search is body-backed.'
       : 'Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.';
   const advice =
-    transport === 'http'
+    (transport === 'http'
       ? 'The request was cancelled while the body index built, so article bodies were not searched. Retry: the body index keeps building in the background, so a later search is body-backed.'
-      : 'The request was cancelled while the body index built, so article bodies were not searched. Retry, or use tier:"vendor" for an immediate body-blind answer.';
+      : 'The request was cancelled while the body index built, so article bodies were not searched. Retry, or use tier:"vendor" for an immediate body-blind answer.') +
+    ' timings.localMs is the local body-index wait this call spent; nothing was scored or requested.';
   return {
     text,
     data: {
@@ -188,6 +189,9 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         },
         errors: [],
         failed: [],
+        // `localMs` is the SDK's LOCAL time, not vendor time. Nothing was scored here, but the
+        // local body-index wait IS local time this call spent, so it is reported as such rather than
+        // zeroed; `meta.reasons` names it (`index-build-cancelled`).
         timings: { vendorMs: 0, localMs: elapsedMs, requests: 0 },
         scoreScope: 'per-resource',
         // Serialised size of the (empty) hits array, as the SDK reports it for a real answer.
@@ -224,29 +228,31 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
       inputSchema: z.object({
         mode: z
           .enum(['search', 'help', 'resources'])
-          .default('search')
-          .describe('Default "search".'),
+          .default('search'),
         query: z
           .string()
           .min(1)
           .optional()
           .describe(searchQueryDescription(ctx)),
         resources: z.array(resourceEnum(searchableResources)).optional().describe('Default: deployment scope.'),
-        topic: z.enum(HELP_TOPICS as [string, ...string[]]).optional(),
-        limit: z.number().int().min(1).max(25).optional().describe('1-25, default 8; larger is a CONFIG_ERROR.'),
+        topic: z
+          .enum(HELP_TOPICS as [string, ...string[]])
+          .optional()
+          .describe('mode="help" only; "all" adds syntax and scoring.'),
+        limit: z.number().int().min(1).max(25).optional().describe('1-25, default 8; larger is CONFIG_ERROR.'),
         snippetChars: z.number().int().min(0).max(400).optional().describe('0 = no snippet.'),
         company_id: z.number().int().positive().optional().describe('One company.'),
-        updated_since: z.string().optional().describe('ISO timestamp; only newer records.'),
+        updated_since: z.string().optional().describe('ISO timestamp; newer only.'),
         min_score: z
           .number()
           .optional()
-          .describe('0-100 floor. NOT counted when dropped: 0 hits may be the floor or the company_id/updated_since filters (meta.scanned vs meta.returned).'),
+          .describe('0-100 floor; drops are not counted: 0 hits may be the floor or the company_id/updated_since filters (meta.scanned vs. meta.returned).'),
         exact_only: z.boolean().optional().describe('No fuzzy match.'),
         // Under `http` neither field is served: the tier decides whether a call may wait for a
         // corpus-wide walk, and the calling model can observe neither the index's warmth nor the
-        // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead. This schema path
-        // cannot see stripped fields — a caller-supplied tier/refresh is gone before the handler runs,
-        // so only the invoke path (applySearchPolicyToInvoke) can announce the override.
+        // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead. The object is
+        // LOOSE, so a caller that sends either field anyway still reaches the handler, which reports
+        // it as overridden (`meta.reasons` gains `tier-policy-override`) exactly as the invoke path does.
         ...(searchTierIsPolicy
           ? {}
           : {
@@ -257,19 +263,19 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
                   !indexSearchable
                     ? '"vendor" only here: articles or assets are excluded, so "index", "auto" and refresh:true are refused (the walk is corpus-wide).'
                     : toolDefaultTier === 'auto'
-                      ? 'Defaults to "auto": answers now, warming the body index in the background. "index" awaits a complete body-index answer.'
+                      ? 'Defaults to "auto": answers now, warming the index. "index" blocks until complete.'
                       : toolDefaultTier === 'vendor'
-                        ? 'Defaults to "vendor" (HUDU_SEARCH_TIER_POLICY): answers from Hudu search only, building or awaiting no body index. "index" awaits one; "auto" builds it in the background.'
-                        : 'Defaults to "index": builds or awaits the body index. "vendor" answers from Hudu alone.',
+                        ? 'Defaults to "vendor" (HUDU_SEARCH_TIER_POLICY): no body index. "index" awaits one; "auto" builds it.'
+                        : 'Defaults to "index": builds or awaits the body index. "vendor" is body-blind.',
                 ),
               refresh: z
                 .boolean()
                 .optional()
                 .describe(
-                  'true rebuilds the local body index (nothing in Hudu changes; can take minutes; stdio only).',
+                  'true rebuilds the local body index (minutes; no Hudu change).',
                 ),
             }),
-      }),
+      }).loose(),
       outputSchema: SEARCH_OUTPUT,
       // readOnlyHint stays true: the hint describes the TARGET SYSTEM (Hudu), which this tool never
       // writes. `refresh` rebuilds this process's local body index — a cache — and changes nothing in
@@ -361,6 +367,11 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
       // omits them); under `stdio` the caller's own value wins, defaulting to the tool's tier.
       const tier = searchTierIsPolicy ? toolDefaultTier : ((args as { tier?: 'auto' | 'vendor' | 'index' }).tier ?? toolDefaultTier);
       const refresh = searchTierIsPolicy ? false : (args as { refresh?: boolean }).refresh;
+      // Under `http` the served schema omits both fields, but the object is loose: a client may still
+      // send them. They are deployment policy, so they are ignored — and SAID to be, with the same
+      // `tier-policy-override` reason the invoke path reports, never stripped in silence.
+      const overridden =
+        searchTierIsPolicy && ((args as { tier?: unknown }).tier !== undefined || (args as { refresh?: unknown }).refresh !== undefined);
       // The body index is corpus-wide and cannot be scoped. When the deployment excludes a corpus
       // resource, NO index-backed path may run: an explicit "index" or "auto" tier, or `refresh`
       // (which forces a full rebuild), would each walk the excluded endpoint. Refuse them rather
@@ -430,11 +441,21 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         const failedNote = failures.length
           ? ` ${failures.length} resource(s) unavailable: ${failures.map((f) => f.resource ?? 'unknown').join(', ')}.`
           : '';
-        return ok(`Found ${result.hits.length} ranked match(es)${incomplete}.${bodyBlind}${failedNote}`, {
+        const overrideNote = overridden ? ' The tier/refresh this call carried were overridden by the server search tier policy.' : '';
+        return ok(`Found ${result.hits.length} ranked match(es)${incomplete}.${bodyBlind}${failedNote}${overrideNote}`, {
           mode: 'search',
           query: args.query,
           hits: result.hits,
-          meta: { ...result.meta, errors: failures, failed: failures, index: sanitizeIndexMeta(result.meta.index), mode: 'search' },
+          meta: {
+            ...result.meta,
+            // The SDK lists every bound that bit in `reasons` independent of `complete`, so an
+            // override belongs there and does not make the answer incomplete.
+            ...(overridden ? { reasons: [...result.meta.reasons, 'tier-policy-override'] } : {}),
+            errors: failures,
+            failed: failures,
+            index: sanitizeIndexMeta(result.meta.index),
+            mode: 'search',
+          },
         });
       } catch (err) {
         return searchErrorContent(err);

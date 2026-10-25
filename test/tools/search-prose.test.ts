@@ -137,27 +137,27 @@ describe('hudu_search advertised description', () => {
   it('stops advertising resources and an index default the narrowed policy refuses', async () => {
     const session = await connect(undefined, { HUDU_SEARCH_RESOURCES: ['companies'] });
     const tool = (await session.list()).find((t) => t.name === 'hudu_search');
-    expect(tool!.description).not.toContain('article TITLE and BODY content');
+    expect(tool!.description).not.toContain('article TITLE and BODY');
     expect(tool!.description).toContain('companies');
     expect(tool!.description).not.toContain('defaults to tier "index"');
     expect(tool!.description).toContain('defaults to tier "vendor"');
-    expect(tool!.inputSchema.properties.query.description).not.toContain('article BODY content is searched');
+    expect(tool!.inputSchema.properties.query.description).not.toContain('article BODY is searched');
     await session.close();
   });
 
   it('keeps the SDK description verbatim when the policy changes nothing', async () => {
     const session = await connect();
     const tool = (await session.list()).find((t) => t.name === 'hudu_search');
-    expect(tool!.description).toContain('article TITLE and BODY content');
+    expect(tool!.description).toContain('article TITLE and BODY');
     expect(tool!.description).toContain('defaults to tier "index"');
-    expect(tool!.inputSchema.properties.query.description).toContain('article BODY content is searched');
+    expect(tool!.inputSchema.properties.query.description).toContain('article BODY is searched');
     await session.close();
   });
 
   it('keeps the query field short and sends per-resource matching rules to help topic query', async () => {
     const session = await connect();
     const query = (await session.list()).find((t) => t.name === 'hudu_search')!.inputSchema.properties.query.description;
-    expect(query).toContain('mode="help", topic="query"');
+    expect(query).toContain('topic="query" (mode="help")');
     expect(query).not.toContain('reordering words');
     expect(query).not.toContain('meta.matching');
     expect(query.length).toBeLessThan(500);
@@ -171,7 +171,7 @@ describe('hudu_search advertised description', () => {
       HUDU_SEARCH_RESOURCES: ['articles', 'articles', 'assets', 'companies', 'users', 'groups', 'websites', 'asset_passwords'],
     });
     const tool = (await session.list()).find((t) => t.name === 'hudu_search');
-    expect(tool!.description).not.toContain('article TITLE and BODY content');
+    expect(tool!.description).not.toContain('article TITLE and BODY');
     expect(tool!.description).not.toContain('password_folders');
     expect(tool!.inputSchema.properties.resources.items.enum).not.toContain('password_folders');
     await session.close();
@@ -227,7 +227,7 @@ describe('http with an excluded corpus', () => {
     const session = await connectForRequest('key-a', () => Response.json([]), [], { HUDU_SEARCH_RESOURCES: ['companies'] });
     const tool = (await session.list()).find((t) => t.name === 'hudu_search')!;
     expect(tool.inputSchema.properties).not.toHaveProperty('tier');
-    expect(tool.description).toContain('sets the search tier server-side');
+    expect(tool.description).toContain('set server-side');
     expect(tool.description).not.toContain('refuses "index", "auto" and refresh');
     const help = await session.call('hudu_search', { mode: 'help' });
     const text: string = help.structuredContent.help.text;

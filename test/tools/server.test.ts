@@ -193,7 +193,7 @@ describe('per-request Hudu credential', () => {
     expect(help.structuredContent.help.defaults.tier).toBe('auto');
     const tool = (await session.list()).find((t) => t.name === 'hudu_search');
     expect(tool!.description).not.toContain('defaults to tier "index"');
-    expect(tool!.description).toContain('sets the search tier server-side');
+    expect(tool!.description).toContain('set server-side');
     await session.close();
   });
 

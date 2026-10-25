@@ -71,12 +71,22 @@ describe('hudu_describe_operation steers a mapped read to its ungated tool', () 
     await session.close();
   });
 
-  it('states the resource -> operation mapping on the hudu_list help surface', async () => {
-    // PR #52 dropped the mapping from the served prose; it belongs in the tool's own description
-    // (the help surface a caller reads), never in an inputSchema field description.
+  it('keeps the resource -> operation mapping on the on-demand surfaces', async () => {
+    // #52 keeps the long tail out of the served prose, so the mapping lives in
+    // `hudu_describe_operation`: the operation names the tool that exposes it, and its contract names
+    // the resource it lists. A caller can still derive every pair without the shared prose.
     const session = await connect();
-    const tool = (await session.list()).find((t: { name: string }) => t.name === 'hudu_list');
-    expect(tool.description).toContain('backed by companies.list / articles.list / assets.listAcrossCompanies / asset_layouts.list');
+    const mapping = {
+      companies: 'companies.list',
+      articles: 'articles.list',
+      assets: 'assets.listAcrossCompanies',
+      asset_layouts: 'asset_layouts.list',
+    } as const;
+    for (const [resource, operation] of Object.entries(mapping)) {
+      const described = await session.call('hudu_describe_operation', { operation });
+      expect(described.structuredContent.exposed_tool, operation).toBe('hudu_list');
+      expect(JSON.stringify(described.structuredContent.input_schema), operation).toContain(resource);
+    }
     await session.close();
   });
 

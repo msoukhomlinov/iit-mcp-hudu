@@ -2,8 +2,9 @@
  * tools.ts — the CORE tool surface, registered once against a caller-supplied `McpServer`.
  *
  * Productised from `node-hudu/examples/mcp-server.ts`, the reference the SDK's
- * `mcp:project --check-example` drift gate walks. Tool names and titles stay SDK-owned, and an
- * SDK-published description is still honoured where one exists. The served prose is ours:
+ * `mcp:project --check-example` drift gate walks. Tool NAMES stay SDK-owned. Titles are ours where
+ * the SDK's repeats what the description already says — `hudu_search` serves "Search Hudu", not the
+ * SDK's mode list — and an SDK-published description is still honoured where one exists. The served prose is ours:
  * `src/tools/tool-prose.ts` states what each tool does once (keeping the SDK's published facts
  * where it has them, in our wording), and `src/tools/search-prose.ts` applies this deployment's
  * policy — tier, resources, schema — on top.

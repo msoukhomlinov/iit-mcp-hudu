@@ -239,16 +239,16 @@ export function searchToolDescription(ctx: ToolContext): string {
     : !indexSearchable
       ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
       : toolDefaultTier === 'auto'
-      ? 'As a TOOL it defaults to tier "auto": it answers from Hudu search now and builds the body index in the background, so a later search is body-aware rather than body-blind. Pass tier:"index" to wait for a complete first answer.'
+      ? 'As a TOOL it defaults to tier "auto": it answers now and builds the body index in the background, so a later search is body-aware. Pass tier:"index" to wait.'
       : toolDefaultTier === 'vendor'
-      ? 'As a TOOL it defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY): it answers from Hudu search only and builds or awaits no body index, unless you pass tier:"index" or refresh:true.'
+      ? 'As a TOOL it defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY): no body index is built or awaited unless you pass tier:"index" or refresh:true.'
       : defaultSentence;
   let out = base;
   if (!fullSet) {
-    out = out.replace(
-      'ranked, fuzzy search over article TITLE and BODY content, asset names, custom-field VALUES and identifiers, plus company/user/group/website names.',
-      `ranked, fuzzy search over the resources this deployment may read: ${searchableResources.join(', ')}.`,
-    );
+    // Fail loudly: a stale anchor would keep advertising a search set this deployment refuses.
+    const scopeAnchor = 'ranked, fuzzy search over article TITLE and BODY, asset names, custom-field VALUES, identifiers and company/user/group/website names.';
+    if (!out.includes(scopeAnchor)) throw new Error('hudu_search description: SDK scope sentence changed; update scopeAnchor');
+    out = out.replace(scopeAnchor, `ranked, fuzzy search over the resources this deployment may read: ${searchableResources.join(', ')}.`);
   }
   // Fail loudly, not silently: a missed anchor would advertise a default tier this deployment refuses.
   if (!out.includes(defaultSentence)) throw new Error('hudu_search description: SDK default-tier sentence changed; update defaultSentence');
@@ -264,29 +264,30 @@ export function searchToolDescription(ctx: ToolContext): string {
 function serverPolicyTierSentence(ctx: ToolContext): string {
   const { toolDefaultTier } = ctx;
   if (toolDefaultTier === 'index') {
-    return 'This deployment sets the search tier server-side to "index", so a call may wait for a complete body-index answer before it returns.';
+    return 'Tier is set server-side to "index": a call waits for a complete body-index answer.';
   }
   if (toolDefaultTier === 'vendor') {
-    return 'This deployment sets the search tier server-side to "vendor": Hudu search answers every call immediately and no body index is built.';
+    return 'Tier is set server-side to "vendor": every call answers immediately and no body index is built.';
   }
-  return 'This deployment sets the search tier server-side: the tool answers from Hudu search now and builds the body index in the background, so a later search is body-aware; meta.index reports the index state and a body-blind answer says so in meta.degraded.';
+  return 'Tier is set server-side to "auto": it answers now and warms the body index in the background, so a later search is body-aware; a body-blind answer says so in meta.degraded.';
 }
 
 /** The `query` field description, adjusted so it does not promise a body search it cannot run. */
 export function searchQueryDescription(ctx: ToolContext): string {
   const { indexSearchable, toolDefaultTier } = ctx;
-  const base =
-    'REQUIRED for mode="search". Partial words are fine; article BODY content is searched. Multi-word rules: mode="help", topic="query".';
+  const base = 'REQUIRED for mode="search". Partial words fine; article BODY is searched. Multi-word rules: topic="query" (mode="help").';
   if (!indexSearchable) {
+    // Fail loudly: a missed anchor would advertise a body search this deployment cannot run.
+    if (!base.includes('article BODY is searched.')) throw new Error('searchQueryDescription: base sentence changed; update the anchors');
     return base.replace(
-      'article BODY content is searched.',
-      'article body content is NOT searched on this deployment (the body index is unavailable); titles, names and field values are.',
+      'article BODY is searched.',
+      'article BODY is NOT searched on this deployment (the body index is unavailable); titles, names and field values are.',
     );
   }
   if (toolDefaultTier === 'auto') {
     return base.replace(
-      'article BODY content is searched.',
-      'article BODY content is searched once the body index has warmed (the tool builds it in the background); the first search may be body-blind.',
+      'article BODY is searched.',
+      'article BODY is searched once the background index warms; early calls may be blind.',
     );
   }
   return base;

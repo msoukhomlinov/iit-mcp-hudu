@@ -119,12 +119,65 @@ describe('hudu_search progress while awaiting the body index', () => {
     expect(received).toEqual([]);
   });
 
-  it('sends nothing on a path that never waits (tier vendor, and auto)', async () => {
-    for (const tier of ['vendor', 'auto']) {
-      const handler = harness({ searchKnowledge: async () => RESULT as never });
+  it('sends nothing on a path that never waits (tier vendor, and auto), even while the work is held open', async () => {
+    // The work is held OPEN deliberately: a stub that resolves at once would pass even if the path
+    // went through `awaitWithProgress`, because the first tick is 2 s away. A tier that never waits
+    // must be silent with the promise still pending past one full cadence.
+    vi.useFakeTimers();
+    try {
+      for (const tier of ['vendor', 'auto']) {
+        const build = deferred<typeof RESULT>();
+        const handler = harness({ searchKnowledge: () => build.promise as never });
+        const received: Notify[] = [];
+        const call = handler({ mode: 'search', query: 'reset', tier }, request(new AbortController().signal, async (n) => received.push(n), 'tok-2'));
+        await vi.advanceTimersByTimeAsync(2_000);
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(received, tier).toEqual([]);
+        build.resolve(RESULT);
+        await call;
+        expect(received, tier).toEqual([]);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ticks for a forced rebuild (refresh:true) with a non-waiting tier', async () => {
+    // `searchWaits` is `tier === "index" || refresh === true`: a rebuild can outlast a call timeout
+    // just as a cold build can, so it must carry the same progress.
+    vi.useFakeTimers();
+    try {
+      const build = deferred<typeof RESULT>();
+      const handler = harness({ searchKnowledge: () => build.promise as never });
       const received: Notify[] = [];
-      await handler({ mode: 'search', query: 'reset', tier }, request(new AbortController().signal, async (n) => received.push(n), 'tok-2'));
-      expect(received, tier).toEqual([]);
+      const call = handler({ mode: 'search', query: 'reset', tier: 'vendor', refresh: true }, request(new AbortController().signal, async (n) => received.push(n), 'tok-refresh'));
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(received).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(received).toHaveLength(2);
+      build.resolve(RESULT);
+      await call;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the tick timer when the wait settles: no notification after the answer', async () => {
+    vi.useFakeTimers();
+    try {
+      const build = deferred<typeof RESULT>();
+      const handler = harness({ searchKnowledge: () => build.promise as never });
+      const received: Notify[] = [];
+      const call = handler({ mode: 'search', query: 'reset', tier: 'index' }, request(new AbortController().signal, async (n) => received.push(n), 'tok-settle'));
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(received).toHaveLength(1);
+      build.resolve(RESULT);
+      await call;
+      // Two cadences past a settled wait: a leaked interval would notify here.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(received).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
     }
   });
 
@@ -332,8 +385,8 @@ describe('hudu_search refresh is stated honestly', () => {
     const tool = (await session.list()).find((t) => t.name === 'hudu_search');
     const refresh: string = tool!.inputSchema.properties.refresh.description;
     expect(refresh).toContain('local');
-    expect(refresh).toContain('nothing in Hudu changes');
-    expect(refresh).toContain('stdio only');
+    expect(refresh).toContain('no Hudu change');
+    // The field is served only under stdio, so the description does not repeat that transport fact.
     // A rebuild is still a read of the tenant: the hint describes the target system.
     expect(tool!.annotations.readOnlyHint).toBe(true);
     const help = await session.call('hudu_search', { mode: 'help' });

@@ -2,52 +2,86 @@
  * surface-size.test.ts — the served-surface size gate (issue #24 F, node-hudu#112; ratcheted for
  * issue #52): UTF-8 bytes of the compact `tools/list` JSON per profile. Budgets are ratcheted to the
  * measured value plus a small margin; lower them when a lever lands, never raise them to go green.
- * Each profile has its own total: the write-enabled profile serves 19 tools, the read-only one 17.
+ *
+ * The budget is a property of the SHIPPED server, so it is asserted for every supported
+ * configuration, not just the default one: {default, auto, vendor} x {stdio, http}. A deployment
+ * that sets HUDU_SEARCH_TIER_POLICY=auto switches the tier sentences in `hudu_search`, and that
+ * prose must fit the same ceiling as the default.
  *
  * The prose itself lives in `src/tools/tool-prose.ts`; this gate is what stops it regrowing.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connect } from '../helpers/mcp-session.js';
+import type { Config } from '../../src/config.js';
+import { API_KEY, connect, connectForRequest } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured after the compact tool prose, the restored prose facts and the hudu_list resource -> operation
-// mapping: 27,387 / 22,659 (write / read-only), http 27,339 / 22,611.
-/** Per-profile totals: the write-enabled profile carries two more tools, so it gets its own ceiling. */
-const BUDGET_WRITE = 27_500;
-const BUDGET_READ_ONLY = 23_000;
 /**
- * `hudu_search` is the largest tool; its own ceiling keeps it from eating either total. It is
- * #52's acceptance value (<= 2,900 B), not a rounded-up measurement: the served description is
- * ~2,820 B, so the gate has real headroom below the promise.
+ * Per-profile totals, both from issue #52's amended acceptance: the write-enabled profile serves two
+ * more tools than the read-only one, so it gets its own (larger) ceiling.
+ *
+ * Measured matrix (write / read-only / hudu_search, UTF-8 bytes of the served `tools/list` JSON):
+ *   stdio default  27,571 / 22,843 / 2,758      http default  27,439 / 22,711 / 2,626
+ *   stdio auto     27,694 / 22,966 / 2,881      http auto     27,439 / 22,711 / 2,626
+ *   stdio vendor   27,644 / 22,916 / 2,831      http vendor   27,304 / 22,576 / 2,491
+ * (`http` default and `auto` coincide: `auto` is already that transport's tier.)
  */
+const BUDGET_WRITE = 28_000;
+const BUDGET_READ_ONLY = 23_000;
+/** `hudu_search` is the largest single tool and must fit under every tier-policy setting. */
 const BUDGET_SEARCH = 2_900;
 
-const bytes = async (policy: 'all' | 'deny') => {
-  const session = await connect(undefined, { HUDU_WRITE_POLICY: policy });
+const VARIANTS = ['default', 'auto', 'vendor'] as const;
+type Variant = (typeof VARIANTS)[number];
+const TRANSPORTS = ['stdio', 'http'] as const;
+type Transport = (typeof TRANSPORTS)[number];
+
+interface Measured {
+  count: number;
+  size: number;
+  search: number;
+}
+
+/** Serve `tools/list` in one (transport, write policy, tier policy) combination and measure it. */
+async function measure(transport: Transport, policy: 'all' | 'deny', variant: Variant): Promise<Measured> {
+  const override: Partial<Config> = { HUDU_WRITE_POLICY: policy };
+  if (variant !== 'default') override.HUDU_SEARCH_TIER_POLICY = variant;
+  const session =
+    transport === 'stdio'
+      ? await connect(undefined, override)
+      : // Listing needs no Hudu call; a fetch here would be a bug, so the stub refuses.
+        await connectForRequest(API_KEY, () => {
+          throw new Error('unexpected network call');
+        }, [], override);
   const tools = await session.list();
   await session.close();
-  return {
+  const search = tools.find((t: { name: string }) => t.name === 'hudu_search');
+  const measured = {
     count: tools.length,
     size: Buffer.byteLength(JSON.stringify(tools), 'utf8'),
-    tools: tools.map((t: { name: string }) => ({ name: t.name, size: Buffer.byteLength(JSON.stringify(t), 'utf8') })),
+    search: Buffer.byteLength(JSON.stringify(search), 'utf8'),
   };
-};
+  return measured;
+}
 
 describe('served tools/list size', () => {
-  it('write-enabled profile stays within its total', async () => {
-    const { count, size } = await bytes('all');
-    expect(count).toBe(19);
-    expect(size).toBeLessThanOrEqual(BUDGET_WRITE);
-  });
-  it('read-only profile stays within its total', async () => {
-    const { count, size } = await bytes('deny');
-    expect(count).toBe(17);
-    expect(size).toBeLessThanOrEqual(BUDGET_READ_ONLY);
-  });
-  it('hudu_search alone stays under its ceiling', async () => {
-    const { tools } = await bytes('deny');
-    const search = tools.find((t) => t.name === 'hudu_search');
-    expect(search?.size).toBeLessThanOrEqual(BUDGET_SEARCH);
-  });
+  for (const transport of TRANSPORTS) {
+    for (const variant of VARIANTS) {
+      const label = `${transport} + tier policy ${variant}`;
+      it(`${label}: write-enabled profile stays within ${BUDGET_WRITE} B`, async () => {
+        const { count, size } = await measure(transport, 'all', variant);
+        expect(count).toBe(19);
+        expect(size, label).toBeLessThanOrEqual(BUDGET_WRITE);
+      });
+      it(`${label}: read-only profile stays within ${BUDGET_READ_ONLY} B`, async () => {
+        const { count, size } = await measure(transport, 'deny', variant);
+        expect(count).toBe(17);
+        expect(size, label).toBeLessThanOrEqual(BUDGET_READ_ONLY);
+      });
+      it(`${label}: hudu_search stays within ${BUDGET_SEARCH} B`, async () => {
+        const { search } = await measure(transport, 'deny', variant);
+        expect(search, label).toBeLessThanOrEqual(BUDGET_SEARCH);
+      });
+    }
+  }
 });

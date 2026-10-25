@@ -14,31 +14,31 @@
 
 const DESCRIPTIONS: Record<string, string> = {
   hudu_search:
-    "Search Hudu first. mode=\"search\" (default) runs `query`; \"help\" and \"resources\" explain the tool.\nmode=\"search\": ranked, fuzzy search over article TITLE and BODY content, asset names, custom-field VALUES and identifiers, plus company/user/group/website names. As a tool it defaults to tier \"index\" (builds/awaits the body index), so results are body-complete.\nEmpty results: read meta.degraded; an unhonoured field is a CONFIG_ERROR.",
+    "Search Hudu first. mode=\"search\" (default); \"help\"/\"resources\" explain it.\nmode=\"search\": ranked, fuzzy search over article TITLE and BODY, asset names, custom-field VALUES, identifiers and company/user/group/website names. As a tool it defaults to tier \"index\" (builds/awaits the body index), so results are body-complete.\nEmpty: read meta.degraded; an unhonoured field is CONFIG_ERROR.",
   hudu_read:
-    "Execute READ operations only, by registry key (hudu_list_operations lists them; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. Results mask credentials and custom fields. Article bodies: single-article reads are Markdown, other rows stored HTML; a lossy read sets markdown_lossy.",
+    "Execute READ operations only, by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. Results mask credentials and custom fields. Article bodies: single-article reads are Markdown, other rows stored HTML; a lossy read sets markdown_lossy.",
   hudu_write:
     "Execute a WRITE operation by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. dry_run:true previews without writing; confirm is the SDK confirmation string, not human consent. Article bodies: writes are Markdown; re-read with articles.get before editing. Hudu reshapes API-written HTML on the next UI save.",
   hudu_delete:
     "Execute a DESTRUCTIVE operation by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. dry_run:true previews without deleting; confirm is the SDK confirmation string, not human consent.",
   hudu_list:
-    "List ONE bounded page of companies, articles, assets (all companies) or asset_layouts, backed by companies.list / articles.list / assets.listAcrossCompanies / asset_layouts.list. It takes no operation argument, so it cannot become a write, and it never pages the tenant. Each collection accepts only its own filters (hudu_describe_operation lists them); another is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor's own size, returned whole, has_more is conservative (true for any non-empty page) — stop when a page comes back empty. Article bodies: compact rows carry none; expand:true returns stored HTML. The ungated read path: prefer it, or hudu_search, over hudu_read.",
+    "List ONE bounded page of companies, articles, assets (all companies) or asset_layouts. It takes no operation argument, so it cannot become a write, and never pages the tenant. Each collection accepts only its own filters; another is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor's own size, returned whole, has_more is conservative (true for any non-empty page) — stop when a page comes back empty. Article bodies: compact rows carry none; expand:true returns stored HTML. Prefer it, or hudu_search, over hudu_read.",
   hudu_list_operations:
     "List SDK operations with the tool exposing each, its effect, dry-run/confirm need and required arguments. This server is a curated SUBSET: hudu_describe_operation gives one operation's contract, hudu_read/hudu_write/hudu_delete run it. Bounded 1-100 rows (default 40), offset pages; the catalog is ~10k tokens, so filter or page.",
   hudu_describe_operation:
-    "Full input contract, effect, dry-run support, errors and usage for ONE operation, by exact catalog key (never a tool name). An unknown key is a CONFIG_ERROR naming the nearest.",
+    "Full input contract, effect, dry-run support, errors and usage for ONE operation, by exact catalog key (never a tool name); an unknown key is CONFIG_ERROR naming the nearest.",
   hudu_resolve_any:
-    "Resolve an identifier across several resources when the resource type is unknown; otherwise call that resource's hudu_get_<singular>. Resources the key may not read (401/403) are listed in `unauthorized`; it fails only if all are refused. Narrow `resources` to skip asset_passwords/password_folders.",
+    "Resolve an identifier across several resources when the type is unknown; otherwise use hudu_get_<singular>. Resources the key may not read (401/403) are listed in `unauthorized`; it fails only if all are refused. Narrow `resources` to skip asset_passwords/password_folders.",
   hudu_get_api_info:
-    "Return the API information document. Prefer api_info.get.",
+    "Return the API information document. Prefer api_info.get. Omit `identifier` for the tenant-wide document; expand:true returns the full record.",
   hudu_get_company_context:
-    "Fetch a company with its bounded context (CompanyContext). Required: numeric `id`, never a name or slug. Without password_access it 401s unless opts.skip omits asset_passwords; a refused sub-list answers UNAUTHORIZED, other failures keep their code.",
+    "Fetch a company with its bounded context (CompanyContext). Required: numeric `id`, never a name or slug. Without password_access it 401s unless opts.skip omits asset_passwords; a refused sub-list answers UNAUTHORIZED.",
   hudu_get_article_context:
-    "Fetch an article with its company and folder context (ArticleContext). Pass the numeric `id`, not a slug. Bodies here are Markdown; a refused sub-list answers UNAUTHORIZED, other failures keep their code.",
+    "Fetch an article with its company and folder context (ArticleContext). Pass the numeric `id`, not a slug. Bodies here are Markdown; a refused sub-list answers UNAUTHORIZED.",
   hudu_get_asset_context:
-    "Fetch an asset with its context (AssetContext). Pass `identifier`: id, name, slug or serial. A refused sub-list answers UNAUTHORIZED; other failures keep their code.",
+    "Fetch an asset with its context (AssetContext). Pass `identifier`: id, name, slug or serial. A refused sub-list answers UNAUTHORIZED.",
   hudu_get_asset_layout:
-    "Resolve an asset layout from an id, name or slug; asset_layouts.get is cheaper for a known id. expand:true returns the full AssetLayout instead of the compact summary.",
+    "Resolve an asset layout from an id, name or slug; asset_layouts.get is cheaper for a known id. expand:true returns the full AssetLayout, not the summary.",
   hudu_get_folder:
     "Resolve a folder from an id or name, optionally company-scoped; folders.get is cheaper for a known id. expand:true returns the full Folder.",
   hudu_get_password_folder:
@@ -46,11 +46,11 @@ const DESCRIPTIONS: Record<string, string> = {
   hudu_get_group:
     "Resolve a user group from an id, name or slug; groups.get is cheaper for a known id. expand:true returns the full Group, members included.",
   hudu_find_asset_passwords_by_slug:
-    "Find one password record by its URL slug, instead of a full scan. At most one exact match; to enumerate use hudu_search. Credential-shaped fields are masked by default.",
+    "Find one password record by its URL slug, instead of a full scan. At most one exact match; to enumerate use hudu_search. Credential-shaped fields are masked by default; expand:true returns the full record.",
   hudu_find_websites_by_slug:
-    "Find one website by its URL slug, instead of a full scan. At most one exact match; to enumerate use hudu_search or hudu_get_website.",
+    "Find one website by its URL slug, not a full scan. At most one exact match; to enumerate use hudu_search or hudu_get_website. expand:true returns the full record.",
   hudu_fetch_many:
-    "Read-only. Fetch up to 20 single records across MIXED resources in ONE call: each item is EXACTLY { resource, id, fields? }. All items are validated first (a CONFIG_ERROR names every problem, zero wire); one failed item never aborts the rest. Article bodies: rows here are stored HTML.",
+    "Fetch up to 20 single records across MIXED resources in ONE call: each item is EXACTLY { resource, id, fields? }. All items are validated first (a CONFIG_ERROR names every problem, zero wire); one failed item never aborts the rest. Article bodies: rows here are stored HTML.",
 };
 
 /**
