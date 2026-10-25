@@ -6,19 +6,17 @@
  * value-free, and with no anomalies published — which is every path that has no view of the
  * credential — the envelope is byte-identical to what it was before this control.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { AuthError, HuduConfigError, UnauthorizedError } from 'node-hudu';
 import {
   contextErrorContent,
   credentialMalformedContent,
   errorContent,
   resolveErrorContent,
+  runWithCredentialShapeView,
   searchErrorContent,
-  setCredentialShapeView,
   unauthorizedContent,
 } from '../../src/tools/results.js';
-
-afterEach(() => setCredentialShapeView({}));
 
 describe('CREDENTIAL_MALFORMED envelope', () => {
   it('is a value-free pre-dial refusal, not an auth one', () => {
@@ -57,37 +55,41 @@ describe('shape annotation on the auth-failure branch', () => {
   });
 
   it('annotates the refusal when the server holds an anomalous credential, keeping the 401 shape', () => {
-    setCredentialShapeView({ env: ['surrounding_single_quotes'] });
-    const body = JSON.parse(errorContent(err()).content[0]!.text);
-    // The 401 shape is untouched: the code, the status and the message are what every existing test
-    // and every client already reads.
-    expect(body).toMatchObject({ code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
-    expect(body.credentialShape).toBe('anomalous');
-    expect(body.anomalies).toEqual(['surrounding_single_quotes']);
-    expect(body.suggestedAction).toContain('do NOT re-dial');
-    expect(body.suggestedAction).toContain('shell sourcing');
+    runWithCredentialShapeView({ env: ['surrounding_single_quotes'] }, () => {
+      const body = JSON.parse(errorContent(err()).content[0]!.text);
+      // The 401 shape is untouched: the code, the status and the message are what every existing test
+      // and every client already reads.
+      expect(body).toMatchObject({ code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
+      expect(body.credentialShape).toBe('anomalous');
+      expect(body.anomalies).toEqual(['surrounding_single_quotes']);
+      expect(body.suggestedAction).toContain('do NOT re-dial');
+      expect(body.suggestedAction).toContain('shell sourcing');
+    });
   });
 
   it('reaches every auth-refusal path, so the refusal shape stays one shape', () => {
-    setCredentialShapeView({ request: ['embedded_quotes'] });
-    for (const result of [searchErrorContent(err()), resolveErrorContent(err()), contextErrorContent(err())]) {
-      const body = JSON.parse(result.content[0]!.text);
-      expect(body.code).toBe('UNAUTHORIZED');
-      expect(body.anomalies).toEqual(['embedded_quotes']);
-    }
+    runWithCredentialShapeView({ request: ['embedded_quotes'] }, () => {
+      for (const result of [searchErrorContent(err()), resolveErrorContent(err()), contextErrorContent(err())]) {
+        const body = JSON.parse(result.content[0]!.text);
+        expect(body.code).toBe('UNAUTHORIZED');
+        expect(body.anomalies).toEqual(['embedded_quotes']);
+      }
+    });
   });
 
   it('never repeats an anomaly seen in both the environment and the request', () => {
-    setCredentialShapeView({ env: ['embedded_quotes'], request: ['embedded_quotes', 'edge_whitespace'] });
-    const body = JSON.parse(errorContent(err()).content[0]!.text);
-    expect(body.anomalies).toEqual(['embedded_quotes', 'edge_whitespace']);
+    runWithCredentialShapeView({ env: ['embedded_quotes'], request: ['embedded_quotes', 'edge_whitespace'] }, () => {
+      const body = JSON.parse(errorContent(err()).content[0]!.text);
+      expect(body.anomalies).toEqual(['embedded_quotes', 'edge_whitespace']);
+    });
   });
 
   it('leaves a non-auth error alone: the annotation is for the credential refusal only', () => {
-    setCredentialShapeView({ env: ['surrounding_single_quotes'] });
-    const body = JSON.parse(errorContent(new Error('something else')).content[0]!.text);
-    expect(body.credentialShape).toBeUndefined();
-    expect(body.anomalies).toBeUndefined();
+    runWithCredentialShapeView({ env: ['surrounding_single_quotes'] }, () => {
+      const body = JSON.parse(errorContent(new Error('something else')).content[0]!.text);
+      expect(body.credentialShape).toBeUndefined();
+      expect(body.anomalies).toBeUndefined();
+    });
   });
 
   it('answers a malformed-credential refusal with its OWN envelope on every error path', () => {
@@ -167,9 +169,46 @@ describe('the SDK 401 shape diagnostic (node-hudu 0.13.2, node-hudu#93)', () => 
   });
 
   it('prefers the server view over the SDK diagnostic when both see anomalies', () => {
-    setCredentialShapeView({ request: ['embedded_quotes'] });
-    const body = JSON.parse(errorContent(artifact()).content[0]!.text);
-    expect(body.anomalies).toEqual(['embedded_quotes']);
-    expect(body.credentialShapeDiagnostic).toBeUndefined();
+    runWithCredentialShapeView({ request: ['embedded_quotes'] }, () => {
+      const body = JSON.parse(errorContent(artifact()).content[0]!.text);
+      expect(body.anomalies).toEqual(['embedded_quotes']);
+      expect(body.credentialShapeDiagnostic).toBeUndefined();
+    });
+  });
+});
+
+describe('shape view is bound to the call, not the process (#16)', () => {
+  const unauthorized = () => new UnauthorizedError('Bad credentials', 'https://hudu.invalid/articles');
+  const bodyOf = (result: ReturnType<typeof errorContent>) => result.content[0]!.text;
+  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  it("a 401 awaiting in request A carries only A's anomalies while request B publishes its own", async () => {
+    const a = runWithCredentialShapeView({ request: ['embedded_quotes'] }, async () => {
+      await wait(10); // the vendor round trip, during which B starts
+      return errorContent(unauthorized());
+    });
+    const b = runWithCredentialShapeView({ request: ['edge_whitespace'] }, async () => {
+      await wait(2);
+      return errorContent(unauthorized());
+    });
+    const [ra, rb] = [await a, await b];
+    expect(bodyOf(ra)).toContain('embedded_quotes');
+    expect(bodyOf(ra)).not.toContain('edge_whitespace');
+    expect(bodyOf(rb)).toContain('edge_whitespace');
+    expect(bodyOf(rb)).not.toContain('embedded_quotes');
+  });
+
+  it('a clean request is never told it is anomalous while a malformed one is in flight (and vice versa)', async () => {
+    const clean = runWithCredentialShapeView({}, async () => {
+      await wait(10);
+      return errorContent(unauthorized());
+    });
+    const malformed = runWithCredentialShapeView({ request: ['embedded_quotes'] }, async () => {
+      await wait(2);
+      return errorContent(unauthorized());
+    });
+    const [rc, rm] = [await clean, await malformed];
+    expect(JSON.parse(rc.content[0]!.text)).toEqual({ error: true, code: 'UNAUTHORIZED', httpStatus: 401, message: 'Bad credentials' });
+    expect(bodyOf(rm)).toContain('embedded_quotes');
   });
 });

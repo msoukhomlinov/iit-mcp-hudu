@@ -14,7 +14,7 @@ import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
-import { setCredentialShapeView } from './results.js';
+import { runWithCredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 import { answerRenamedTools } from './renamed.js';
 import { slimToolSchemas } from './slim.js';
@@ -472,15 +472,19 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
       ? undefined
       : readHuduKey(headerRecord(ctx.requestInfo.headers));
     const requestAnomalies = headerKey === undefined ? undefined : detectCredentialShape(headerKey);
-    setCredentialShapeView({
+    const shapeView = {
       env: envView,
       request: requestAnomalies !== undefined && requestAnomalies.length > 0 ? requestAnomalies : undefined,
-    });
+    };
     const { client: hudu, origin: huduOrigin } = resolve(read);
     const mutationClients = mutations ? { write: resolve(mutations.write).client, delete: resolve(mutations.delete).client } : undefined;
     const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION, title: 'Hudu MCP Server' });
     answerRenamedTools(server);
     slimToolSchemas(server);
+    // Every handler registered below runs inside this request's view scope (see results.ts).
+    const register = server.registerTool.bind(server) as (name: string, config: unknown, cb: (...a: unknown[]) => unknown) => unknown;
+    (server as { registerTool: unknown }).registerTool = (name: string, config: unknown, cb: (...a: unknown[]) => unknown) =>
+      register(name, config, (...a: unknown[]) => runWithCredentialShapeView(shapeView, () => cb(...a)));
     registerTools(server, { hudu, huduOrigin, config, log, ...(mutationClients ? { mutationClients } : {}) });
     return server;
   };

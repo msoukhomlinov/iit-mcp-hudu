@@ -36,7 +36,7 @@
 | hudu_write | Execute a registry write; dry-run unless `dry_run:false` |
 | hudu_delete | Execute a destructive operation; dry-run unless `dry_run:false`, and `confirm` must equal the key |
 
-The registry is node-hudu 0.16.0: 236 operations. Reachability under a given policy is reported by `hudu_list_operations`.
+The registry is node-hudu 0.17.0: 236 operations. Reachability under a given policy is reported by `hudu_list_operations`.
 
 ## Intentionally Omitted
 
@@ -44,4 +44,4 @@ None. Reads that return plaintext secrets (`asset_passwords.*`, `password_folder
 
 ## Blocked Capabilities
 
-`asset_passwords.createShare` (node-hudu 0.16.0): the SDK needs its `reveal` capability to return the new bearer link unmasked and refuses the call without it; this server never grants `reveal`, so the row is listed unreachable. Gaps in the SDK are reported as SDK issues, not worked around here.
+`asset_passwords.createShare` (node-hudu 0.17.0): the SDK needs its `reveal` capability to return the new bearer link unmasked and refuses the call without it; this server never grants `reveal`, so the row is listed unreachable. Gaps in the SDK are reported as SDK issues, not worked around here.
