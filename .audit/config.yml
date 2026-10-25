@@ -10,3 +10,7 @@ version_surfaces:
 publish:
   registry: npm
   package: iit-mcp-hudu
+reviewers:
+  # #48 (merged 2026-10-25): the bot review listed the deferred remaining scope of #25
+  # as "non-compliant requirements"; that scope is tracked on #25, not on the PR.
+  exempt_prs: [48]
