@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Fix: articles can no longer be crowded out of the body index by assets. node-hudu 0.20.0 adds `search.maxDocsByResource`, a hard reservation inside `maxDocs`; the server reserves a QUARTER of the document cap for `articles` and lets assets absorb the global trim. MEASURED on the production tenant (19,991 assets + 3,204 articles = 23,195 documents): without a reservation the 21,845-document cap retained 19,991 assets and 1,854 of the 3,204 articles, so 1,350 articles had no index entry at all while asset rows (titles and custom fields, no long text) held 91% of the cap; 0.6.1's expectation that dividing the pool by two would keep every article was therefore false. With a quarter reserved, articles get 5,461 slots at that cap (70% above the 3,204 the tenant has) and assets 16,384. The reservation derives from the cap, so it scales with the heap: 4,352 article slots at a 1 GiB read-only ceiling, 455 in the 512 MiB write-enabled profile.
+- Chore: node-hudu 0.19.0 -> 0.20.0 (`server.json` `versionRange` 0.20.0). No other behaviour change from the SDK.
+
 ## 0.6.1
 
 **Upgrading from 0.6.0:** no configuration change. Each scoped client's body index is deeper: a read-only http deployment gives one credential a third of the pool instead of an eighth. A write-enabled deployment on a small heap gets a shallower index than 0.6.0 (a ninth of the pool), because the eviction margin and the per-mode caches are both counted.

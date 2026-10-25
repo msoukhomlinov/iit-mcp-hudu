@@ -122,6 +122,33 @@ export function scopedIndexTextBudgetBytes(heapLimitBytes: number, caches: numbe
 
 /** 1: the cap follows the share's KiB count, so it never exceeds the text budget it is paired with. */
 export const MIN_INDEX_MAX_DOCS = 1;
+
+/**
+ * The fraction of the document cap reserved for ARTICLES: one quarter.
+ *
+ * MEASURED on the production tenant (2026-10-26): the SDK's global document cap keeps the freshest
+ * `updated_at` across ALL resources, and the account holds 19,991 assets against 3,204 articles
+ * (23,195 documents). At a 21,845-document cap every asset fit and 1,350 articles were dropped, so
+ * only 1,854 of the 3,204 articles were body-searchable — while the asset rows, which carry titles
+ * and custom fields rather than bodies, took 19,991 of the slots. Articles went 1,478 -> 1,820 ->
+ * 1,846 -> 1,854 as the cap grew from 6,144 to 21,845 (a 3.6x range), i.e. room alone never fixed it.
+ *
+ * node-hudu 0.20.0's `maxDocsByResource` reserves slots inside the same cap (`iit-mcp-hudu` #54,
+ * `node-hudu` #122). A quarter covers this tenant's 3,204 articles with 70% headroom at the largest
+ * cap (5,461 slots) and still gives assets three quarters of it; an operator whose corpus is mostly
+ * articles is the case the fraction cannot see, and the knob stays derived rather than configured.
+ */
+export const ARTICLE_DOC_RESERVATION_DIVISOR = 4;
+
+/**
+ * The article document slots to reserve inside a document cap: a quarter of it, at least one.
+ *
+ * Kept <= the cap so the reservation always fits (the SDK rejects a reservation larger than
+ * `maxDocs`).
+ */
+export function articleDocReservation(maxDocs: number): number {
+  return Math.min(maxDocs, Math.max(1, Math.floor(maxDocs / ARTICLE_DOC_RESERVATION_DIVISOR)));
+}
 /** 50,000: the SDK's own default doc count, and the most one index should ever hold. */
 export const MAX_INDEX_MAX_DOCS = 50_000;
 /** ~1 KB of record + postings per indexed document, on top of the ~4x text ratio. ESTIMATE. */
