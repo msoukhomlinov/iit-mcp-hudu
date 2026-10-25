@@ -59,7 +59,8 @@ describe('hudu_search schema and the search tier', () => {
     const result = await session.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index', refresh: true, limit: 1, snippetChars: 0 });
     expect(result.isError).toBeUndefined();
     // The tool path tells the same story as the invoke path: the fields it sent were overridden by
-    // deployment policy, so `meta.reasons` names it and the text says so.
+    // deployment policy, so `meta.policyOverride` names it (`meta.reasons` stays for bound bits) and
+    // the text says so.
     expect(result.structuredContent.meta.policyOverride).toEqual({ stripped: ['tier', 'refresh'], appliedTier: 'auto' });
     expect(result.content[0].text).toContain('overridden by the server search tier policy');
     // No walk completed before the answer: the index is still cold (or building in the background).

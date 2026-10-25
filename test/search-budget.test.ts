@@ -142,9 +142,15 @@ describe('scopedIndexMaxDocs', () => {
       expect(docs, `${bytes}`).toBeGreaterThanOrEqual(MIN_INDEX_MAX_DOCS);
     }
     expect(MAX_INDEX_MAX_DOCS).toBe(50_000);
-    // One document per KiB: the cap tracks the share, so a 1 MiB share is 1,024 documents, not a
-    // 1,500-document floor above it.
-    expect(scopedIndexMaxDocs(MiB)).toBe(1024);
+    expect(MIN_INDEX_MAX_DOCS).toBe(1);
+    // One document per KiB, with no floor above it: the smallest write-enabled pool's share
+    // (932,067 bytes) is 910 documents, and any floor in 1..1024 revived here would make the cap
+    // exceed the share it is paired with.
+    expect(scopedIndexMaxDocs(932_067)).toBe(910);
+    expect(scopedIndexMaxDocs(1_024)).toBe(1);
+    expect(scopedIndexMaxDocs(MiB)).toBe(1_024);
+    expect(scopedIndexMaxDocs(25 * MiB)).toBe(25_600);
+    expect(scopedIndexMaxDocs(64 * MiB)).toBe(50_000);
   });
 
   it('grows with the text budget, so the two caps derive from one pool', () => {
