@@ -31,7 +31,7 @@ four old names. Rows are compact summaries by default (id, name, key scalar fiel
 25-row assets page under 20,000 characters instead of ~88,000; pass `expand: true` for the full
 records (`hudu_read` `articles.list` rows are always full). Article rows carry no body unless expanded. Paging is unchanged (`asset_layouts` still takes no `page_size`).
 
-These tools run on node-hudu 0.18.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
+These tools run on node-hudu 0.19.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -342,9 +342,11 @@ Every client the server builds — the parent, the fail-closed placeholders and 
   blindly.
 - `cache: 'recommended'` — fixed on: the
   per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min base). Caches are
-  per client, so per scope. A write through the write or delete client does not clear the read
-  client's cache (separate instances), so a read after a mutation is TTL-bounded stale, never
-  unbounded.
+  per client, so per scope. The write and delete clients have their own caches, so after every `hudu_write` /
+  `hudu_delete` attempt that is not a dry run (including a failed or timed-out one, which may have
+  applied) the server clears the read client's cache for the same scope: a read after a write in the
+  same server process is fresh. A write made by another process or deployment can still be served
+  stale for up to the TTL, because caches are per process.
 - `blockPrivateHosts` on the per-scope clients: the literal-IP SSRF floor for CALLER-named
   origins, fail-closed at client construction. It complements the `HUDU_ALLOWED_BASE_HOSTS`
   hostname matcher (which alone can express wildcard suffixes) and holds even in
@@ -379,7 +381,7 @@ pnpm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.18.0`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.19.0`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `pnpm install --frozen-lockfile`.
 
 ## Deployment

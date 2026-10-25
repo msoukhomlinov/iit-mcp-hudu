@@ -12,7 +12,7 @@
 - **Article bodies:** Markdown (node-hudu 0.14 dialect) on single-article reads and on writes; `hudu_list` article rows carry no body by default (`expand: true` returns stored HTML); search and batch rows stay stored HTML.
 - **Observability:** structured JSON logging only (`src/logger.ts`); no metrics or tracing package.
 - **CI pipeline:** YES (`.github/workflows/ci.yml`: install, build, typecheck, lint, test, `pnpm audit --prod`, then a container build and smoke job). Publishing to npm is manual.
-- **API docs supplied:** YES, through the SDK capability registry (236 operations at node-hudu 0.18.0).
+- **API docs supplied:** YES, through the SDK capability registry (236 operations at node-hudu 0.19.0).
 - **Vendor-specific MCP extensions:** NO.
 - **Tenancy:** multi-tenant under http (origin and key per request); single-tenant under stdio.
 - **Skills layer:** NO. There are no multi-step workflows that need outcome skills behind a guide tool; the dispatchers' dry-run default and the tool descriptions carry the guidance, and the server ships no `instructions`.
@@ -21,7 +21,7 @@
 ## SDK consumption
 
 - The SDK is consumed from npm, never from a checkout.
-- SDK pin exception: `node-hudu` is pinned exactly (0.18.0). `BUILT_AGAINST_PLAN_HASH` in `src/tools.ts` and `test/tools/meta.test.ts` pin the SDK's catalogue, so an SDK upgrade must be a deliberate, reviewed change rather than a range drift.
+- SDK pin exception: `node-hudu` is pinned exactly (0.19.0). `BUILT_AGAINST_PLAN_HASH` in `src/tools.ts` and `test/tools/meta.test.ts` pin the SDK's catalogue, so an SDK upgrade must be a deliberate, reviewed change rather than a range drift.
 
 ## Exceptions
 
