@@ -79,11 +79,16 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           const opts: { dryRun?: boolean; confirm?: string; contentFormat: 'markdown' } = { contentFormat: 'markdown' };
           if (typeof dry_run === 'boolean') opts.dryRun = dry_run;
           if (typeof confirm === 'string') opts.confirm = confirm;
-          if (operation === SEARCH_KNOWLEDGE_OPERATION || operation === SEARCH_ACROSS_OPERATION) {
+          let result = await dispatchOperation(client, effect, operation, bag, opts);
+          // After the SDK's own input validation, so bad input stays CONFIG_ERROR. The refusing
+          // placeholder never dials, so nothing reached Hudu; the engine swallows its error into a
+          // 0-hit result only for searchKnowledge and an isolating searchAcrossResources, so only
+          // those answer the typed refusal (a throwing call already carries the SDK's own envelope).
+          const isolating = operation === SEARCH_ACROSS_OPERATION && (bag.opts as { isolateErrors?: unknown } | undefined)?.isolateErrors === true;
+          if (operation === SEARCH_KNOWLEDGE_OPERATION || isolating) {
             const refused = upfrontRefusal();
             if (refused !== undefined) return refused;
           }
-          let result = await dispatchOperation(client, effect, operation, bag, opts);
           // A Markdown article read that lost content carries the SDK's content_loss (see article-loss.ts).
           let lossy: string[] = [];
           if (mode === 'read') ({ result, codes: lossy } = takeContentLoss(operation, result));

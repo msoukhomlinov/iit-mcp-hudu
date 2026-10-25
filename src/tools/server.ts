@@ -340,7 +340,7 @@ function resolveHuduClient(entry: ModeEntry, config: Config, ctx: McpRequestCont
           client = entry.buildPlaceholder(malformedCredentialStrategy([]));
           entry.malformed.set(id, client);
         }
-        return { client };
+        return { client, refusal: malformedCredentialRefusal([]) };
       }
       return { client: entry.badBase };
     }
