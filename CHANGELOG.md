@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Behaviour change: `hudu_list` serves compact summary rows by default (the node-hudu `*Summary` field sets, plus `url` / `updated_at`) instead of full records, cutting a default page from ~49-88k to under 20k characters. `expand: true` returns the full records as before. Envelope, `page_size` default 25 and `asset_layouts` paging (no `page_size`) are unchanged. Callers that read custom `fields`, article `content` or layout `fields` from list rows must pass `expand: true` (issue #22). The served-surface size budgets are re-ratcheted to 39,850 / 34,270 bytes for the new argument and description sentence.
+
 ## 0.3.0
 
 **Upgrading from 0.2.3: breaking changes.** (1) Article bodies through `hudu_read` / `hudu_write` / `hudu_delete` are Markdown by default. (2) `HUDU_CACHE_PRESET`, `HUDU_COOLDOWN`, `HUDU_TIMEOUT_MS` and `HUDU_SEARCH_MAX_INDEX_PAGES` are removed and a set one now fails boot. (3) `hudu_list_companies` / `_articles` / `_assets` / `_asset_layouts` are replaced by `hudu_list(resource)`. (4) Served tool definitions drop `_meta`. (5) The repository uses pnpm. The SDK is pinned exactly to node-hudu 0.16.0 (plan hash `fba0aa46...`); 0.15.0 was never published. `HUDU_READ_ONLY` is NOT removed: `true` is a hard override (see below). **UPGRADE HAZARD:** on 0.2.3 an UNSET `HUDU_READ_ONLY` meant read-only. Now only `HUDU_WRITE_POLICY` decides when it is unset, so these two configs, with `HUDU_READ_ONLY` unset, now give the model `hudu_write` / `hudu_delete`: (a) `HUDU_WRITE_POLICY=all`; (b) `HUDU_WRITE_POLICY=allow_list` with a non-empty `HUDU_WRITE_ALLOW`. Set `HUDU_READ_ONLY=true` to keep them read-only. The server logs a warning at boot in exactly this case.

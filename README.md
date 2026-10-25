@@ -26,7 +26,10 @@ excluded by `HUDU_SEARCH_RESOURCES` is refused by the list tool too, before any 
 `asset_layouts` is not searchable (the SDK declares no vendor text filter for it), so it follows the
 same reachability as the existing ungated `hudu_get_asset_layout` tool. The tool set is the SDK's
 `CORE_TOOLS` plus `hudu_list`, which is this server's own; a future SDK upgrade must not re-add the
-four old names.
+four old names. Rows are compact summaries by default (id, name, key scalar fields, `url`,
+`updated_at`; no custom-field values, article bodies or layout field definitions), which keeps a
+25-row assets page under 20,000 characters instead of ~88,000; pass `expand: true` for the full
+records. Paging is unchanged (`asset_layouts` still takes no `page_size`).
 
 These tools run on node-hudu 0.16.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
