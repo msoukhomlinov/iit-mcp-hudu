@@ -71,7 +71,9 @@ export async function awaitWithProgress<T>(
   const started = Date.now();
   if (signal?.aborted === true) {
     void work.catch(() => {});
-    // Nothing was awaited: the caller was already gone, so no build was started or joined.
+    // Nothing was awaited or joined here: the caller was already gone. If the caller already created
+    // the work promise, its walk keeps running in this process and is not awaited; its rejection is
+    // observed so it cannot surface as an unhandled rejection.
     return { aborted: true, elapsedMs: 0, waited: false };
   }
   const tick = (): void => {
@@ -98,6 +100,10 @@ export async function awaitWithProgress<T>(
     const aborted = new Promise<{ aborted: true; elapsedMs: number; waited: boolean }>((resolve) => {
       onAbort = () => resolve({ aborted: true, elapsedMs: Date.now() - started, waited: true });
       signal?.addEventListener('abort', onAbort, { once: true });
+      // Re-check AFTER registering. An abort that fires between the pre-check above and
+      // `addEventListener` is never delivered to a listener added afterwards, so without this the
+      // call would miss it and wait the full build. Register-then-check leaves no window.
+      if (signal?.aborted === true) onAbort();
     });
     return await Promise.race([work.then((value) => ({ aborted: false as const, value })), aborted]);
   } finally {
@@ -115,11 +121,17 @@ export interface CancelledSearch {
   scope: KnowledgeResource[];
   limit: number;
   elapsedMs: number;
+  /**
+   * Whether this call actually WAITED on a build. `true` means it joined a walk that continues in the
+   * background; `false` means the request arrived already cancelled, so no build was started or
+   * joined and the answer must not claim one.
+   */
   waited: boolean;
   /**
    * Which tier advice the caller can act on. Under `stdio` the caller holds `tier`, so "vendor" is
-   * an immediate alternative. Under `http` no tier is served: the body index keeps building in the
-   * background, so the honest advice is to retry and get a body-backed answer.
+   * an immediate alternative. Under `http` no tier is served: on the waited path the body index
+   * keeps building in the background, so the honest advice is to retry and get a body-backed answer;
+   * on the waited:false path the advice is to retry with a fresh call.
    */
   transport: 'stdio' | 'http';
 }
@@ -127,13 +139,18 @@ export interface CancelledSearch {
 /**
  * The answer a cancelled wait gets: a complete, honest DEGRADED result, never a throw.
  *
- * The caller's request was cancelled while the body index was still building, so no body search
- * ran. `hits: []` with `meta.complete: false` and the in-vocabulary `meta.degraded` reason
+ * The caller's request was cancelled before a body search ran — either while the body index was
+ * still building (the waited path) or before it started (the already-cancelled path). `hits: []`
+ * with `meta.complete: false` and the in-vocabulary `meta.degraded` reason
  * (`body-not-indexed`, because that is factually what was not searched) says exactly that; the
  * cancellation itself is recorded in `meta.cancelled`, and the advice names the
  * alternative the CALLER's transport actually serves instead of inviting a silent retry loop:
- * `tier:"vendor"` under stdio, a retry under http (where no tier field is served and the background
- * build makes a later search body-backed).
+ * `tier:"vendor"` under stdio, a retry under http (where no tier field is served and a later search
+ * is body-backed).
+ *
+ * `waited` decides what the text may claim about the build. A call that joined a build reports that
+ * the walk continues in the background; a call that arrived already cancelled started and joined
+ * nothing, so it says that instead and points at a fresh call rather than a build already running.
  *
  * Shared with the raw invoke path (`hudu_read` of `operations.searchKnowledge`), which can wait on
  * the same walk and must answer a cancellation the same honest way. It returns the text and data
@@ -159,21 +176,40 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
     lastCompleteFullAt: null,
     fullWalkDue: false,
   };
-  // What is TRUE here: no answer was scored and nothing was returned. What is NOT true is that Hudu
-  // was left alone — the walk this call started is Hudu traffic and keeps issuing requests after the
-  // answer (`awaitWithProgress` only stops AWAITING it), so the text says so rather than claim a
-  // quiet network. Transport-aware: the two paths serve different fields and different next steps.
-  const text =
+  // What is TRUE here: no answer was scored and nothing was returned. On the waited path the walk
+  // this call joined is Hudu traffic and keeps issuing requests after the answer
+  // (`awaitWithProgress` only stops AWAITING it), so the text says so rather than claim a quiet
+  // network. On the waited:false path the call arrived already cancelled: it started or joined no
+  // build, so the text must not claim a background walk. Transport-aware: the two paths serve
+  // different fields and different next steps.
+  const buildSentence = waited
+    ? 'The build this call started continues in the background, still issuing Hudu requests.'
+    : 'No build was started or joined for this call: it arrived already cancelled.';
+  const nextStep =
     transport === 'http'
-      ? 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned. The build this call started continues in the background, still issuing Hudu requests. DEGRADED (body-not-indexed): retry — the body index keeps building in the background, so a later search is body-backed.'
-      : 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned. The build this call started continues in the background, still issuing Hudu requests. DEGRADED (body-not-indexed): retry, or ask for tier:"vendor" for an immediate body-blind answer.';
+      ? waited
+        ? 'retry — the body index keeps building in the background, so a later search is body-backed.'
+        : 'retry — a fresh call will build or join the index when the caller retries, so a later search is body-backed.'
+      : waited
+        ? 'retry, or ask for tier:"vendor" for an immediate body-blind answer.'
+        : 'retry — a fresh call will build or join the index when the caller retries; tier:"vendor" answers immediately, body-blind.';
+  const opening = waited
+    ? 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned.'
+    : 'Search cancelled before the body index build: no answer was scored and nothing was returned.';
+  const text = `${opening} ${buildSentence} DEGRADED (body-not-indexed): ${nextStep}`;
   // The timings are stated as what they are, not as a quiet network: `vendorMs` is 0 because no
   // vendor-tier scoring happened, the wait is `localMs`, and the request count is NOT tracked for a
   // cancelled wait (the SDK counts requests inside a call it completes; this one never completed).
+  const adviceOpening =
+    waited
+      ? transport === 'http'
+        ? 'The request was cancelled while the body index built, so article bodies were not scored. Retry: the body index keeps building in the background, so a later search is body-backed.'
+        : 'The request was cancelled while the body index built, so article bodies were not scored. Retry, or use tier:"vendor" for an immediate body-blind answer.'
+      : transport === 'http'
+        ? 'The request arrived already cancelled, so no body-index build was started or joined and article bodies were not scored. Retry: a fresh call will build or join the index when the caller retries, so a later search is body-backed.'
+        : 'The request arrived already cancelled, so no body-index build was started or joined and article bodies were not scored. Retry: a fresh call will build or join the index when the caller retries, or use tier:"vendor" for an immediate body-blind answer.';
   const advice =
-    (transport === 'http'
-      ? 'The request was cancelled while the body index built, so article bodies were not scored. Retry: the body index keeps building in the background, so a later search is body-backed.'
-      : 'The request was cancelled while the body index built, so article bodies were not scored. Retry, or use tier:"vendor" for an immediate body-blind answer.') +
+    adviceOpening +
     ' timings.localMs is the local body-index wait this call spent (the wait is local time, so it is reported there); timings.vendorMs is 0 because no vendor-tier scoring ran; request counts are NOT TRACKED for a cancelled wait: timings.requests is ALWAYS 0 as a placeholder (the SDK type requires a number), so it is not a count of Hudu requests.' +
     ' meta.cancelled records this cancellation ({ during: "index-build", waited }); meta.reasons stays empty because no bound bit — the answer was cancelled, not bounded.';
   return {
@@ -210,8 +246,9 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         // local body-index wait IS local time this call spent, so it is reported as such rather than
         // zeroed; `meta.cancelled` records it. `vendorMs` is 0 because no
         // vendor tier was scored. `requests` cannot be honest: the SDK counts a completed call's
-        // requests, this one never completed, and the walk it started keeps issuing requests in the
-        // background, so the field stays at its only representable value (the type requires a
+        // requests, this one never completed. On the waited path the walk this call joined keeps
+        // issuing requests in the background; on the waited:false path no walk was started or
+        // joined. Either way the field stays at its only representable value (the type requires a
         // number; 0 means "always 0 for a cancelled wait", not "no requests were made") and the answer text says the count is NOT TRACKED for a cancelled wait.
         timings: { vendorMs: 0, localMs: elapsedMs, requests: 0 },
         scoreScope: 'per-resource',

@@ -4,9 +4,10 @@
  * measured value plus a small margin; lower them when a lever lands, never raise them to go green.
  *
  * The budget is a property of the SHIPPED server, so it is asserted for every supported
- * configuration, not just the default one: {default, auto, index, vendor} x {stdio, http}. A deployment
- * that sets HUDU_SEARCH_TIER_POLICY=auto switches the tier sentences in `hudu_search`, and that
- * prose must fit the same ceiling as the default.
+ * configuration, not just the default one: the 4 policy settings x 2 transports actually measured
+ * ({default, auto, index, vendor} x {stdio, http}), each in the write-enabled and read-only profile.
+ * A deployment that sets HUDU_SEARCH_TIER_POLICY=auto switches the tier sentences in `hudu_search`,
+ * and that prose must fit the same ceiling as the default.
  *
  * The prose itself lives in `src/tools/tool-prose.ts`; this gate is what stops it regrowing.
  */
@@ -20,12 +21,14 @@ afterEach(() => vi.unstubAllGlobals());
  * Per-profile totals, both from issue #52's amended acceptance: the write-enabled profile serves two
  * more tools than the read-only one, so it gets its own (larger) ceiling.
  *
- * Measured matrix (write / read-only / hudu_search, UTF-8 bytes of the served `tools/list` JSON):
- *   stdio default  27,475 / 22,747 / 2,626      http default  27,368 / 22,640 / 2,519
- *   stdio auto     27,510 / 22,782 / 2,661      http auto     27,368 / 22,640 / 2,519
- *   stdio index    27,475 / 22,747 / 2,626      http index    27,257 / 22,529 / 2,408
- *   stdio vendor   27,516 / 22,788 / 2,667      http vendor   27,270 / 22,542 / 2,421
- * The binding configuration is `stdio` + `vendor`: 212 B of read-only headroom and 233 B of
+ * Measured matrix (write / read-only / hudu_search, UTF-8 bytes of the served `tools/list` JSON),
+ * re-measured from the built `dist`: the write and read-only figures are 5 B below the previous
+ * comment's (its own arithmetic was stale), the `hudu_search` figures are unchanged.
+ *   stdio default  27,470 / 22,742 / 2,626      http default  27,363 / 22,635 / 2,519
+ *   stdio auto     27,505 / 22,777 / 2,661      http auto     27,363 / 22,635 / 2,519
+ *   stdio index    27,470 / 22,742 / 2,626      http index    27,252 / 22,524 / 2,408
+ *   stdio vendor   27,511 / 22,783 / 2,667      http vendor   27,265 / 22,537 / 2,421
+ * The binding configuration is `stdio` + `vendor`: 217 B of read-only headroom and 233 B of
  * `hudu_search` headroom (`MIN_HEADROOM` below). `stdio` sizes carry the strict object's
  * `additionalProperties: false`; `http` carries the loose `{}` that lets an override be reported.
  * (`http` default and `auto` coincide: `auto` is already that transport's tier.)
@@ -46,7 +49,8 @@ const BUDGET_SEARCH = 2_900;
 const MIN_HEADROOM = 200;
 
 /**
- * Every tier-policy setting the server accepts. `index` is measured separately because under `http`
+ * Every tier setting the gate measures: the three `HUDU_SEARCH_TIER_POLICY` values plus the unset
+ * default — 4 settings across the 2 transports. `index` is measured separately because under `http`
  * it is the one setting whose DESCRIPTION changed shape: the policy sentence replaces the base
  * "defaults to tier index" sentence even on the full corpus (#50 review 7).
  */

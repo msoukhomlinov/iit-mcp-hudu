@@ -20,46 +20,33 @@ export const SCOPED_INDEX_BUDGET_DIVISOR = 8;
 /**
  * The total extracted text the PROCESS's body indexes may hold, from the V8 heap ceiling in bytes.
  *
- * A SIXTEENTH of the heap, rounded down to whole MiB and clamped to 8-64 MiB. The divisor is 16,
- * not the tenth shipped through round 10, because the measured end-to-end run showed the tenth
- * leaves no usable margin. ESTIMATE, not a proof that a build cannot exhaust the heap: the ~4x
- * structure-to-text ratio and the ~90 MB baseline heap come from issue #51's crash trace, which
- * measured the OLD behaviour — a 512 MiB container that peaked at ~252 MB heap and crashed.
+ * A SIXTEENTH of the heap, rounded down to whole MiB and clamped to 8-64 MiB. ESTIMATE, not a proof
+ * that a build cannot exhaust the heap; 16 because a measured end-to-end run showed a tenth leaves
+ * no usable margin.
  *
- * What the 4x is a ratio OF: structures per byte of text ACTUALLY HELD, not per byte of budget.
- * That index held ~41 MB of text out of its 64 MiB budget, and the measured peak reconciles as
- * ~90 MB baseline + 4 x 41 MB = ~254 MB. Read against the budget instead of the held text it
- * would predict 90 + 4 x 64 = ~346 MB, which the trace never saw — hence "held", not "budget".
+ * RATIO AND BASELINE: ~4x structure-to-text, per byte of text ACTUALLY HELD (not per byte of budget),
+ * and a ~90 MB production baseline — both from issue #51's crash trace, the only PRODUCTION
+ * measurement (~252 MB peak on the old 64 MiB budget). That index held ~41 MB of its 64 MiB budget,
+ * and 90 + 4 x 41 = ~254 MB reconciles with the measured peak; read against the budget the same
+ * ratio would predict ~346 MB, which the trace never saw.
  *
- * WHY THE DIVISOR CHANGED. The round-10 end-to-end run measured the real server (`dist/main.js`)
- * under a 259 MiB V8 ceiling: peak heapUsed 187.96 MB with a 24.6 MB baseline, so the INDEX
- * STRUCTURES cost ~163 MB. Production's baseline is ~90 MB, so the honest production peak was
- * 163 + 90 = ~253 MB against 259 MiB — ~98%, about 6 MB of headroom. That leaves no usable margin.
- * A sixteenth of 259 MiB is 16 MiB of text and 16,384 documents (the document cap is one document
- * per KiB of text budget), 16/25 of the tenth's 25 MiB and 25,600 documents. The round-11 re-run
- * with this divisor measured 118.51 MB peak against a 27.57 MB base, so structures cost ~90.93 MB;
- * the extrapolated production peak is ~90.93 + 90 = ~180.93 MB, ~70% of 259 MiB and ~26 MB below the
- * 207 MB (80%) target. The new peak itself is ~45.8% of the ceiling. The fraction shipped is
- * therefore one sixteenth. The probe script is not committed and the stub was recreated for this
- * round, so the delta also reflects stub differences; the production figure remains an
- * EXTRAPOLATION from one synthetic walk. The production trace in #51 remains the only production
- * measurement.
+ * MEASURED on the real server under a 259 MiB V8 ceiling. At a tenth (25 MiB pool, 25,600 docs):
+ * 187.96 MB peak against a 24.6 MB base, so structures cost ~163 MB; against production's ~90 MB
+ * baseline that extrapolates to ~253 MB, ~98% of 259 MiB, no usable margin. At a sixteenth (16 MiB
+ * pool, 16,384 docs) the same probe peaked at 118.51 MB against a 27.57 MB base (~90.93 MB of
+ * structures). PRODUCTION EXTRAPOLATION: ~180.93 MB, ~70% of 259 MiB and ~26 MB below the 207 MB
+ * (80%) target. MEASURED PROBE PEAK: 118.51 MB, ~45.8% of 259 MiB. A standalone walk peaked at ~136
+ * MiB with the tenth's pool and ~147 MiB with the OLD 64 MiB / 50,000 settings; both survived.
+ * CAVEATS: the stub corpus is SYNTHETIC (smaller bodies and baseline than production), bodiesEvicted
+ * was 0 so no run exercised text eviction, the stub was recreated per run so the before/after delta
+ * also reflects stub differences, and the production figure is an EXTRAPOLATION from one synthetic
+ * walk.
  *
- * MEASURED for the standalone walk (not the full server): a synthetic 25,000-asset / 3,300-article
- * tenant walked through the real SDK client under a ~262 MB V8 ceiling (`node --max-old-space-size=259
- * --max-semi-space-size=1 probe.mjs`; the second flag brings V8's reported limit to ~262 MB, while the
- * first alone reports ~451 MB in Node 24) peaked at 142,854,040 bytes (~136 MiB) with the round-10
- * 25 MiB pool and 25,600 docs. The same walk with the OLD 64 MiB / 50,000 settings peaked at
- * 154,639,520 bytes (~147 MiB). Both survived; the round-10 settings used ~12 MiB less peak. This is
- * a LOWER BOUND for the production container: the standalone probe's baseline is far below the ~90 MB
- * server baseline in the #51 trace.
- *
- * This is the pooled budget for the whole process, not for one client: a deployment serving several
- * credentials keeps up to {@link SCOPED_INDEX_BUDGET_DIVISOR} scoped clients warm, and each one owns
- * its own body index, so each is handed only {@link scopedIndexTextBudgetBytes}. The trade is
- * plain: a deployment holding several credentials builds shallower indexes (a scope that hits its
- * share reports index state "partial"), while a deployment that needs depth should raise the container
- * memory or serve over stdio, where one long-lived credential owns the whole pool.
+ * POOL FRACTION: the budget is per PROCESS, not per client. Up to
+ * {@link SCOPED_INDEX_BUDGET_DIVISOR} scoped clients stay warm and each owns a body index, so each is
+ * handed only {@link scopedIndexTextBudgetBytes} (a whole-MiB share). The trade: several credentials
+ * build shallower indexes (a scope that hits its share reports index state "partial"); needing depth
+ * means raising the container memory or serving over stdio, where one credential owns the whole pool.
  */
 export function indexTextBudgetBytes(heapLimitBytes: number): number {
   const sixteenthInMib = Math.floor(heapLimitBytes / 16 / MIB) * MIB;
@@ -108,11 +95,13 @@ const INDEX_DOC_BYTES = 1024;
  * MiB of text and Y documents", not "the process cannot exceed its heap". The SDK upserts every
  * walked document and applies the cap only AFTER the walk, so this bounds what the index RETAINS,
  * not the walk's peak (the heap ceiling and the text budget's eviction bound that). A capped index
- * reports index state "partial", as it already does when the text budget bites. Resulting numbers: a 512 MiB container gets a 16 MiB pool and 2 MiB per scoped
- * client, so 2,048 documents per scoped client (16,384 for the stdio pool); a 1 GiB container's
- * ~816 MB V8 ceiling gets a 51 MiB pool and 6 MiB per client, so 6,144 documents (50,000 for the
- * stdio pool), while a 1024 MB ceiling is what reaches the 64 MiB cap and 8,192. All
- * ~3,300 articles of the production tenant fit at the 1 GiB figure. WHICH documents a small heap's
+ * reports index state "partial", as it already does when the text budget bites. Resulting numbers:
+ * a 512 MiB container (MEASURED ~50.6% container-to-heap ratio: ~259 MB) gets a 16 MiB pool and 2 MiB
+ * per scoped client, so 2,048 documents per scoped client (16,384 for the stdio pool); a 1 GiB
+ * container's ~816 MB V8 ceiling — an ASSUMED ~80% ratio, not a measurement — gets a 51 MiB pool and
+ * 6 MiB per client, so 6,144 documents (50,000 for the stdio pool), while a 1024 MB ceiling is what
+ * reaches the 64 MiB cap and 8,192. All ~3,300 articles of the production tenant fit at the 1 GiB
+ * figure. WHICH documents a small heap's
  * cap truncates first is INFERRED, not measured: title-only assets are expected to go first because
  * they cost a record without carrying text, but at 512 MiB the 2,048-document cap already sits below
  * the ~3,300 articles, so articles could be truncated first. The order is not measured.

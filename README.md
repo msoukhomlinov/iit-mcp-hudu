@@ -310,17 +310,17 @@ of heap and died with `Reached heap limit` mid-search. It measured the ~90 MB ba
 against the budget instead of the held text the same ratio would predict 90 + 4 x 64 = ~346 MB, which
 the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) now gets a 16 MiB pool and
 2 MiB per scoped client. A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
-the real SDK client under a ~262 MB V8 ceiling (`node --max-old-space-size=259 --max-semi-space-size=1
-probe.mjs`; the second flag brings V8's reported limit to ~262 MB, while the first alone reports
-~451 MB in Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
+the real SDK client under a ~262 MB V8 ceiling (an uncommitted one-off probe; `--max-semi-space-size=1`
+brings V8's reported limit to ~262 MB, while `--max-old-space-size=259` alone reports ~451 MB in
+Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
 64 MiB / 50,000 settings peaked at ~147 MiB. Both survived. That probe's baseline is lower than the
-server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling gets a 51 MiB pool and 6 MiB per scoped client; a 1024 MB heap ceiling is what reaches the 64 MiB cap.
+server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% container-to-heap ratio; the MEASURED ratio for the 512 MiB container is ~50.6% (259 MB) — gets a 51 MiB pool and 6 MiB per scoped client; a 1024 MB heap ceiling is what reaches the 64 MiB cap.
 
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
 evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
 reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
 container indexes up to 2,048 documents per scoped client (16,384 for the stdio pool), a 1 GiB
-container's ~816 MB ceiling 6,144 per client (50,000 for the pool), and only a 1024 MB ceiling 8,192. The per-document cost is an ESTIMATE (~1 KB of record
+container's ~816 MB ceiling (assumed ~80%) 6,144 per client (50,000 for the pool), and only a 1024 MB ceiling 8,192. The per-document cost is an ESTIMATE (~1 KB of record
 plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
 peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
 `maxDocs` bounds the RETAINED index, not the build-time peak; the peak during a walk is bounded by
@@ -338,16 +338,17 @@ against 259 MiB — ~98%, about 6 MB of headroom. That leaves no usable margin. 
 instead added 90 MB to a standalone-walk figure and reported ~233 MB; that understated the risk.
 
 AFTER THE DIVISOR CHANGE (one sixteenth, this round's measurement). The same SHAPE of probe — the
-built server under `node --max-old-space-size=259 --max-semi-space-size=1 --import ./mem-probe.mjs
-dist/main.js`, stdio against a stub tenant of 25,000 assets (250 pages x 100 rows) and 3,300 articles
+built server under `node --max-old-space-size=259 --max-semi-space-size=1 --import <uncommitted
+heap-sampler.mjs> dist/main.js`, stdio against a stub tenant of 25,000 assets (250 pages x 100 rows) and 3,300 articles
 with HTML bodies, `hudu_search` with `tier:"index"` and `refresh:true` — peaked at 118.51 MB
 heapUsed against a 27.57 MB base, so the structures cost ~90.93 MB. The process survived (exit 0)
 and the call took 11.62 s. The index retained 16,384 documents (articles 3,300, assets 13,084) and
-reported state `partial`; bodiesEvicted was 0. The extrapolated production peak is 90.93 + 90 =
-~180.93 MB, ~70% of the 259 MiB ceiling and ~26 MB below the 207 MB (80%) target. The new peak
-itself is ~45.8% of the ceiling. The target is met. The fraction shipped is one sixteenth. The
-probe script is not committed and the stub was recreated for this round (the round-10 script was
-not kept), so the before/after delta also reflects stub differences and is not a controlled A/B;
+reported state `partial`; bodiesEvicted was 0. PRODUCTION EXTRAPOLATION: 90.93 + 90 = ~180.93 MB,
+~70% of the 259 MiB ceiling and ~26 MB below the 207 MB (80%) target. MEASURED PROBE PEAK: 118.51 MB,
+~45.8% of the 259 MiB ceiling. The target is met. The fraction shipped is one sixteenth. The
+probe scripts were removed from the tree after measuring (the review asked for no ad-hoc probes in
+the repo), and the stub was recreated for this round, so the before/after delta also reflects stub
+differences and is not a controlled A/B;
 the production extrapolation uses this round's measured structures. The stub corpus is synthetic,
 its bodies are smaller than production's, and its ~27.6 MB baseline is lower than the ~90 MB
 production baseline, so the production figure is an extrapolation. bodiesEvicted 0 means this run

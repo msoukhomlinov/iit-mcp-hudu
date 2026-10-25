@@ -82,9 +82,14 @@ describe('hudu_read of operations.searchKnowledge while the index build waits', 
     expect(result.structuredContent.result.meta.reasons).toEqual([]);
     expect(result.structuredContent.result.meta.cancelled).toEqual({ during: 'index-build', waited: false });
     // Nothing was joined, so this call observed no generation: the state is "cold", which does not
-    // claim the process has no warm stdio index.
+    // claim the process has no warm stdio index. The text must say the same: no background walk.
     expect(result.structuredContent.result.meta.index.state).toBe('cold');
     expect(result.structuredContent.result.meta.timings.localMs).toBe(0);
+    const text = String(result.content[0].text);
+    expect(text).toContain('No build was started or joined for this call: it arrived already cancelled');
+    expect(text).not.toContain('continues in the background');
+    expect(result.structuredContent.result.meta.degraded.advice).toContain('no body-index build was started or joined');
+    expect(result.structuredContent.result.meta.degraded.advice).not.toContain('continues in the background');
   });
 
 });

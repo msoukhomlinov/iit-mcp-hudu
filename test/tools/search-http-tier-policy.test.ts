@@ -130,14 +130,33 @@ describe('hudu_search schema and the search tier', () => {
 
   it('cannot let HUDU_SEARCH_TIER_POLICY=index reach the index when the corpus excludes articles or assets', async () => {
     // The corpus gate outranks the policy knob: the walk is corpus-wide, so an excluded resource
-    // would be walked. Only "vendor" may come out, whatever the variable says.
+    // would be walked. Only "vendor" may come out, whatever the variable says. Both transports are
+    // exercised: under `http` the policy knob is the ONLY way a tier is chosen, so its branch is the
+    // one that can regress while stdio still looks right.
     for (const resources of [['companies'], ['users', 'groups']]) {
-      const session = await connect(undefined, { HUDU_SEARCH_RESOURCES: resources, HUDU_SEARCH_TIER_POLICY: 'index' });
-      const help = await session.call('hudu_search', { mode: 'help' });
-      expect(help.structuredContent.help.defaults.tier, resources.join(',')).toBe('vendor');
-      const tool = await toolOf(session);
-      expect(tool.inputSchema.properties.tier.description).toContain('"vendor" only here');
-      await session.close();
+      // stdio: the served schema keeps the tier field and names the refusal in its description.
+      const stdio = await connect(undefined, { HUDU_SEARCH_RESOURCES: resources, HUDU_SEARCH_TIER_POLICY: 'index' });
+      const stdioHelp = await stdio.call('hudu_search', { mode: 'help' });
+      expect(stdioHelp.structuredContent.help.defaults.tier, `stdio ${resources.join(',')}`).toBe('vendor');
+      const stdioTool = await toolOf(stdio);
+      expect(stdioTool.inputSchema.properties.tier.description).toContain('"vendor" only here');
+      await stdio.close();
+
+      // http: no tier property is served at all. The description and help must name the server-side
+      // policy, and the resolved tier must still be "vendor" — a regression that let the policy knob
+      // reach the index would answer "index" here.
+      const http = await connectForRequest('key-a', () => Response.json([]), [], {
+        HUDU_SEARCH_RESOURCES: resources,
+        HUDU_SEARCH_TIER_POLICY: 'index',
+      });
+      const httpHelp = await http.call('hudu_search', { mode: 'help' });
+      expect(httpHelp.structuredContent.help.defaults.tier, `http ${resources.join(',')}`).toBe('vendor');
+      expect(String(httpHelp.content[0].text)).toContain('HUDU_SEARCH_TIER_POLICY: vendor');
+      const httpTool = await toolOf(http);
+      expect(httpTool.inputSchema.properties).not.toHaveProperty('tier');
+      expect(httpTool.description).toContain('Tier is set server-side to "vendor"');
+      expect(httpTool.description).not.toContain('Tier is set server-side to "index"');
+      await http.close();
     }
   });
 

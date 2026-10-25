@@ -203,6 +203,44 @@ describe('hudu_search progress while awaiting the body index', () => {
     build.resolve(RESULT);
   });
 
+  it('catches an abort that fires between the pre-check and addEventListener', async () => {
+    // The seam the plain pre-check misses: `awaitWithProgress` checks `signal.aborted` BEFORE it
+    // registers a listener, so an abort landing in that window is never delivered to a listener
+    // added afterwards. The build here never settles, so only the post-registration re-check can
+    // answer; without it this call would wait forever (the vitest timeout would be the failure).
+    const build = deferred<typeof RESULT>();
+    const handler = harness({ searchKnowledge: () => build.promise as never });
+    const controller = new AbortController();
+    const real = controller.signal;
+    let fired = false;
+    // A signal-shaped object whose first 'abort' registration aborts BEFORE the listener exists.
+    const signal = {
+      get aborted() {
+        return real.aborted;
+      },
+      addEventListener: (type: string, listener: EventListenerOrEventListenerObject, opts?: AddEventListenerOptions) => {
+        if (!fired && type === 'abort') {
+          fired = true;
+          controller.abort();
+        }
+        real.addEventListener(type, listener, opts);
+      },
+      removeEventListener: (type: string, listener: EventListenerOrEventListenerObject, opts?: EventListenerOptions) => {
+        real.removeEventListener(type, listener, opts);
+      },
+    } as unknown as AbortSignal;
+    const call = handler({ mode: 'search', query: 'reset', tier: 'index' }, request(signal, async () => {}, 'tok-seam'));
+    const result = await call;
+    expect(result.isError).toBeUndefined();
+    // The call DID join the wait, so it reports waited:true and the refreshing index state; the
+    // point of the test is that it returns at all rather than waiting for the never-settling build.
+    expect(result.structuredContent.meta.cancelled).toEqual({ during: 'index-build', waited: true });
+    expect(result.structuredContent.meta.degraded.reason).toBe('body-not-indexed');
+    expect(result.structuredContent.meta.index.state).toBe('refreshing');
+    expect(String(result.content[0].text)).toContain('continues in the background');
+    build.resolve(RESULT);
+  });
+
   it('answers the cancelled wait with a complete KnowledgeSearchMeta', async () => {
     // A cancelled answer is a real search answer. SEARCH_OUTPUT types `meta` as unknown, so this
     // asserts each published field directly rather than trusting a schema parse.
@@ -276,8 +314,9 @@ describe('hudu_search progress while awaiting the body index', () => {
   });
 
   it('reports a cold index, not a refreshing one, when the request was already cancelled at entry', async () => {
-    // Nothing was awaited, so claiming a build in flight would be false: the state is simply cold.
-    // The abort check also precedes the work, so no build was started for a caller already gone.
+    // Nothing was awaited or joined, so claiming a build in flight would be false: the state is
+    // simply cold. The abort check also precedes the work, so no build was started for a caller
+    // already gone — and the text must not claim a background walk either.
     const build = deferred<typeof RESULT>();
     let started = 0;
     const handler = harness({
@@ -294,6 +333,15 @@ describe('hudu_search progress while awaiting the body index', () => {
     expect(result.structuredContent.meta.reasons).toEqual([]);
     expect(result.structuredContent.meta.cancelled).toEqual({ during: 'index-build', waited: false });
     expect(result.structuredContent.meta.timings.localMs).toBe(0);
+    // The waited:false text must say the truth: no build was started or joined by this call. It must
+    // NOT borrow the waited path's "continues in the background" sentence, which is false here.
+    const text = String(result.content[0].text);
+    expect(text).toContain('No build was started or joined for this call: it arrived already cancelled');
+    expect(text).toContain('a fresh call will build or join the index when the caller retries');
+    expect(text).not.toContain('continues in the background');
+    expect(result.structuredContent.meta.degraded.advice).toContain('no body-index build was started or joined');
+    expect(result.structuredContent.meta.degraded.advice).toContain('a fresh call will build or join the index when the caller retries');
+    expect(result.structuredContent.meta.degraded.advice).not.toContain('continues in the background');
     build.resolve(RESULT);
   });
 
