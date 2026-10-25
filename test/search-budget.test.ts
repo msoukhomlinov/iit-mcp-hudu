@@ -12,16 +12,17 @@ import {
 const MiB = 1024 * 1024;
 
 describe('indexTextBudgetBytes', () => {
-  it('takes a tenth of the heap when that sits inside the 8-64 MiB band', () => {
-    expect(indexTextBudgetBytes(128 * MiB)).toBe(12 * MiB);
+  it('takes a sixteenth of the heap when that sits inside the 8-64 MiB band', () => {
+    expect(indexTextBudgetBytes(128 * MiB)).toBe(8 * MiB);
   });
 
-  it('sizes a 512 MiB container (a ~259 MB heap ceiling) to 25 MiB', () => {
-    expect(indexTextBudgetBytes(259 * MiB)).toBe(25 * MiB);
+  it('sizes a 512 MiB container (a ~259 MB heap ceiling) to 16 MiB', () => {
+    expect(indexTextBudgetBytes(259 * MiB)).toBe(16 * MiB);
   });
 
-  it('clamps a large heap ceiling to 64 MiB, the SDK default', () => {
-    expect(indexTextBudgetBytes(816 * MiB)).toBe(64 * MiB);
+  it('sizes an 816 MiB heap ceiling to 51 MiB and clamps 1 GiB to 64 MiB', () => {
+    expect(indexTextBudgetBytes(816 * MiB)).toBe(51 * MiB);
+    expect(indexTextBudgetBytes(1024 * MiB)).toBe(64 * MiB);
   });
 
   it('floors a small heap ceiling at 8 MiB', () => {
@@ -60,10 +61,10 @@ describe('scopedIndexTextBudgetBytes', () => {
     }
   });
 
-  it('sizes the two measured heaps to 3 MiB and 8 MiB per client', () => {
-    // 259 MiB -> a 25 MiB pool; 816 MiB -> the 64 MiB clamp. Eight clients either way.
-    expect(scopedIndexTextBudgetBytes(259 * MiB)).toBe(3 * MiB);
-    expect(scopedIndexTextBudgetBytes(816 * MiB)).toBe(8 * MiB);
+  it('sizes the measured heaps to 2 MiB and 6 MiB per client', () => {
+    // 259 MiB -> a 16 MiB pool; 816 MiB -> a 51 MiB pool. Eight clients either way.
+    expect(scopedIndexTextBudgetBytes(259 * MiB)).toBe(2 * MiB);
+    expect(scopedIndexTextBudgetBytes(816 * MiB)).toBe(6 * MiB);
   });
 
   it('divides by the same cap the client cache enforces', async () => {
@@ -80,11 +81,11 @@ describe('scopedIndexMaxDocs', () => {
   });
 
   it('sizes the two measured heaps to the documented caps', () => {
-    // 512 MiB container: a 25 MiB pool, 3 MiB per scoped client -> 3,072 docs per client.
+    // 512 MiB container: a 16 MiB pool, 2 MiB per scoped client -> 2,048 docs per client.
     const smallHeap = 259 * MiB;
-    expect(scopedIndexTextBudgetBytes(smallHeap)).toBe(3 * MiB);
-    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap))).toBe(3072);
-    expect(scopedIndexMaxDocs(indexTextBudgetBytes(smallHeap))).toBe(25_600);
+    expect(scopedIndexTextBudgetBytes(smallHeap)).toBe(2 * MiB);
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap))).toBe(2048);
+    expect(scopedIndexMaxDocs(indexTextBudgetBytes(smallHeap))).toBe(16_384);
     // 1 GiB heap ceiling: the 64 MiB clamp, 8 MiB per client -> 8,192 docs per client.
     const largeHeap = 1024 * MiB;
     expect(scopedIndexTextBudgetBytes(largeHeap)).toBe(8 * MiB);

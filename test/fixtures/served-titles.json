@@ -1,0 +1,21 @@
+{
+  "hudu_delete": "Dispatch destructive operation",
+  "hudu_describe_operation": "Describe One Operation",
+  "hudu_fetch_many": "Fetch Many Records (Batch Read)",
+  "hudu_find_asset_passwords_by_slug": "Find Asset Passwords By Slug",
+  "hudu_find_websites_by_slug": "Find Websites By Slug",
+  "hudu_get_api_info": "Get Api Info",
+  "hudu_get_article_context": "Get Article Context",
+  "hudu_get_asset_context": "Get Asset Context",
+  "hudu_get_asset_layout": "Get Asset Layout",
+  "hudu_get_company_context": "Get Company Context",
+  "hudu_get_folder": "Get Folder",
+  "hudu_get_group": "Get Group",
+  "hudu_get_password_folder": "Get Password Folder",
+  "hudu_list": "List Records",
+  "hudu_list_operations": "Discover Operations (Catalog)",
+  "hudu_read": "Dispatch read operation",
+  "hudu_resolve_any": "Resolve Any",
+  "hudu_search": "Search Hudu (search | help | resources)",
+  "hudu_write": "Dispatch write operation"
+}

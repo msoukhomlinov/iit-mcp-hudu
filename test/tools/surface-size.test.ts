@@ -21,11 +21,11 @@ afterEach(() => vi.unstubAllGlobals());
  * more tools than the read-only one, so it gets its own (larger) ceiling.
  *
  * Measured matrix (write / read-only / hudu_search, UTF-8 bytes of the served `tools/list` JSON):
- *   stdio default  27,465 / 22,737 / 2,626      http default  27,358 / 22,630 / 2,519
- *   stdio auto     27,500 / 22,772 / 2,661      http auto     27,358 / 22,630 / 2,519
- *   stdio index    27,465 / 22,737 / 2,626      http index    27,247 / 22,519 / 2,408
- *   stdio vendor   27,506 / 22,778 / 2,667      http vendor   27,260 / 22,532 / 2,421
- * The binding configuration is `stdio` + `vendor`: 222 B of read-only headroom and 233 B of
+ *   stdio default  27,475 / 22,747 / 2,626      http default  27,368 / 22,640 / 2,519
+ *   stdio auto     27,510 / 22,782 / 2,661      http auto     27,368 / 22,640 / 2,519
+ *   stdio index    27,475 / 22,747 / 2,626      http index    27,257 / 22,529 / 2,408
+ *   stdio vendor   27,516 / 22,788 / 2,667      http vendor   27,270 / 22,542 / 2,421
+ * The binding configuration is `stdio` + `vendor`: 212 B of read-only headroom and 233 B of
  * `hudu_search` headroom (`MIN_HEADROOM` below). `stdio` sizes carry the strict object's
  * `additionalProperties: false`; `http` carries the loose `{}` that lets an override be reported.
  * (`http` default and `auto` coincide: `auto` is already that transport's tier.)

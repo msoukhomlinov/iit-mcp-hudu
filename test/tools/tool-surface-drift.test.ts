@@ -18,6 +18,11 @@ const registered: string[] = (JSON.parse(readFileSync(new URL('../../capabilitie
   .filter((capability) => capability.mcpPrimitive === 'tool' && typeof capability.toolName === 'string')
   .map((capability) => capability.toolName as string);
 
+/** Captured from a real stdio `tools/list` against the built server; the fixture IS the capture. */
+const servedTitles: Record<string, string> = JSON.parse(
+  readFileSync(new URL('../fixtures/served-titles.json', import.meta.url), 'utf8'),
+) as Record<string, string>;
+
 describe('served tool surface is server-owned', () => {
   it('serves exactly the registered tool names', async () => {
     const session = await connect();
@@ -26,13 +31,15 @@ describe('served tool surface is server-owned', () => {
     expect(tools.map((tool) => tool.name).sort()).toEqual([...registered].sort());
   });
 
-  it('keeps every title non-empty and every description from the server-owned prose', async () => {
+  it('pins every title to the captured fixture and every description to the server-owned prose', async () => {
     const session = await connect();
     const tools = await session.list();
     await session.close();
     for (const tool of tools) {
       expect(typeof tool.title === 'string' && tool.title.length > 0, `${tool.name}: title`).toBe(true);
       expect(tool.title, `${tool.name}: title must not fall back to the tool name`).not.toBe(tool.name);
+      expect(servedTitles[tool.name], `${tool.name}: title must be captured in test/fixtures/served-titles.json`).toBeDefined();
+      expect(tool.title, `${tool.name}: title must match the captured served title (regenerate the fixture from a real stdio tools/list after an intentional rename)`).toBe(servedTitles[tool.name]);
       let expected: string | null = null;
       try {
         expected = toolDescription(tool.name);
@@ -45,5 +52,9 @@ describe('served tool surface is server-owned', () => {
         expect(tool.description, `${tool.name}: description must be the server-owned prose`).toBe(expected);
       }
     }
+  });
+
+  it('covers every registered tool in the committed title fixture', () => {
+    expect(Object.keys(servedTitles).sort()).toEqual([...registered].sort());
   });
 });

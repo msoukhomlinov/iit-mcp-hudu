@@ -297,30 +297,29 @@ surface headroom); the meta vocabulary is enforced by the tests that publish it
 (`test/tools/search-progress.test.ts`), not by the outputSchema.
 
 The body index is bounded by TWO caps derived from the same heap estimate: a text budget and a
-document cap. The text budget is a tenth of the process's V8 heap ceiling, clamped to 8-64 MiB;
+document cap. The text budget is a SIXTEENTH of the process's V8 heap ceiling, clamped to 8-64 MiB;
 the document cap is one document per KiB of that budget (`maxDocs`), clamped to 1,500-50,000. Both
-travel the SDK's `search` options, so neither is an env knob.
+travel the SDK's `search` options, so neither is an env knob. The divisor moved from 10 to 16 in
+round 11 because the tenth left no usable production margin (the arithmetic below).
 
-Where the tenth comes from, and what the "4x" is a ratio of. The #51 crash trace is a 512 MiB
+Where the sixteenth comes from, and what the "4x" is a ratio of. The #51 crash trace is a 512 MiB
 container running the OLD behaviour — the SDK-default 64 MiB text budget — which peaked at ~252 MB
 of heap and died with `Reached heap limit` mid-search. It measured the ~90 MB baseline heap and about
 4 bytes of index structures per byte of text ACTUALLY HELD, not per byte of budget: that index held
 ~41 MB of text out of its 64 MiB budget, and the peak reconciles as ~90 + 4 x 41 = ~254 MB. Read
 against the budget instead of the held text the same ratio would predict 90 + 4 x 64 = ~346 MB, which
-the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) gets a 25 MiB pool, which is 3 MiB per scoped
-client. A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through the real SDK
-client under a ~262 MB V8 ceiling (`node --max-old-space-size=259 --max-semi-space-size=1 probe.mjs`;
-the second flag brings V8's reported limit to ~262 MB, while the first alone reports ~451 MB in Node
-24) peaked at ~136 MiB with these settings; the same walk with the OLD 64 MiB / 50,000 settings
-peaked at ~147 MiB. Both survived. That probe's baseline is lower than the server's ~90 MB, so the
-production peak is a LOWER BOUND near ~233 MB — close to the ceiling, not comfortably under it. The
-measurement does not prove a production build cannot exhaust the heap. A 1 GiB heap ceiling reaches
-the 64 MiB cap, 8 MiB per client.
+the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) now gets a 16 MiB pool and
+2 MiB per scoped client. A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
+the real SDK client under a ~262 MB V8 ceiling (`node --max-old-space-size=259 --max-semi-space-size=1
+probe.mjs`; the second flag brings V8's reported limit to ~262 MB, while the first alone reports
+~451 MB in Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
+64 MiB / 50,000 settings peaked at ~147 MiB. Both survived. That probe's baseline is lower than the
+server's ~90 MB. A 1 GiB heap ceiling reaches the 64 MiB cap, 8 MiB per client.
 
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
 evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
 reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
-container indexes up to 3,072 documents per scoped client (25,600 for the stdio pool), a 1 GiB heap
+container indexes up to 2,048 documents per scoped client (16,384 for the stdio pool), a 1 GiB heap
 ceiling 8,192 per client (50,000 for the pool). The per-document cost is an ESTIMATE (~1 KB of record
 plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
 peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
@@ -329,22 +328,31 @@ the heap ceiling and the text budget's eviction, not by `maxDocs`. A capped inde
 `partial`, exactly as it already does when the text budget bites. All ~3,300 articles of the
 production tenant fit at the 1 GiB figure; which documents the cap truncates first on a small heap is
 INFERRED, not measured: title-only assets are the expected first loss, because they cost a record
-without carrying text. The measured end-to-end walk kept 26,624 of 28,300 documents and never
+without carrying text. The measured end-to-end walk kept 16,384 of 28,300 documents and never
 observed which ones went first.
 
-END-TO-END MEASURED (this repo's own probe, not committed): the built server (`dist/main.js`) ran as a
-separate process under `node --max-old-space-size=259 --max-semi-space-size=1 --import
-./mem-probe.mjs dist/main.js`, served over stdio against a stub Hudu tenant of 25,000 assets (250
-pages x 100 rows) and 3,300 articles with HTML bodies. A `hudu_search` call with `tier:"index"` built
-the body index and answered. Peak sampled `process.memoryUsage().heapUsed` was 187.96 MB (179.25
-MiB), about 69% of the 259 MiB ceiling: ~80 MiB of headroom. The process survived (exit 0) and the
-call took 12.0 s. The build walked 28,300 documents and retained 26,624 (the document cap bound;
-articles 3,183, assets 23,441) and reported index state `partial`. The text budget did not evict any
-body text in this run (`bodiesEvicted: 0`), so this peak does not exercise eviction. The stub's
-corpus is synthetic and its bodies are smaller than production's, and its ~24.6 MB baseline heapUsed
-is lower than the ~90 MB production baseline, so the ~253 MB production extrapolation stays
-UNVERIFIED. The fraction shipped remains a tenth. Issue #51's trace remains the only PRODUCTION
-measurement (~252 MB peak on the old 64 MiB profile).
+BEFORE THE DIVISOR CHANGE. The round-10 end-to-end run measured the real server (`dist/main.js`) under
+a 259 MiB V8 ceiling: peak heapUsed 187.96 MB with a 24.6 MB baseline, so the INDEX STRUCTURES cost
+~163 MB. Production's baseline is ~90 MB, so the honest production peak was 163 + 90 = ~253 MB
+against 259 MiB — ~98%, about 6 MB of headroom. That leaves no usable margin. The round-10 README
+instead added 90 MB to a standalone-walk figure and reported ~233 MB; that understated the risk.
+
+AFTER THE DIVISOR CHANGE (one sixteenth, this round's measurement). The same SHAPE of probe — the
+built server under `node --max-old-space-size=259 --max-semi-space-size=1 --import ./mem-probe.mjs
+dist/main.js`, stdio against a stub tenant of 25,000 assets (250 pages x 100 rows) and 3,300 articles
+with HTML bodies, `hudu_search` with `tier:"index"` and `refresh:true` — peaked at 118.51 MB
+heapUsed against a 27.57 MB base, so the structures cost ~90.93 MB. The process survived (exit 0)
+and the call took 11.62 s. The index retained 16,384 documents (articles 3,300, assets 13,084) and
+reported state `partial`; bodiesEvicted was 0. The extrapolated production peak is 90.93 + 90 =
+~180.93 MB, ~70% of the 259 MiB ceiling and ~26 MB below the 207 MB (80%) target. The new peak
+itself is ~45.8% of the ceiling. The target is met. The fraction shipped is one sixteenth. The
+probe script is not committed and the stub was recreated for this round (the round-10 script was
+not kept), so the before/after delta also reflects stub differences and is not a controlled A/B;
+the production extrapolation uses this round's measured structures. The stub corpus is synthetic,
+its bodies are smaller than production's, and its ~27.6 MB baseline is lower than the ~90 MB
+production baseline, so the production figure is an extrapolation. bodiesEvicted 0 means this run
+did not exercise eviction. Issue #51's trace remains the only PRODUCTION measurement (~252 MB peak
+on the old 64 MiB profile).
 
 The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for
