@@ -163,7 +163,7 @@ const INDEX_DOC_BYTES = 1024;
  * text). At the 1 GiB read-only figures above (17 MiB and 17,408 documents) the measured article
  * density (1,478 of the freshest 6,144) implies all 3,204 articles now fall inside the cap, so the
  * article loss is expected to disappear (INFERRED, not measured at this division); at 512 MiB
- * (5,120 documents) 3,204 articles would leave only 1,916 slots for assets, so the loss remains. The
+ * (5,461 documents) 3,204 articles would leave only 2,257 slots for assets, so the loss remains. The
  * order is the SDK's.
  *
  * Named for its scoped use because that is where it matters: the pool is divided per client, and the

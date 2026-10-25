@@ -216,8 +216,9 @@ interface ModeEntry {
    *
    * Lazily built and cached rather than one per mode: the strategy carries the anomaly names,
    * the anomaly set is small and bounded (`CREDENTIAL_ANOMALIES`), and a fresh `HuduClient` per
-   * malformed request would let a caller allocate a client (and its share of the pooled index text
-   * budget) per request — which is the resource the scoped-client cap exists to protect. The cache is bounded by the
+   * malformed request would let a caller allocate a client per request — the resource the
+   * scoped-client cap exists to protect. (These clients carry the whole pool rather than a share,
+   * because each refuses before it dials, so it never builds an index.) The cache is bounded by the
    * power set of the anomalies in `CREDENTIAL_ANOMALIES` plus the empty set, i.e. it cannot grow
    * with request volume.
    */

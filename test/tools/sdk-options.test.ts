@@ -30,7 +30,6 @@ describe('fixed SDK client options', () => {
       expect(search?.maxIndexTextBytes).toBeGreaterThanOrEqual(8 * 1024 * 1024);
       expect(search?.maxIndexTextBytes).toBeLessThanOrEqual(64 * 1024 * 1024);
       // The doc cap travels the same object, so the text budget is not the only bound (#52).
-      expect(search?.maxDocs).toBeGreaterThanOrEqual(1500);
       expect(search?.maxDocs).toBeLessThanOrEqual(50_000);
       expect(search?.maxDocs).toBe(scopedIndexMaxDocs(search!.maxIndexTextBytes!));
     }

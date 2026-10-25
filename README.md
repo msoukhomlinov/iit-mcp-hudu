@@ -322,7 +322,7 @@ the real SDK client under a ~262 MB V8 ceiling (an uncommitted one-off probe; `-
 brings V8's reported limit to ~262 MB, while `--max-old-space-size=259` alone reports ~451 MB in
 Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
 64 MiB / 50,000 settings peaked at ~147 MiB. Both survived. That probe's baseline is lower than the
-server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% container-to-heap ratio; the MEASURED ratio for the 512 MiB container is ~50.6% (259 MB) — gets a 51 MiB pool and 17 MiB per scoped client (5 MiB with writes enabled); a 1024 MB heap ceiling is
+server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% container-to-heap ratio; the MEASURED ratio for the 512 MiB container is ~50.6% (259 MB) — gets a 51 MiB pool and 17 MiB per scoped client (5.67 MiB with writes enabled); a 1024 MB heap ceiling is
 what reaches the 64 MiB cap.
 
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
