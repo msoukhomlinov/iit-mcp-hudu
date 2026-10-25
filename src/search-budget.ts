@@ -28,7 +28,7 @@ export const MAX_INDEX_TEXT_BYTES = 64 * MIB;
  * article bodies almost entirely (about 2,800 of 3,204) and to keep all 3,204 articles, because the
  * measured run retained articles at roughly a quarter of the freshest-document density. A
  * write-enabled deployment has three caches, so the same pool is divided by nine and each scope gets
- * 5 MiB and 5,120 documents.
+ * 5.67 MiB and 5,802 documents.
  *
  * SIZED FOR, NOT ENFORCED: the share is the pool divided by `(capacity + 1) x caches`, where the +1
  * leaves one eviction of margin per cache — the scope the LRU just dropped, which an in-flight
@@ -79,8 +79,8 @@ export const SCOPED_INDEX_EVICTION_TRANSIENT = 1;
  *
  * POOL FRACTION: the budget is per PROCESS, not per client. Up to
  * {@link SCOPED_INDEX_BUDGET_DIVISOR} scoped clients stay warm in each per-mode cache and each owns a
- * body index, so each is handed only {@link scopedIndexTextBudgetBytes} (a whole-MiB share, divided
- * again by the number of caches). The trade: several credentials build shallower indexes (a scope
+ * body index, so each is handed only {@link scopedIndexTextBudgetBytes} (the pool divided by the
+ * per-cache client count and again by the number of caches). The trade: several credentials build shallower indexes (a scope
  * that hits its share reports index state "partial"); needing depth means raising the container
  * memory or serving over stdio, where one credential owns the whole pool.
  *
@@ -100,21 +100,20 @@ export function indexTextBudgetBytes(heapLimitBytes: number): number {
  * it to fund — (cache capacity + one eviction of margin) x per-mode caches.
  *
  * `caches` is the number of scoped-client caches the process creates: 1 under
- * `HUDU_WRITE_POLICY=deny` (read only), 3 otherwise (read, write, delete).
+ * `HUDU_WRITE_POLICY=deny` (read only), 3 otherwise (read, write, delete). It is required, not
+ * defaulted: a default of 1 would size every client for a read-only process and oversubscribe a
+ * write-enabled one threefold.
  *
- * The share is a whole number of MiB, never above the pool; when the pool is too small to give every
- * counted client a whole MiB, the share is the exact byte quotient instead, so `clients x share`
- * never exceeds the pool and the 1 MiB idea cannot oversubscribe it. Small pools get a share below
- * the single-client {@link MIN_INDEX_TEXT_BYTES} on purpose — the clients cannot each hold the
- * single-client floor out of an 8 MiB pool.
+ * The share is an exact byte quotient, so `clients x share` never exceeds the pool and no pool space
+ * is lost to rounding (whole-MiB rounding discarded up to a third of a small pool: 7 of 16 MiB in
+ * the 512 MiB write-enabled profile). Small pools get a share below the single-client
+ * {@link MIN_INDEX_TEXT_BYTES} on purpose — the clients cannot each hold the single-client floor out
+ * of an 8 MiB pool — and the SDK accepts any positive bound (a probe with 932,067 bytes built and
+ * answered `warm`).
  */
-export function scopedIndexTextBudgetBytes(heapLimitBytes: number, caches = 1): number {
+export function scopedIndexTextBudgetBytes(heapLimitBytes: number, caches: number): number {
   const total = indexTextBudgetBytes(heapLimitBytes);
   const clients = (SCOPED_INDEX_BUDGET_DIVISOR + SCOPED_INDEX_EVICTION_TRANSIENT) * Math.max(1, caches);
-  const wholeMib = Math.floor(total / clients / MIB) * MIB;
-  if (wholeMib >= MIB) return Math.min(total, wholeMib);
-  // A pool too small for a whole MiB per counted client: an equal byte share, so `clients x share`
-  // stays inside the pool (the SDK accepts any positive byte bound).
   return Math.max(1, Math.floor(total / clients));
 }
 
@@ -149,11 +148,12 @@ const INDEX_DOC_BYTES = 1024;
  * not the walk's peak (the heap ceiling and the text budget's eviction bound that). A capped index
  * reports index state "partial", as it already does when the text budget bites. Resulting numbers,
  * read-only profile / write-enabled profile (one cache / three caches):
- * a 512 MiB container (MEASURED ~50.6% container-to-heap ratio: ~259 MB) gets a 16 MiB pool, so 5 MiB
- * / 5,120 documents per scoped client read-only, 1 MiB / 1,024 with writes (16,384 for the stdio
- * pool); a 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% ratio, not a measurement — gets a
- * 51 MiB pool, so 17 MiB / 17,408 read-only, 5 MiB / 5,120 with writes (50,000 for the stdio pool);
- * a 1024 MB ceiling reaches the 64 MiB cap, so 21 MiB / 21,504 read-only, 7 MiB / 7,168 with writes.
+ * a 512 MiB container (MEASURED ~50.6% container-to-heap ratio: ~259 MB) gets a 16 MiB pool, so
+ * 5.33 MiB / 5,461 documents per scoped client read-only, 1.78 MiB / 1,820 with writes (16,384 for
+ * the stdio pool); a 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% ratio, not a measurement —
+ * gets a 51 MiB pool, so 17 MiB / 17,408 read-only, 5.67 MiB / 5,802 with writes (50,000 for the
+ * stdio pool); a 1024 MB ceiling reaches the 64 MiB cap, so 21.33 MiB / 21,845 read-only, 7.11 MiB /
+ * 7,281 with writes.
  *
  * WHICH documents the cap truncates is the SDK's choice, not this module's: it keeps the freshest
  * `updated_at` across ALL resources, so assets can outrank older articles. MEASURED on the production
