@@ -319,7 +319,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         // walk's duration. The deployment sets it (HUDU_SEARCH_TIER_POLICY) instead. The http
         // object is LOOSE so a caller that sends either field anyway still reaches the handler,
         // which reports it as overridden (`meta.policyOverride`) exactly as the invoke path does.
-        // That looseness is DELIBERATE and http-only (CHANGELOG, "Unreleased"); `stdio` keeps the
+        // That looseness is DELIBERATE and http-only (CHANGELOG, "0.6.0"); `stdio` keeps the
         // object strict because it serves both fields and has nothing to report.
         ...(searchTierIsPolicy
           ? {}
