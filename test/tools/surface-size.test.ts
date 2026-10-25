@@ -8,7 +8,7 @@ import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured after the markdown_lossy output fields and note clause: 39,473 / 33,928 (both under the 40,000 B target).
+// Measured after the markdown_lossy output fields and note clause: 39,444 / 33,899 (both under the 40,000 B target).
 const BUDGET_ALL = 39_600;
 const BUDGET_DENY = 34_050;
 

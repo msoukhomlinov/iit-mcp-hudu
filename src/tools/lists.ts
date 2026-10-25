@@ -161,7 +161,7 @@ function assertNonSearchableListReadPermitted(operation: string, ctx: ToolContex
 
 /**
  * Compact row fields per resource: the node-hudu `*Summary` shapes plus `created_at`. The SDK exports no
- * runtime projection, so `test/tools/lists-compact.test.ts` pins these lists to catch drift after a node-hudu bump. `hudu_list` projects each row onto these unless `expand: true`.
+ * runtime projection, so `test/tools/lists-compact.test.ts` only pins these lists to a literal copy: it forces a reviewer to revisit them on a node-hudu bump, it does not detect SDK drift itself. `hudu_list` projects each row onto these unless `expand: true`.
  */
 export const COMPACT_FIELDS = {
   companies: ['id', 'name', 'nickname', 'slug', 'website', 'phone_number', 'city', 'state', 'id_number', 'archived', 'url', 'created_at', 'updated_at'],
@@ -265,7 +265,7 @@ export function registerListTools(server: McpServer, ctx: ToolContext): void {
         'List ONE bounded page of companies, articles, assets (across all companies) or asset_layouts, backed by the fixed operations companies.list / articles.list / assets.listAcrossCompanies / asset_layouts.list. Returns at most page_size rows plus whether more exist; it never pages through the tenant. This tool takes no operation argument and cannot be redirected to a write. ' +
         'Filters go in `filters`; each resource accepts only its own: ' +
         LIST_RESOURCE_NAMES.map((r) => `${r}: ${listFilterNames(r).join(', ')}`).join('; ') +
-        '. Rows are compact summaries (id, name, key scalars, url, updated_at; no custom fields or bodies); expand: true returns full records. A filter the resource does not accept is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor’s own size, returned whole, has_more is conservative (true for any non-empty page), stop when a page comes back empty. ' +
+        '. Rows are compact summaries (id, name, scalars, url, created_at, updated_at; no custom fields/bodies); expand: true: full records. A filter the resource does not accept is refused naming the accepted ones. asset_layouts takes no page_size (the vendor ignores it): a page is the vendor’s own size, returned whole, has_more is conservative (true for any non-empty page), stop when a page comes back empty. ' +
         'Prefer hudu_search or hudu_resolve_any to identify one record, and the *_context / hudu_get_asset_layout reads to read one in full. This is the ungated path for these reads; use it rather than the approval-gated hudu_read / hudu_write / hudu_delete.' +
         ' Article bodies: compact article rows carry none; expand: true returns stored HTML (hudu_get_article_context reads Markdown).',
       // strict: a stray top-level filter (the 0.2.x flat shape) must be refused, never stripped into an account-wide read.
