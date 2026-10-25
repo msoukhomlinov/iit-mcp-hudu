@@ -36,7 +36,7 @@
 | hudu_write | Execute a registry write; dry-run unless `dry_run:false` |
 | hudu_delete | Execute a destructive operation; dry-run unless `dry_run:false`, and `confirm` must equal the key |
 
-The registry is node-hudu 0.18.0: 236 operations. Reachability under a given policy is reported by `hudu_list_operations`.
+The registry is node-hudu 0.19.0: 236 operations. Reachability under a given policy is reported by `hudu_list_operations`.
 
 ## Intentionally Omitted
 

@@ -42,6 +42,10 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
       },
       async (args) => {
         const { operation, input, dry_run, confirm } = args;
+        // True once control reaches the SDK dispatcher: every policy gate above it refuses before any
+        // request, so those refusals never clear. Past this point a validation refusal also clears;
+        // that is a cheap no-op, and telling it apart from a write that dialed is not worth the code.
+        let dispatched = false;
         try {
           // Deployment policy narrows the SDK mode and effect gate.
           assertWritePermitted(operation, getCapability(operation), config, log);
@@ -79,6 +83,7 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           const opts: { dryRun?: boolean; confirm?: string; contentFormat: 'markdown' } = { contentFormat: 'markdown' };
           if (typeof dry_run === 'boolean') opts.dryRun = dry_run;
           if (typeof confirm === 'string') opts.confirm = confirm;
+          dispatched = true;
           let result = await dispatchOperation(client, effect, operation, bag, opts);
           // After the SDK's own input validation, so bad input stays CONFIG_ERROR. The refusing
           // placeholder never dials, so nothing reached Hudu; the engine swallows its error into a
@@ -135,6 +140,19 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           if (['companies.getContext', 'assets.getContext', 'articles.getContext'].includes(operation)) return contextErrorContent(err);
           if (operation === SEARCH_KNOWLEDGE_OPERATION || operation === SEARCH_ACROSS_OPERATION) return searchErrorContent(err);
           return operation === RESOLVE_ANY_OPERATION ? resolveErrorContent(err) : errorContent(err);
+        } finally {
+          // Each effect has its own cached client, so a write never clears the read client's cache
+          // (node-hudu clears only the client it mutates through). Clear the read client of this scope
+          // after every real write or delete ATTEMPT, in `finally`: a timeout or 5xx may still have
+          // applied. A dry run (`dry_run` absent is forced to one by the SDK) sends no write, so it
+          // does not clear. clearCache never throws; the guard makes sure it cannot alter the result.
+          if (mode !== 'read' && dispatched && dry_run === false) {
+            try {
+              ctx.hudu.clearCache();
+            } catch (e) {
+              log.warn('read cache clear failed after write', { operation, error: e instanceof Error ? e.message : String(e) });
+            }
+          }
         }
       },
     );
