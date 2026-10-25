@@ -339,13 +339,19 @@ peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only
 the heap ceiling and the text budget's eviction, not by `maxDocs`. A capped index reports index state
 `partial`, exactly as it already does when the text budget bites.
 
-ARTICLES KEEP A QUARTER OF THE CAP. Without a reservation the SDK keeps the freshest `updated_at`
+ARTICLES ARE RESERVED THE WHOLE CAP. Without a reservation the SDK keeps the freshest `updated_at`
 across ALL resources, so on an account with more assets than articles the assets take every slot and
 the older articles have no index entry at all. `maxDocsByResource` (node-hudu 0.20.0) is a hard
-reservation inside `maxDocs`: the server reserves a quarter of the cap for `articles` and lets assets
-absorb the rest, which is what the `0.7.0` entry in the CHANGELOG measures. The reservation tracks
-the cap, so it deepens with the heap like the rest of the budget: 4,352 article slots at a 1 GiB
-read-only ceiling, 5,461 at a 1024 MB one, 12,500 in a stdio parent's 50,000-document cap.
+reservation inside `maxDocs`: the server names `articles` with the whole cap, which makes it
+articles-first — each article keeps its slot up to the cap, and assets fill whatever room is left,
+in the SDK's `updated_at` order. That is the resource split the index exists for: article rows carry
+the long text, asset rows do not. A smaller reservation would also be a hard ceiling on articles, so
+an article-heavy account would drop articles while its cap sat half empty (measured against the SDK:
+300 articles and 5 assets at a 100-document cap retain 30 documents with a quarter reserved and 100
+with the whole cap; an asset-heavy corpus fills the cap either way). The reservation tracks the cap,
+so it deepens with the heap like the rest of the budget: 17,408 article slots at a 1 GiB container's
+assumed ~816 MB heap ceiling, 21,845 at a 1024 MB one, 50,000 in a stdio parent. This is what the
+Unreleased CHANGELOG entry measures.
 
 MEASURED on the production tenant (19,991 assets + 3,204 articles = 23,195 documents). At the former
 division by eight (6,144 documents): 4,666 assets and 1,478 of the 3,204 articles retained, 1,036
@@ -355,8 +361,10 @@ was expected (INFERRED at the time) to keep all 3,204 articles at 17 MiB / 17,40
 deployment measured that expectation FALSE — 15,588 assets and 1,820 articles — because the asset
 count fills whatever cap the pool offers. At the 21,845-document ceiling the split was 19,991 assets
 and 1,854 articles, i.e. 1,350 articles with no body index, while the asset rows (titles and custom
-fields, no long text) held 91% of the cap. The article reservation is the fix; `node-hudu` #122 has
-the upstream detail.
+fields, no long text) held 91% of the cap. Reserving the cap for articles is the fix: the same
+21,845-document cap then keeps all 3,204 articles and gives assets the remaining 18,641 slots
+(the SDK's guarantee, measured with a synthetic corpus and confirmed after deployment); `node-hudu`
+#122 has the upstream detail.
 
 BEFORE THE DIVISOR CHANGE. The round-10 end-to-end run measured the real server (`dist/main.js`) under
 a 259 MiB V8 ceiling: peak heapUsed 187.96 MB with a 24.6 MB baseline, so the INDEX STRUCTURES cost

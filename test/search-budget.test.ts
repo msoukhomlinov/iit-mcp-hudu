@@ -1,12 +1,11 @@
 /** The heap-derived body-index text budget (#51): a small container must not trade its heap for a full index. */
 import { describe, expect, it } from 'vitest';
 import {
-  ARTICLE_DOC_RESERVATION_DIVISOR,
   MAX_INDEX_MAX_DOCS,
   MIN_INDEX_MAX_DOCS,
   SCOPED_INDEX_BUDGET_DIVISOR,
   SCOPED_INDEX_EVICTION_TRANSIENT,
-  articleDocReservation,
+  indexDocCaps,
   indexTextBudgetBytes,
   scopedIndexMaxDocs,
   scopedIndexTextBudgetBytes,
@@ -168,37 +167,22 @@ describe('scopedIndexMaxDocs', () => {
   });
 });
 
-describe('articleDocReservation', () => {
-  it('reserves a quarter of the document cap for articles', () => {
-    expect(ARTICLE_DOC_RESERVATION_DIVISOR).toBe(4);
-    // The measured caps: production (21,845), a 1 GiB read-only ceiling (17,408), the 512 MiB pool
-    // (16,384), the two smaller scoped caps, and the smallest write-enabled pool.
-    expect(articleDocReservation(21_845)).toBe(5_461);
-    expect(articleDocReservation(17_408)).toBe(4_352);
-    expect(articleDocReservation(16_384)).toBe(4_096);
-    expect(articleDocReservation(1_820)).toBe(455);
-    expect(articleDocReservation(910)).toBe(227);
-  });
-
-  it('covers the production article corpus with headroom at every cap a deployment can reach', () => {
-    // 3,204 articles measured on the production tenant; the smallest cap any profile above 140 MiB
-    // gets is the 512 MiB write-enabled one (910 documents, 227 article slots), which cannot cover
-    // it — the read-only profiles can.
-    for (const cap of [16_384, 17_408, 21_845]) {
-      expect(articleDocReservation(cap), `${cap}`).toBeGreaterThanOrEqual(3_204);
+describe('indexDocCaps', () => {
+  it('reserves the whole document cap for articles, so assets take only what is left', () => {
+    // The measured caps: production (21,845), a 1 GiB read-only ceiling (17,408), a stdio parent
+    // (50,000), the 512 MiB write-enabled profile (1,820) and the smallest pool (910).
+    for (const cap of [21_845, 17_408, 50_000, 1_820, 910, 1]) {
+      expect(indexDocCaps(cap), `${cap}`).toEqual({ articles: cap });
     }
   });
 
-  it('always fits inside the cap it reserves from, and never reserves nothing', () => {
-    // Every document cap this server derives is at least one document, so the reservation is too.
-    for (const cap of [1, 2, 3, 4, 5, 7, 910, 50_000]) {
-      const reserved = articleDocReservation(cap);
-      expect(Number.isInteger(reserved), `${cap}`).toBe(true);
-      expect(reserved, `${cap}`).toBeGreaterThanOrEqual(1);
+  it('names only resources the SDK indexes, and never exceeds the cap it comes from', () => {
+    // node-hudu rejects any key outside its index resources and any reservation above `maxDocs`.
+    for (const cap of [1, 910, 16_384, 50_000]) {
+      const caps = indexDocCaps(cap);
+      expect(Object.keys(caps), `${cap}`).toEqual(['articles']);
+      const reserved = Object.values(caps).reduce((total, value) => total + value, 0);
       expect(reserved, `${cap}`).toBeLessThanOrEqual(cap);
     }
-    expect(articleDocReservation(3)).toBe(1);
-    expect(articleDocReservation(4)).toBe(1);
-    expect(articleDocReservation(50_000)).toBe(12_500);
   });
 });

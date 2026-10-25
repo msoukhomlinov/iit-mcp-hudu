@@ -15,7 +15,7 @@ import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
-import { SCOPED_INDEX_BUDGET_DIVISOR, articleDocReservation, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } from '../search-budget.js';
+import { SCOPED_INDEX_BUDGET_DIVISOR, indexDocCaps, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } from '../search-budget.js';
 import { runWithCredentialShapeView, type CredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 import { answerRenamedTools } from './renamed.js';
@@ -465,11 +465,11 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
       // by the heap ceiling and the text budget's eviction (an estimate, not a proof), and a capped
       // index reports index state "partial".
       maxDocs: poolMaxDocs,
-      // Articles keep a QUARTER of that cap whatever the corpus ratio: the SDK's global cap keeps
-      // the freshest documents across all resources, and an account with many more assets than
-      // articles would otherwise fill every slot with assets and drop article bodies from the index
-      // (MEASURED: 1,854 of 3,204 articles). Assets take the rest.
-      maxDocsByResource: { articles: articleDocReservation(poolMaxDocs) },
+      // Articles are reserved the whole cap and assets take what is left: the SDK's global cap keeps
+      // the freshest documents across ALL resources, and an account with far more assets than
+      // articles would otherwise fill every slot with asset rows and drop article bodies from the
+      // index (MEASURED: 1,854 of 3,204 articles before the reservation).
+      maxDocsByResource: indexDocCaps(poolMaxDocs),
       ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL }),
     },
     timeoutMs: 30000,
@@ -514,7 +514,7 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
       ...options.search,
       maxIndexTextBytes: scopedTextBytes,
       maxDocs: scopedDocs,
-      maxDocsByResource: { articles: articleDocReservation(scopedDocs) },
+      maxDocsByResource: indexDocCaps(scopedDocs),
     };
     const parent = config.MCP_TRANSPORT === 'stdio'
       ? new HuduClient({ ...scopedOptions, apiKey: config.HUDU_API_KEY! })
