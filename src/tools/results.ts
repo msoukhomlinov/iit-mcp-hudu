@@ -33,6 +33,8 @@ export type ToolReturn =
 export interface CredentialShapeView {
   readonly env?: readonly CredentialAnomaly[];
   readonly request?: readonly CredentialAnomaly[];
+  /** Set when this unit's client is a refusing placeholder (malformed key, refused origin): the error every tool call would fail with. */
+  readonly refusal?: unknown;
 }
 
 const viewScope = new AsyncLocalStorage<CredentialShapeView>();
@@ -40,6 +42,16 @@ const viewScope = new AsyncLocalStorage<CredentialShapeView>();
 /** Run `fn` (and everything it awaits) with `view` as the credential view `errorContent` reads. */
 export function runWithCredentialShapeView<T>(view: CredentialShapeView, fn: () => T): T {
   return viewScope.run(view, fn);
+}
+
+/**
+ * The refusal envelope for a unit whose client is a refusing placeholder, else undefined. The
+ * search paths isolate per-resource failures into a successful 0-hit result, so they ask this
+ * first and answer exactly as every other tool does, before any request.
+ */
+export function upfrontRefusal(): ToolReturn | undefined {
+  const refusal = viewScope.getStore()?.refusal;
+  return refusal === undefined ? undefined : errorContent(refusal);
 }
 
 /** The anomalies from the credentials the CURRENT serving unit presented, if any were seen. */

@@ -6,7 +6,7 @@ import * as z from 'zod/v4';
 import type { KnowledgeResource } from 'node-hudu';
 import { SEARCH_HELP, SEARCH_MODES, SEARCH_RESOURCES, configError } from 'node-hudu/mcp';
 import type { ToolContext } from './context.js';
-import { errorContent, createResultBuilders, searchErrorContent, unauthorizedContent } from './results.js';
+import { errorContent, createResultBuilders, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
 import { HELP_TOPICS, SEARCH_OUTPUT, resourceEnum } from './schemas.js';
 import { credentialRefused, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
 import { adjustHelpText, adjustedSearchModes, searchQueryDescription, searchToolDescription } from './search-prose.js';
@@ -164,6 +164,8 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         );
       }
       try {
+        const refused = upfrontRefusal();
+        if (refused !== undefined) return refused;
         const result = await ops.searchKnowledge(args.query, {
           // An omitted `resources` resolves to the deployment's default scope, never to the SDK's
           // articles+assets default when those are outside `searchableResources`.

@@ -7,7 +7,7 @@ import { writeToolRegistered, assertNeverReachablePermitted, assertSecretReadPer
 import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
 import { lossyNote, takeContentLoss } from './article-loss.js';
-import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent } from './results.js';
+import { ARTICLE_FORMAT_NOTE, contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
 import { INVOKE_OUTPUT } from './schemas.js';
 import { FETCH_MANY_OPERATION, applyFetchManyPolicyToInvoke, SEARCH_ACROSS_OPERATION, applyAcrossPolicyToInvoke, credentialRefused, RESOLVE_ANY_OPERATION, SEARCH_KNOWLEDGE_OPERATION, applyResolvePolicyToInvoke, applySearchPolicyToInvoke, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
 
@@ -79,6 +79,10 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           const opts: { dryRun?: boolean; confirm?: string; contentFormat: 'markdown' } = { contentFormat: 'markdown' };
           if (typeof dry_run === 'boolean') opts.dryRun = dry_run;
           if (typeof confirm === 'string') opts.confirm = confirm;
+          if (operation === SEARCH_KNOWLEDGE_OPERATION || operation === SEARCH_ACROSS_OPERATION) {
+            const refused = upfrontRefusal();
+            if (refused !== undefined) return refused;
+          }
           let result = await dispatchOperation(client, effect, operation, bag, opts);
           // A Markdown article read that lost content carries the SDK's content_loss (see article-loss.ts).
           let lossy: string[] = [];
