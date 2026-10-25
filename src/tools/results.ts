@@ -16,7 +16,8 @@ export type ToolReturn =
  * The Hudu credentials THIS SERVER presented for the failing call, in the one shape the refusal
  * branch needs — a value-free anomaly list per source.
  *
- * Set once per serving unit from the same values the tools dial with, so the auth-failure branch
+ * Set once per serving unit from the credential that unit PRESENTS (the request key wins over the
+ * server-held default; see `buildCredentialShapeView`), never from a credential it did not dial, so the auth-failure branch
  * can answer the incident's question ("was the credential I loaded even shaped like a credential?")
  * with the server's own evidence. This is the server-side half of the shape contract: node-hudu
  * 0.13.2 carries its own value-free 401 shape diagnostic (consumed alongside, on the same
@@ -285,8 +286,12 @@ export function credentialMalformedContent(anomalies: readonly string[]): ToolRe
  * (node-hudu 0.13.2), so its view is the first evidence the auth branch consults; the SDK's own
  * 401 diagnostic is consulted next ({@link unauthorizedShapeDiagnosticContent}). With no anomalies
  * and no SDK artifact diagnostic the envelope is exactly the legacy shape every existing test pins.
+ *
+ * Omitted, `anomalies` defaults to the current serving unit's view, so a caller that answers a
+ * credential refusal without an error to hand (the search branches, where the engine isolates the
+ * 401s into `meta.failed`) is annotated exactly like the thrown path.
  */
-export function unauthorizedContent(anomalies: readonly CredentialAnomaly[] = []): ToolReturn {
+export function unauthorizedContent(anomalies: readonly CredentialAnomaly[] = observedCredentialAnomalies()): ToolReturn {
   if (anomalies.length > 0) {
     return {
       content: [
