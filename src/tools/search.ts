@@ -154,16 +154,22 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
     lastCompleteFullAt: null,
     fullWalkDue: false,
   };
-  // Transport-aware advice: the two paths serve different fields and different next steps.
+  // What is TRUE here: no answer was scored and nothing was returned. What is NOT true is that Hudu
+  // was left alone — the walk this call started is Hudu traffic and keeps issuing requests after the
+  // answer (`awaitWithProgress` only stops AWAITING it), so the text says so rather than claim a
+  // quiet network. Transport-aware: the two paths serve different fields and different next steps.
   const text =
     transport === 'http'
-      ? 'Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry — the body index keeps building in the background, so a later search is body-backed.'
-      : 'Search cancelled while waiting for the body index build; nothing in Hudu was searched. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.';
+      ? 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned. The build this call started continues in the background, still issuing Hudu requests. DEGRADED (index-build-cancelled): retry — the body index keeps building in the background, so a later search is body-backed.'
+      : 'Search cancelled while waiting for the body index build: no answer was scored and nothing was returned. The build this call started continues in the background, still issuing Hudu requests. DEGRADED (index-build-cancelled): retry, or ask for tier:"vendor" for an immediate body-blind answer.';
+  // The timings are stated as what they are, not as a quiet network: `vendorMs` is 0 because no
+  // vendor-tier scoring happened, the wait is `localMs`, and the request count is NOT tracked for a
+  // cancelled wait (the SDK counts requests inside a call it completes; this one never completed).
   const advice =
     (transport === 'http'
-      ? 'The request was cancelled while the body index built, so article bodies were not searched. Retry: the body index keeps building in the background, so a later search is body-backed.'
-      : 'The request was cancelled while the body index built, so article bodies were not searched. Retry, or use tier:"vendor" for an immediate body-blind answer.') +
-    ' timings.localMs is the local body-index wait this call spent; nothing was scored or requested.';
+      ? 'The request was cancelled while the body index built, so article bodies were not scored. Retry: the body index keeps building in the background, so a later search is body-backed.'
+      : 'The request was cancelled while the body index built, so article bodies were not scored. Retry, or use tier:"vendor" for an immediate body-blind answer.') +
+    ' timings.localMs is the local body-index wait this call spent (the wait is local time, so it is reported there); timings.vendorMs is 0 because no vendor-tier scoring ran; request counts are NOT TRACKED for a cancelled wait, so timings.requests is not a count of Hudu requests.';
   return {
     text,
     data: {
@@ -191,7 +197,11 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
         failed: [],
         // `localMs` is the SDK's LOCAL time, not vendor time. Nothing was scored here, but the
         // local body-index wait IS local time this call spent, so it is reported as such rather than
-        // zeroed; `meta.reasons` names it (`index-build-cancelled`).
+        // zeroed; `meta.reasons` names it (`index-build-cancelled`). `vendorMs` is 0 because no
+        // vendor tier was scored. `requests` cannot be honest: the SDK counts a completed call's
+        // requests, this one never completed, and the walk it started keeps issuing requests in the
+        // background, so the field stays at its only representable value (the type requires a
+        // number) and the answer text says the count is NOT TRACKED for a cancelled wait.
         timings: { vendorMs: 0, localMs: elapsedMs, requests: 0 },
         scoreScope: 'per-resource',
         // Serialised size of the (empty) hits array, as the SDK reports it for a real answer.

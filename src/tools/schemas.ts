@@ -133,6 +133,19 @@ export const HITS_OUTPUT = z.object({
  * `hudu_search` returns ONE shape per mode, each echoing the mode that ran, so a response can never
  * be misread as another mode's.
  */
+/**
+ * `hudu_search` returns ONE shape per mode, each echoing the mode that ran, so a response can never
+ * be misread as another mode's.
+ *
+ * `meta` stays `z.unknown()` ON PURPOSE (#50 review 7, measured): this union is served inside the
+ * `hudu_search` entry of `tools/list`, and pinning the SDK's document vocabulary — the closed
+ * `degraded.reason` / `index.state` / `index.staleness` unions plus every published field — costs
+ * about 1.1 KB there. `hudu_search` has 228 B of headroom under its 2,900 B ceiling in the binding
+ * configuration, so a validation-only schema would break the served-surface gate it is not part of.
+ * The vocabulary is asserted where it is published instead: `test/tools/search-progress.test.ts`
+ * pins every meta field of a real answer AND of the cancelled one, including the closed
+ * `degraded.reason` union, and the SDK owns the type.
+ */
 export const SEARCH_OUTPUT = z.union([
   z.object({ mode: z.literal('search'), query: z.string(), hits: ROWS, meta: z.unknown() }),
   z.object({ mode: z.literal('help'), topic: z.string(), help: z.unknown() }),

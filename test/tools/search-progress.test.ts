@@ -218,12 +218,27 @@ describe('hudu_search progress while awaiting the body index', () => {
     expect(meta.scanned).toBe(0);
     expect(meta.returned).toBe(0);
     expect(meta.degraded.reason).toBe('body-not-indexed');
-    expect(meta.degraded.advice).toContain('not searched');
+    expect(meta.degraded.advice).toContain('not scored');
     // The SDK's closed union: no invented degraded reason value.
     expect(['no-index', 'vendor-only', 'body-not-indexed']).toContain(meta.degraded.reason);
     expect(meta.errors).toEqual([]);
     expect(meta.failed).toEqual([]);
-    expect(meta.timings).toEqual({ vendorMs: 0, localMs: expect.any(Number), requests: 0 });
+    // Honest timings, not a zeroed network. `vendorMs` is 0 because no vendor-tier scoring ran; the
+    // wait this call spent is `localMs`, the SDK's documented local time (which includes the index
+    // wait); and a request count is NOT TRACKED for a cancelled wait, so it is not asserted as a
+    // real count of zero — the answer text says so instead.
+    expect(meta.timings.vendorMs).toBe(0);
+    expect(meta.timings.localMs).toEqual(expect.any(Number));
+    expect(meta.degraded.advice).toContain('NOT TRACKED');
+    // Whoever stops awaiting the walk, the walk this call started keeps issuing Hudu requests. This
+    // answer may say no ANSWER was scored and nothing was returned; it may not claim Hudu was left
+    // untouched — these two assertions are what fail if that falsehood comes back.
+    const text = result.content[0].text as string;
+    expect(text).toContain('no answer was scored and nothing was returned');
+    expect(text).toContain('continues in the background, still issuing Hudu requests');
+    expect(text).not.toMatch(/nothing in Hudu was searched/i);
+    expect(text).not.toMatch(/nothing was scored or requested/i);
+    expect(text).not.toMatch(/nothing (was|has been) (requested|searched)/i);
     expect(meta.scoreScope).toBe('per-resource');
     expect(meta.bytes).toBe(2); // the serialised empty hits array
     // The index is exactly the SDK's KnowledgeIndexMeta: no generation was scored, so nothing

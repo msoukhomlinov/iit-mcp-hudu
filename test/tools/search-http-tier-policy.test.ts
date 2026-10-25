@@ -37,10 +37,20 @@ describe('hudu_search schema and the search tier', () => {
   });
 
   it('answers a call that still sends tier:"index" and refresh:true without awaiting the walk', async () => {
-    const session = await connectForRequest('key-a', () => Response.json([]));
-    const started = Date.now();
+    // Deterministic ordering, not a stopwatch: the corpus walk's response is held open and the
+    // answer must arrive while it is still pending. A path that awaited the walk cannot get here.
+    let walkSettled = false;
+    let releaseWalk: (() => void) | undefined;
+    const walkGate = new Promise<void>((resolve) => {
+      releaseWalk = resolve;
+    });
+    const session = await connectForRequest('key-a', async (_key, url) => {
+      if (url.includes('search=')) return Response.json([]);
+      await walkGate;
+      walkSettled = true;
+      return Response.json([]);
+    });
     const result = await session.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index', refresh: true, limit: 1, snippetChars: 0 });
-    const elapsed = Date.now() - started;
     expect(result.isError).toBeUndefined();
     // The tool path tells the same story as the invoke path: the fields it sent were overridden by
     // deployment policy, so `meta.reasons` names it and the text says so.
@@ -51,8 +61,10 @@ describe('hudu_search schema and the search tier', () => {
     // consumer's call timeout, which is the incident this asserts against.
     expect(['cold', 'refreshing']).toContain(result.structuredContent.meta.index.state);
     expect(result.structuredContent.meta.degraded).toBeTruthy();
-    expect(elapsed).toBeLessThan(2000);
+    // The proof that nothing was awaited: the walk had not settled when the answer came back.
+    expect(walkSettled).toBe(false);
     // Let the fire-and-forget background warm settle before afterEach removes the fetch stub.
+    releaseWalk?.();
     await new Promise((r) => setTimeout(r, 100));
     await session.close();
   });
@@ -65,11 +77,10 @@ describe('hudu_search schema and the search tier', () => {
       'key-a',
       (_key, url) => (url.includes('search=') ? Response.json([]) : new Promise<Response>(() => {})),
     );
-    const started = Date.now();
     const result = await session.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index', refresh: true, limit: 1, snippetChars: 0 });
-    const elapsed = Date.now() - started;
+    // No stopwatch: a walk that never resolves is itself the ordering proof — only a path that
+    // refuses to await it can answer at all.
     expect(result.isError).toBeUndefined();
-    expect(elapsed).toBeLessThan(500);
     expect(['cold', 'refreshing']).toContain(result.structuredContent.meta.index.state);
     expect(result.structuredContent.meta.degraded).toBeTruthy();
     await session.close();
@@ -122,6 +133,21 @@ describe('hudu_search schema and the search tier', () => {
       expect(tool.inputSchema.properties.tier.description).toContain('"vendor" only here');
       await session.close();
     }
+  });
+
+  it('describes HUDU_SEARCH_TIER_POLICY=index as server-side policy on a FULL corpus', async () => {
+    // The full corpus is where the byte-saving early return used to short-circuit the description:
+    // the base text says "As a tool it defaults to tier \"index\"", i.e. a caller choice, while
+    // under http no tier field is served and the tier is pure deployment policy (#50 review 7).
+    const http = await connectForRequest('key-a', () => Response.json([]), [], { HUDU_SEARCH_TIER_POLICY: 'index' });
+    const tool = await toolOf(http);
+    expect(tool.description).toContain('Tier is set server-side to "index"');
+    expect(tool.description).not.toContain('As a tool it defaults to tier');
+    expect(tool.inputSchema.properties).not.toHaveProperty('tier');
+    const help = await http.call('hudu_search', { mode: 'help' });
+    expect(help.structuredContent.help.defaults.tier).toBe('index');
+    expect(String(help.content[0].text)).toContain('HUDU_SEARCH_TIER_POLICY: index');
+    await http.close();
   });
 
   it('takes the tier from HUDU_SEARCH_TIER_POLICY when the deployment sets one', async () => {

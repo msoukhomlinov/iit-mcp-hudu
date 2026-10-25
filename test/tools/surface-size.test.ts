@@ -23,6 +23,7 @@ afterEach(() => vi.unstubAllGlobals());
  * Measured matrix (write / read-only / hudu_search, UTF-8 bytes of the served `tools/list` JSON):
  *   stdio default  27,460 / 22,732 / 2,621      http default  27,310 / 22,582 / 2,471
  *   stdio auto     27,496 / 22,768 / 2,657      http auto     27,310 / 22,582 / 2,471
+ *   stdio index    27,460 / 22,732 / 2,621      http index    27,199 / 22,471 / 2,360
  *   stdio vendor   27,511 / 22,783 / 2,672      http vendor   27,212 / 22,484 / 2,373
  * The binding configuration is `stdio` + `vendor`: 217 B of read-only headroom and 228 B of
  * `hudu_search` headroom (`MIN_HEADROOM` below).
@@ -43,7 +44,12 @@ const BUDGET_SEARCH = 2_900;
  */
 const MIN_HEADROOM = 200;
 
-const VARIANTS = ['default', 'auto', 'vendor'] as const;
+/**
+ * Every tier-policy setting the server accepts. `index` is measured separately because under `http`
+ * it is the one setting whose DESCRIPTION changed shape: the policy sentence replaces the base
+ * "defaults to tier index" sentence even on the full corpus (#50 review 7).
+ */
+const VARIANTS = ['default', 'auto', 'index', 'vendor'] as const;
 type Variant = (typeof VARIANTS)[number];
 const TRANSPORTS = ['stdio', 'http'] as const;
 type Transport = (typeof TRANSPORTS)[number];
@@ -80,10 +86,14 @@ describe('served tools/list size', () => {
   for (const transport of TRANSPORTS) {
     for (const variant of VARIANTS) {
       const label = `${transport} + tier policy ${variant}`;
-      it(`${label}: write-enabled profile stays within ${BUDGET_WRITE} B`, async () => {
+      it(`${label}: write-enabled profile stays within ${BUDGET_WRITE} B and keeps ${MIN_HEADROOM} B free`, async () => {
         const { count, size } = await measure(transport, 'all', variant);
         expect(count).toBe(19);
         expect(size, label).toBeLessThanOrEqual(BUDGET_WRITE);
+        expect(
+          BUDGET_WRITE - size,
+          `${label}: write-profile headroom under ${BUDGET_WRITE} B (an edit ate the margin; trim a description instead of raising the budget)`,
+        ).toBeGreaterThanOrEqual(MIN_HEADROOM);
       });
       it(`${label}: read-only profile stays within ${BUDGET_READ_ONLY} B and keeps ${MIN_HEADROOM} B free`, async () => {
         const { count, size } = await measure(transport, 'deny', variant);

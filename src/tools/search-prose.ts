@@ -118,6 +118,15 @@ export function adjustHelpText(ctx: ToolContext, text: string): string {
       .replace(SEARCH_DEFAULT_INDEX_SENTENCE, SEARCH_DEFAULT_VENDOR_SENTENCE);
   }
   adjusted = adjusted.replace(`\n  ${CREDENTIAL_REDACTION_LINE}`, credentialRedactionLine(ctx));
+  // Two tool-choice hints the compact served descriptions dropped. They are NOT field guidance, so
+  // they belong on this on-demand surface (help costs nothing on `tools/list`) rather than in a
+  // schema: which tool pages a collection, and which paths find a record id. The describe surface
+  // already steers the four mapped list reads to `hudu_list`; this states it for the caller who
+  // reads help instead.
+  adjusted +=
+    '\n\n  TOOL CHOICE: hudu_list pages companies, articles, assets or asset_layouts and is the ungated' +
+    ' path for those reads (hudu_read is the gated escape hatch). To find a record id, use hudu_search or' +
+    ' hudu_read <resource>.resolve; hudu_get_article_context takes an article id, not a slug.';
   // The article-format rule the tool descriptions no longer carry: the write-side passthrough is a
   // fact a caller needs BEFORE it writes, and help is the surface with room for it. Byte-for-byte
   // surface cost on `tools/list` is zero, which is why the rule lives here.
@@ -229,7 +238,11 @@ export function searchToolDescription(ctx: ToolContext): string {
   const base = toolDescription('hudu_search');
   const searchableSet = new Set(searchableResources);
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
-  if (fullSet && toolDefaultTier === 'index') return base;
+  // The early return is the "nothing to rewrite" case, and server-side policy is never nothing:
+  // under `http` with HUDU_SEARCH_TIER_POLICY=index on a full corpus the base text would say the
+  // TIER is a caller choice ("As a tool it defaults to tier \"index\""), while the field is not
+  // served at all. Policy wins over the byte saving (#50 review 7).
+  if (fullSet && toolDefaultTier === 'index' && !searchTierIsPolicy) return base;
   const defaultSentence = 'As a tool it defaults to tier "index", so results are body-complete.';
   // Same order as the help text: under `http` the tier field is not served, so the corpus refusal
   // (which names refused field values) would describe a schema the caller never sees.
