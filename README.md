@@ -279,6 +279,13 @@ articles or assets the policy is `vendor` and no index path runs, whatever the v
 `HUDU_SEARCH_INDEX_TTL` (milliseconds, default `600000`) is the body index's freshness window: past
 it a search still answers from the index it has and rebuilds in the background.
 
+The body index's text budget is derived from the process's V8 heap ceiling: a tenth of the heap,
+clamped to 8-64 MiB. The index structures cost about four times the text they hold, so a small
+container (a 512 MiB limit leaves roughly a 259 MB heap ceiling) gets a 25 MiB budget and a large
+one keeps the SDK's 64 MiB default. When the budget bites, the SDK reports `index-partial` and the
+search degrades to a shorter index — it no longer grows the heap until Node dies with
+`Reached heap limit` and restarts the container mid-search.
+
 The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the 30 s whole-call deadline are fixed, not env-tunable.
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for
 caller-named origins — a security property, not a deployment preference.

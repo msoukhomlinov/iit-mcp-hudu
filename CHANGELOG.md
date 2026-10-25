@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Fix: `hudu_search` can no longer block a caller on a cold body-index walk under `MCP_TRANSPORT=http` (#49). The served schema there omits `tier` and `refresh` (a request that still sends either is served by the policy path), the call answers from the vendor tier while the index builds in the background, and `meta.index` / `meta.degraded` report the index state and any body-blind answer. The raw `hudu_read` path to `operations.searchKnowledge` follows the same policy. New `HUDU_SEARCH_TIER_POLICY=auto|index|vendor` (default `auto` under http, `index` under stdio, `vendor` when `HUDU_SEARCH_RESOURCES` excludes the corpus) and `HUDU_SEARCH_INDEX_TTL` (milliseconds, the SDK's index TTL; default 600000). `stdio` behaviour is unchanged.
+- Fix: the body-index text budget is now sized to the process heap (`maxIndexTextBytes` = a tenth of the V8 heap ceiling, clamped to 8-64 MiB), so a 512 MiB container degrades to `index-partial` instead of dying with `Reached heap limit` and restarting mid-search (#51). The budget is derived per process, not configurable by env.
 - Docs: the Mermaid form written by the Hudu UI editor is now verified. It stores `<pre class="language-mermaid" data-id="…"><code class="language-mermaid">…</code></pre>`, the same shape the SDK writes plus editor `data-id` attributes; a Markdown round trip keeps the diagram text and drops the `data-id` attributes. Replaces the earlier "unverified" caveat.
 
 ## 0.5.1

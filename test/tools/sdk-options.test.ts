@@ -23,6 +23,10 @@ describe('fixed SDK client options', () => {
     expect(captured.length).toBeGreaterThan(0);
     for (const options of captured) {
       expect(options).toMatchObject({ profile: 'agent', cache: 'recommended', timeoutMs: 30000, cooldown: { enabled: true } });
+      // The body-index text budget follows the process heap (#51), so every client carries one.
+      const search = options.search as { maxIndexTextBytes?: number } | undefined;
+      expect(search?.maxIndexTextBytes).toBeGreaterThanOrEqual(8 * 1024 * 1024);
+      expect(search?.maxIndexTextBytes).toBeLessThanOrEqual(64 * 1024 * 1024);
     }
   });
 });

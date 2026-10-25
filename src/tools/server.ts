@@ -6,6 +6,7 @@ import { McpServer, type McpRequestContext, type McpServerFactory } from '@model
 import { createHash } from 'node:crypto';
 import { CAPABILITY_NAMES, getCapability } from 'node-hudu/capabilities';
 import { createRequire } from 'node:module';
+import { getHeapStatistics } from 'node:v8';
 import { HuduClient } from 'node-hudu';
 import { AuthError, HuduConfigError } from 'node-hudu';
 import type { AuthStrategy, HuduConfig } from 'node-hudu';
@@ -14,6 +15,7 @@ import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
+import { indexTextBudgetBytes } from '../search-budget.js';
 import { runWithCredentialShapeView, type CredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 import { answerRenamedTools } from './renamed.js';
@@ -440,8 +442,13 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // private IP. No env override: it is a security property, not a deployment preference.
     profile: 'agent',
     cache: 'recommended',
+    // The body index's text budget follows the process's own heap ceiling, so a small container
+    // degrades to `index-partial` instead of dying at the V8 heap limit (#51).
     // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
-    ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { search: { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL } }),
+    search: {
+      maxIndexTextBytes: indexTextBudgetBytes(getHeapStatistics().heap_size_limit),
+      ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL }),
+    },
     timeoutMs: 30000,
     cooldown: { enabled: true },
     // One line per Hudu request, on the success and the error path. The SDK redacts every
