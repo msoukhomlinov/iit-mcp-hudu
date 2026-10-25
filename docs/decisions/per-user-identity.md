@@ -45,6 +45,6 @@ Only needed if the link is to be reconsidered; none block Entra work.
 
 Sandbox data points (2026-10-25), Hudu 2.48.1 tenant, unauthenticated requests only:
 
-- `GET /mcp` returns 401 with `application/json`, so the MCP endpoint exists.
+- `GET /mcp` returns 401 with `application/json`, (consistent with an authenticated MCP route).
 - `GET /external_apps` returns 302 with `text/html` (a redirect, probably to login).
-- The five experiments above remain NOT run: they need OAuth client registration and a second Hudu user.
+- The five experiments above remain NOT run: they need, variously, OAuth client registration, a second Hudu user, or a Hudu upgrade.

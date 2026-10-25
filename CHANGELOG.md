@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Docs: correction to the 0.3.0 line. `articles.getContext` / `hudu_get_article_context` return an article summary with no body by default, so they set no `markdown_lossy` / `markdown_lossy_codes`; only `opts.expand: true` returns a Markdown body that can carry the signal. README, architecture note and SCOPING updated.
+- Docs: correction to the 0.3.0 line. `articles.resolve`, `articles.getContext` and `hudu_get_article_context` return an article summary with no body by default, so they set no `markdown_lossy` / `markdown_lossy_codes`; only `opts.expand: true` returns a Markdown body that can carry the signal. README and architecture note updated.
 - Docs: Mermaid stored form. Observed live, a ```mermaid fence is stored as `<pre class="language-mermaid"><code class="language-mermaid">...</code></pre>` and round-trips losslessly through `articles.get` and `patchSection`; the read path accepts both that and the bare `<pre>` form. A save made in the Hudu UI editor is not yet verified.
 - Docs: README notes that `HUDU_READ_ONLY=true` makes `hudu_write` / `hudu_delete` a JSON-RPC `-32602` "tool not found", and that `asset_passwords.deleteShare` of a missing share returns 404 `NOT_FOUND` every time; SCOPING notes the live stdio `tools/list` sizes (39,436 / 33,891 B); the per-user-identity decision record gains the 2026-10-25 sandbox data points.
 
