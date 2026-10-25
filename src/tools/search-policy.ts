@@ -156,7 +156,8 @@ export function sanitizeIndexMeta<T>(index: T): T {
 
 /**
  * The policy's verdict: the bag to dispatch, plus whether deployment policy overrode a tier or
- * refresh the caller supplied (so the dispatcher can say so in `meta.reasons` and the response text).
+ * refresh the caller supplied (so the dispatcher can say so in `meta.policyOverride` and the
+ * response text).
  */
 export type SearchInvokePolicy = { bag: Record<string, unknown>; tierOverridden: boolean };
 
@@ -189,10 +190,13 @@ export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string
       );
     }
   }
-  // Under `http` the tier is deployment policy, so this path takes the same non-blocking route as
-  // `hudu_search`: a caller-supplied `tier` or `refresh` cannot make the call wait for a walk. That
-  // override is REPORTED, never silent: the dispatcher appends `tier-policy-override` to
-  // `meta.reasons` and a clause to the response text.
+  // Under `http` the tier is deployment policy, so this path takes the same server-side route as
+  // `hudu_search`: a caller-supplied `tier` or `refresh` cannot widen it. Whether that route waits
+  // for a corpus walk is policy, not the caller: `auto` (the default) answers from the index when
+  // it is warm and from the vendor tier while it builds, never waiting; `HUDU_SEARCH_TIER_POLICY=index`
+  // waits for a complete index on both paths. That override is
+  // REPORTED, never silent: the dispatcher adds `meta.policyOverride` (`{ stripped, appliedTier }`)
+  // and a clause to the response text.
   if (searchTierIsPolicy) {
     return {
       bag: { ...input, opts: { ...opts, scope, tier: toolDefaultTier, refresh: false } },

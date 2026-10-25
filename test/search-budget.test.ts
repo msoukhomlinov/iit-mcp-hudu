@@ -4,6 +4,7 @@ import {
   MAX_INDEX_MAX_DOCS,
   MIN_INDEX_MAX_DOCS,
   SCOPED_INDEX_BUDGET_DIVISOR,
+  SCOPED_INDEX_EVICTION_TRANSIENT,
   indexTextBudgetBytes,
   scopedIndexMaxDocs,
   scopedIndexTextBudgetBytes,
@@ -36,40 +37,76 @@ describe('indexTextBudgetBytes', () => {
 });
 
 describe('scopedIndexTextBudgetBytes', () => {
-  it('never hands one client more than its share of the process pool', () => {
-    for (const heapMiB of [140, 259, 512, 816, 4096]) {
-      const total = indexTextBudgetBytes(heapMiB * MiB);
-      expect(scopedIndexTextBudgetBytes(heapMiB * MiB), `${heapMiB} MiB`).toBeLessThanOrEqual(total / SCOPED_INDEX_BUDGET_DIVISOR);
-    }
-  });
+  // The counted clients per profile are LITERALS, not a re-evaluation of the implementation's
+  // formula: three per mode cache (two clients plus one eviction of margin), so one cache counts
+  // three and the write-enabled three caches count nine. The two factors are pinned separately, so
+  // changing either fails a test here instead of rescaling both sides of every bound below.
+  const CACHES_WRITES = 3;
+  const clientsFor = (caches: number) => (caches === 1 ? 3 : 9);
 
-  it('keeps the whole cache inside the process pool', () => {
-    for (const heapMiB of [140, 259, 512, 816, 4096]) {
-      const heap = heapMiB * MiB;
-      const perClient = scopedIndexTextBudgetBytes(heap);
-      expect(perClient * SCOPED_INDEX_BUDGET_DIVISOR, `${heapMiB} MiB`).toBeLessThanOrEqual(indexTextBudgetBytes(heap));
-    }
-  });
-
-  it('is a whole MiB, at least one, and never above the pool', () => {
-    for (const heapMiB of [1, 64, 128, 259, 816, 4096]) {
-      const heap = heapMiB * MiB;
-      const share = scopedIndexTextBudgetBytes(heap);
-      expect(Number.isInteger(share / MiB), `${heapMiB} MiB`).toBe(true);
-      expect(share).toBeGreaterThanOrEqual(MiB);
-      expect(share).toBeLessThanOrEqual(indexTextBudgetBytes(heap));
-    }
-  });
-
-  it('sizes the measured heaps to 2 MiB and 6 MiB per client', () => {
-    // 259 MiB -> a 16 MiB pool; 816 MiB -> a 51 MiB pool. Eight clients either way.
-    expect(scopedIndexTextBudgetBytes(259 * MiB)).toBe(2 * MiB);
-    expect(scopedIndexTextBudgetBytes(816 * MiB)).toBe(6 * MiB);
-  });
-
-  it('divides by the same cap the client cache enforces', async () => {
+  it('counts two clients plus one eviction of margin, per mode cache', async () => {
+    expect(SCOPED_INDEX_BUDGET_DIVISOR).toBe(2);
+    expect(SCOPED_INDEX_EVICTION_TRANSIENT).toBe(1);
+    expect(clientsFor(1)).toBe(3);
+    expect(clientsFor(CACHES_WRITES)).toBe(9);
+    // The literals above assume a per-cache capacity of two, so pin the capacity the factory
+    // actually passes: a capacity-only change must not leave every bound in this file green.
     const { MAX_SCOPED_CLIENTS } = await import('../src/tools/server.js');
-    expect(SCOPED_INDEX_BUDGET_DIVISOR).toBe(MAX_SCOPED_CLIENTS);
+    expect(MAX_SCOPED_CLIENTS).toBe(2);
+  });
+
+  it('never hands one client more than its share of the process pool', () => {
+    for (const caches of [1, CACHES_WRITES]) {
+      for (const heapMiB of [140, 259, 512, 816, 4096]) {
+        const heap = heapMiB * MiB;
+        const total = indexTextBudgetBytes(heap);
+        expect(scopedIndexTextBudgetBytes(heap, caches), `${heapMiB} MiB x${caches}`).toBeLessThanOrEqual(total / clientsFor(caches));
+      }
+    }
+  });
+
+  it('keeps every counted client inside the process pool, even at the smallest heap', () => {
+    for (const caches of [1, CACHES_WRITES]) {
+      for (const heapMiB of [1, 64, 140, 259, 512, 816, 4096]) {
+        const heap = heapMiB * MiB;
+        const perClient = scopedIndexTextBudgetBytes(heap, caches);
+        expect(perClient * clientsFor(caches), `${heapMiB} MiB x${caches}`).toBeLessThanOrEqual(indexTextBudgetBytes(heap));
+      }
+    }
+  });
+
+  it('leaves no pool space unused to rounding', () => {
+    for (const caches of [1, CACHES_WRITES]) {
+      for (const heapMiB of [1, 64, 128, 259, 512, 816, 4096]) {
+        const heap = heapMiB * MiB;
+        const total = indexTextBudgetBytes(heap);
+        const share = scopedIndexTextBudgetBytes(heap, caches);
+        expect(Number.isInteger(share), `${heapMiB} MiB x${caches}`).toBe(true);
+        expect(share, `${heapMiB} MiB x${caches}`).toBeGreaterThanOrEqual(1);
+        // Only the remainder below one byte per client may stay unused.
+        expect(total - share * clientsFor(caches), `${heapMiB} MiB x${caches}`).toBeLessThan(clientsFor(caches));
+      }
+    }
+  });
+
+  it('shares a pool smaller than one MiB per counted client exactly', () => {
+    // 140 MiB of heap floors to an 8 MiB pool: nine counted clients get an exact byte share, not
+    // nine 1 MiB floors (9 MiB > 8 MiB).
+    const heap = 140 * MiB;
+    expect(indexTextBudgetBytes(heap)).toBe(8 * MiB);
+    const share = scopedIndexTextBudgetBytes(heap, CACHES_WRITES);
+    expect(share).toBeLessThan(MiB);
+    expect(share * clientsFor(CACHES_WRITES)).toBeLessThanOrEqual(indexTextBudgetBytes(heap));
+  });
+
+  it('sizes the measured heaps per profile: one cache (read-only), three (writes enabled)', () => {
+    // 259 MiB -> a 16 MiB pool; 816 MiB -> a 51 MiB pool. Literal byte counts, not a restatement of
+    // the formula: 16 MiB / 3 and / 9, 51 MiB / 3 and / 9.
+    expect(indexTextBudgetBytes(259 * MiB)).toBe(16_777_216);
+    expect(scopedIndexTextBudgetBytes(259 * MiB, 1)).toBe(5_592_405);
+    expect(scopedIndexTextBudgetBytes(259 * MiB, CACHES_WRITES)).toBe(1_864_135);
+    expect(scopedIndexTextBudgetBytes(816 * MiB, 1)).toBe(17_825_792);
+    expect(scopedIndexTextBudgetBytes(816 * MiB, CACHES_WRITES)).toBe(5_941_930);
   });
 });
 
@@ -81,18 +118,23 @@ describe('scopedIndexMaxDocs', () => {
   });
 
   it('sizes the two measured heaps to the documented caps', () => {
-    // 512 MiB container: a 16 MiB pool, 2 MiB per scoped client -> 2,048 docs per client.
+    // 512 MiB container: a 16 MiB pool, so 5.33 MiB / 5,461 documents read-only.
     const smallHeap = 259 * MiB;
-    expect(scopedIndexTextBudgetBytes(smallHeap)).toBe(2 * MiB);
-    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap))).toBe(2048);
+    expect(scopedIndexTextBudgetBytes(smallHeap, 1)).toBe(5_592_405);
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap, 1))).toBe(5461);
     expect(scopedIndexMaxDocs(indexTextBudgetBytes(smallHeap))).toBe(16_384);
-    // 1 GiB heap ceiling: the 64 MiB clamp, 8 MiB per client -> 8,192 docs per client.
+    // 1 GiB heap ceiling: the 64 MiB clamp, so 21.33 MiB / 21,845 documents read-only.
     const largeHeap = 1024 * MiB;
-    expect(scopedIndexTextBudgetBytes(largeHeap)).toBe(8 * MiB);
-    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(largeHeap))).toBe(8192);
+    expect(scopedIndexTextBudgetBytes(largeHeap, 1)).toBe(22_369_621);
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(largeHeap, 1))).toBe(21_845);
+    // Writes enabled: three per-mode caches (read, write, delete) divide the same pool by nine, so
+    // the same three heaps give 1,820 / 5,802 / 7,281 documents.
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(smallHeap, 3))).toBe(1820);
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(816 * MiB, 3))).toBe(5802);
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(largeHeap, 3))).toBe(7281);
   });
 
-  it('never exceeds the SDK default 50,000 documents, and floors at 1,500', () => {
+  it('never exceeds the SDK default 50,000 documents and never exceeds its own share', () => {
     for (const bytes of [0, 1, 1024, MiB, 25 * MiB, 64 * MiB, 1024 * MiB, Number.MAX_SAFE_INTEGER]) {
       const docs = scopedIndexMaxDocs(bytes);
       expect(Number.isInteger(docs), `${bytes}`).toBe(true);
@@ -100,13 +142,26 @@ describe('scopedIndexMaxDocs', () => {
       expect(docs, `${bytes}`).toBeGreaterThanOrEqual(MIN_INDEX_MAX_DOCS);
     }
     expect(MAX_INDEX_MAX_DOCS).toBe(50_000);
+    expect(MIN_INDEX_MAX_DOCS).toBe(1);
+    // One document per KiB, with no floor above it: the smallest write-enabled pool's share
+    // (932,067 bytes) is 910 documents, and any floor in 1..1024 revived here would make the cap
+    // exceed the share it is paired with.
+    expect(scopedIndexMaxDocs(932_067)).toBe(910);
+    expect(scopedIndexMaxDocs(1_024)).toBe(1);
+    expect(scopedIndexMaxDocs(MiB)).toBe(1_024);
+    expect(scopedIndexMaxDocs(25 * MiB)).toBe(25_600);
+    expect(scopedIndexMaxDocs(64 * MiB)).toBe(50_000);
   });
 
   it('grows with the text budget, so the two caps derive from one pool', () => {
+    // 259 MiB: a 16 MiB pool and a 5,592,405-byte read-only share, both under the SDK's 50,000
+    // document cap. The three counted clients' caps fit inside the whole pool's cap (16,383 of
+    // 16,384 documents) — the coupling the shared derivation exists for.
     const heap = 259 * MiB;
     const pool = indexTextBudgetBytes(heap);
-    const share = scopedIndexTextBudgetBytes(heap);
-    expect(scopedIndexMaxDocs(pool)).toBeGreaterThan(scopedIndexMaxDocs(share));
-    expect(scopedIndexMaxDocs(share) * SCOPED_INDEX_BUDGET_DIVISOR).toBeLessThanOrEqual(scopedIndexMaxDocs(pool));
+    const share = scopedIndexTextBudgetBytes(heap, 1);
+    expect(scopedIndexMaxDocs(pool)).toBe(16_384);
+    expect(scopedIndexMaxDocs(share)).toBe(5_461);
+    expect(scopedIndexMaxDocs(share) * 3).toBeLessThanOrEqual(scopedIndexMaxDocs(pool));
   });
 });

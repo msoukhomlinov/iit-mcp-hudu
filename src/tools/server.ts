@@ -26,12 +26,13 @@ const SERVER_NAME = 'iit-mcp-hudu';
 const SERVER_VERSION = (createRequire(import.meta.url)('../../package.json') as { version: string }).version;
 
 /**
- * The maximum number of per-(origin, credential) scoped clients kept warm in one process.
+ * The maximum number of per-(origin, credential) scoped clients ONE mode cache keeps warm in a process.
  *
  * Each scoped client owns its own Hudu knowledge index. An unbounded map would let enough distinct
  * callers grow the heap past the container limit, so the cache is capped and evicts
- * least-recently-used first. The cap is the same number the process-wide index text budget is
- * divided by (`search-budget.ts`), so eight clients share one pool instead of each claiming it.
+ * least-recently-used first. The cap is the per-cache client count the process-wide index text
+ * budget is divided by (`search-budget.ts`); the factory builds one such cache per mode entry, and
+ * the budget is divided by that count too, so the caches together stay inside the pool.
  */
 export const MAX_SCOPED_CLIENTS = SCOPED_INDEX_BUDGET_DIVISOR;
 
@@ -215,8 +216,9 @@ interface ModeEntry {
    *
    * Lazily built and cached rather than one per mode: the strategy carries the anomaly names,
    * the anomaly set is small and bounded (`CREDENTIAL_ANOMALIES`), and a fresh `HuduClient` per
-   * malformed request would let a caller allocate a client (and its 64 MB text budget) per request
-   * — which is the resource the scoped-client cap exists to protect. The cache is bounded by the
+   * malformed request would let a caller allocate a client per request — the resource the
+   * scoped-client cap exists to protect. (These clients carry the whole pool rather than a share,
+   * because each refuses before it dials, so it never builds an index.) The cache is bounded by the
    * power set of the anomalies in `CREDENTIAL_ANOMALIES` plus the empty set, i.e. it cannot grow
    * with request volume.
    */
@@ -447,7 +449,11 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // The body index's text budget follows the process's own heap ceiling, so a small container
     // reports index state "partial" instead of dying at the V8 heap limit (#51). This value is the
     // PROCESS-wide pool: the scoped clients below each take a share of it, since each materialises
-    // its own index. The parent client keeps the pool because under `stdio` it is the only client.
+    // its own index. The parent keeps the pool because under `stdio` it is the serving client and
+    // depth is the point of serving that way; with writes enabled there is one parent per mode
+    // (`read`, `write`, `delete`), so a raw `operations.searchKnowledge` invoked through the write or
+    // delete parent could build a second full-pool index (the `hudu_search` path uses the read
+    // parent only).
     // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
     search: {
       maxIndexTextBytes: poolTextBytes,
@@ -487,11 +493,17 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
         ? [...reads, ...config.HUDU_WRITE_ALLOW.filter((key) => getCapability(key)?.effect === (mode === 'delete' ? 'destructive' : 'write')).flatMap((key) => withWriteDependencies(key, mode === 'delete' ? 'destructive' : 'write'))]
         : undefined;
     const scopedOptions = { ...options, mode, reveal: false, ...(allowOperations ? { allowOperations } : {}) };
-    // ONE scoped client's share of the process pool: the cache can hold MAX_SCOPED_CLIENTS of them,
-    // so handing each the whole pool would let the process hold 8x the text it was sized for (#51).
+    // ONE scoped client's share of the process pool: each per-mode cache holds MAX_SCOPED_CLIENTS
+    // clients plus one eviction transient, and the process builds one cache per mode (`modes`,
+    // below), so handing each the whole pool would let it hold that many times the text it was
+    // sized for (#51). Divide by both factors, using the cache count the policy implies rather than
+    // how many are warm.
     // Only the per-(origin, credential) clients are divided — the parent keeps the pool, because
-    // under `stdio` it is the only client and a deeper index is the point of serving that way.
-    const scopedTextBytes = scopedIndexTextBudgetBytes(heapLimitBytes);
+    // under `stdio` it is the serving client and a deeper index is the point of serving that way
+    // (one parent per mode there, so up to three pool-sized clients with writes enabled; the
+    // `hudu_search` path uses the read parent only).
+    const indexCaches = modes.length;
+    const scopedTextBytes = scopedIndexTextBudgetBytes(heapLimitBytes, indexCaches);
     const scopedSearch = { ...options.search, maxIndexTextBytes: scopedTextBytes, maxDocs: scopedIndexMaxDocs(scopedTextBytes) };
     const parent = config.MCP_TRANSPORT === 'stdio'
       ? new HuduClient({ ...scopedOptions, apiKey: config.HUDU_API_KEY! })
@@ -523,8 +535,14 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
       ),
     };
   };
-  const read = build('read');
-  const mutations = config.HUDU_WRITE_POLICY === 'deny' ? undefined : { write: build('write'), delete: build('delete') };
+  // The per-mode caches this factory builds. ONE list drives both the caches built and the pool
+  // division (`indexCaches` above), so a change to the policy mapping cannot leave the budget
+  // describing a different number of caches than the process creates.
+  const writeModes: readonly ('write' | 'delete')[] = config.HUDU_WRITE_POLICY === 'deny' ? [] : ['write', 'delete'];
+  const modes = ['read', ...writeModes] as const;
+  const built = new Map(modes.map((mode) => [mode, build(mode)] as const));
+  const read = built.get('read')!;
+  const mutations = writeModes.length === 0 ? undefined : { write: built.get('write')!, delete: built.get('delete')! };
 
   return (ctx: McpRequestContext) => {
     const resolve = (entry: ModeEntry) => resolveHuduClient(entry, config, ctx, log);

@@ -158,8 +158,10 @@ gate on who can use it. It is only ever presented to the default
 `HUDU_BASE_URL`: a request that names some other origin and brings no key of its own gets no
 credential and fails closed, so a caller cannot aim the server's key at a host it controls. (A
 blank value, as a copied `.env.example` leaves it, is treated as unset.) Each (origin, credential)
-pair gets its own scoped client (its own search index) cached by the pair's hash and capped, so
-one caller's indexed article bodies can never answer another's search.
+pair gets its own scoped client (its own search index) cached by the pair's hash and capped — at most
+two pairs stay warm in EACH mode cache, so a credential occupies one client per cache (read, plus
+write and delete when writes are enabled) and a further scope rebuilds its index on demand — so one
+caller's indexed article bodies can never answer another's search.
 
 `HUDU_ALLOWED_BASE_HOSTS` (`http` only; required unless `HUDU_ALLOW_ANY_BASE_HOST=true`) restricts which origins a caller may name in
 `X-Hudu-Base-Url`: a comma-separated list of exact hostnames or `*.example.com` subdomain suffixes
@@ -298,7 +300,7 @@ surface headroom); the meta vocabulary is enforced by the tests that publish it
 
 The body index is bounded by TWO caps derived from the same heap estimate: a text budget and a
 document cap. The text budget is a SIXTEENTH of the process's V8 heap ceiling, clamped to 8-64 MiB;
-the document cap is one document per KiB of that budget (`maxDocs`), clamped to 1,500-50,000. Both
+the document cap is one document per KiB of that budget (`maxDocs`), capped at 50,000. Both
 travel the SDK's `search` options, so neither is an env knob. The divisor moved from 10 to 16 in
 round 11 because the tenth left no usable production margin (the arithmetic below).
 
@@ -308,28 +310,42 @@ of heap and died with `Reached heap limit` mid-search. It measured the ~90 MB ba
 4 bytes of index structures per byte of text ACTUALLY HELD, not per byte of budget: that index held
 ~41 MB of text out of its 64 MiB budget, and the peak reconciles as ~90 + 4 x 41 = ~254 MB. Read
 against the budget instead of the held text the same ratio would predict 90 + 4 x 64 = ~346 MB, which
-the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) now gets a 16 MiB pool and
-2 MiB per scoped client. A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
+the trace never saw. A 512 MiB container (roughly a 259 MB heap ceiling) now gets a 16 MiB pool,
+divided THREE ways for one read-only cache (5.33 MiB per scoped client) or nine ways when writes are
+enabled, because read, write and delete each keep their own cache and each counts one eviction of
+margin (1.78 MiB per client). The division is an exact byte quotient, so no pool space is lost to
+rounding. The share is SIZED so the cache capacity plus one eviction of margin per cache fits the
+pool; it is not an enforced peak. A scope evicted by the LRU stays resident while an in-flight
+request that resolved it finishes, and because the SDK cannot revoke a live index, concurrent
+evictions of distinct credentials can exceed the pool until those requests settle. A standalone walk of a synthetic 25,000-asset / 3,300-article tenant through
 the real SDK client under a ~262 MB V8 ceiling (an uncommitted one-off probe; `--max-semi-space-size=1`
 brings V8's reported limit to ~262 MB, while `--max-old-space-size=259` alone reports ~451 MB in
 Node 24) peaked at ~136 MiB with the ROUND-10 tenth settings; the same walk with the OLD
 64 MiB / 50,000 settings peaked at ~147 MiB. Both survived. That probe's baseline is lower than the
-server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% container-to-heap ratio; the MEASURED ratio for the 512 MiB container is ~50.6% (259 MB) — gets a 51 MiB pool and 6 MiB per scoped client; a 1024 MB heap ceiling is what reaches the 64 MiB cap.
+server's ~90 MB. A 1 GiB container's ~816 MB V8 ceiling — an ASSUMED ~80% container-to-heap ratio; the MEASURED ratio for the 512 MiB container is ~50.6% (259 MB) — gets a 51 MiB pool and 17 MiB per scoped client (5.67 MiB with writes enabled); a 1024 MB heap ceiling is
+what reaches the 64 MiB cap.
 
 The document cap exists because the text budget bounds index TEXT only: a document whose text was
 evicted keeps its record and postings, the SDK's own default is 50,000 documents, and a walk can
 reach 250 pages x 100 rows x 2 body resources. Pairing the caps bounds that overhead — a 512 MiB
-container indexes up to 2,048 documents per scoped client (16,384 for the stdio pool), a 1 GiB
-container's ~816 MB ceiling (assumed ~80%) 6,144 per client (50,000 for the pool), and only a 1024 MB ceiling 8,192. The per-document cost is an ESTIMATE (~1 KB of record
+container indexes up to 5,461 documents per scoped client read-only, 1,820 with writes (a stdio
+parent carries the whole pool instead: 16,384 documents; writes enabled builds one parent per mode,
+so up to three of them carry it), a 1 GiB container's ~816 MB ceiling (assumed ~80%) 17,408 per
+client read-only, 5,802 with writes (50,000 in a stdio parent), and only a 1024 MB ceiling 21,845
+read-only, 7,281 with writes. The per-document cost is an ESTIMATE (~1 KB of record
 plus postings per document, on top of the text ratio), so the pair bounds growth without proving a
 peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
 `maxDocs` bounds the RETAINED index, not the build-time peak; the peak during a walk is bounded by
 the heap ceiling and the text budget's eviction, not by `maxDocs`. A capped index reports index state
-`partial`, exactly as it already does when the text budget bites. All ~3,300 articles of the
-production tenant fit at the 1 GiB figure; which documents the cap truncates first on a small heap is
-INFERRED, not measured: title-only assets are the expected first loss, because they cost a record
-without carrying text. The measured end-to-end walk kept 16,384 of 28,300 documents and never
-observed which ones went first.
+`partial`, exactly as it already does when the text budget bites. WHICH documents the cap keeps is
+the SDK's choice: the freshest `updated_at` across ALL resources, so assets can outrank older
+articles. MEASURED on the production tenant with the former division by eight (6,144 documents):
+4,666 assets and 1,478 of 3,204 articles retained; 1,036 article bodies indexed, 317 evicted by the
+text budget and 3 truncated (the counts do not decompose the 1,478 — some retained articles carry no
+body text). The same measurement is why a read-only scope now gets a THIRD of the pool instead of an
+eighth: 17 MiB and 17,408 documents at 1 GiB are expected (INFERRED, not measured at this division)
+to keep all 3,204 articles and about 2,800 of their bodies, while at 512 MiB (5,461 documents) 3,204
+articles leave only 2,257 slots for assets and the loss remains.
 
 BEFORE THE DIVISOR CHANGE. The round-10 end-to-end run measured the real server (`dist/main.js`) under
 a 259 MiB V8 ceiling: peak heapUsed 187.96 MB with a 24.6 MB baseline, so the INDEX STRUCTURES cost
@@ -430,7 +446,9 @@ Every client the server builds — the parent, the fail-closed placeholders and 
   blindly.
 - `cache: 'recommended'` — fixed on: the
   per-entity read-through TTL preset (1 h structural / 5 min mutable / 1 min base). Caches are
-  per client, so per scope. The write and delete clients have their own caches, so after every `hudu_write` /
+  per client, so per scope — and a scope's client survives only while it stays in its mode cache,
+  which holds two pairs: a deployment serving more than two credentials therefore re-fetches more
+  from Hudu after an eviction, the same breadth-for-depth trade the body index makes. The write and delete clients have their own caches, so after every `hudu_write` /
   `hudu_delete` attempt that is not a dry run (including a failed or timed-out one, which may have
   applied) the server clears the read client's cache for the same scope: a record read (get, getSection, fetch_many, article context) after a write in
   the same server process is fresh. A write made by another process or deployment can still be served

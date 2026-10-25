@@ -30,7 +30,7 @@ The credential never appears in a tool schema, a log line or a result. Under htt
 
 ## 5. State (exception to the stateless baseline)
 
-A bounded LRU (`MAX_SCOPED_CLIENTS = 8`) holds per-(origin, credential) SDK clients, each with the SDK's read-through TTL cache and search body index. In-process only, never shared across credentials, never persisted. Recorded in `SCOPING.md` Exceptions.
+A bounded LRU per mode cache (`MAX_SCOPED_CLIENTS`, equal to `SCOPED_INDEX_BUDGET_DIVISOR`) holds per-(origin, credential) SDK clients, each with the SDK's read-through TTL cache and search body index. In-process only, never shared across credentials, never persisted. Recorded in `SCOPING.md` Exceptions.
 
 ## 6. Article content format
 
