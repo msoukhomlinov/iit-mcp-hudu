@@ -746,6 +746,8 @@ describe('lossy Markdown reads are signalled', () => {
       expect(result.isError).toBeUndefined();
       expect(result.structuredContent.markdown_lossy).toBeUndefined();
       expect(result.content[0].text).not.toContain('markdown_lossy');
+      // The SDK's per-record signal must never cross the boundary either.
+      expect(JSON.stringify(result)).not.toContain('content_loss');
       expect(session.urls).toHaveLength(1);
     } finally {
       await session.close();
