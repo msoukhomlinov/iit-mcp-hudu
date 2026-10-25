@@ -737,6 +737,23 @@ describe('lossy Markdown reads are signalled', () => {
     }
   });
 
+  // Pinned, documented behaviour: the SDK's getSection drops content_loss, so a section read carries
+  // no markdown_lossy signal (and costs no extra request). Callers read the whole article for it.
+  it('articles.getSection carries no markdown_lossy signal, and makes one request', async () => {
+    const session = await connect(article('<h2>Intro</h2><p>Keep</p><video src="x.mp4"></video>'));
+    try {
+      const result = await session.call('hudu_read', { operation: 'articles.getSection', input: { id: 22, heading: 'Intro' } });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.markdown_lossy).toBeUndefined();
+      expect(result.content[0].text).not.toContain('markdown_lossy');
+      // The SDK's per-record signal must never cross the boundary either.
+      expect(JSON.stringify(result)).not.toContain('content_loss');
+      expect(session.urls).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+  });
+
   const mermaidForms = {
     'bare editor-native': '<pre class="language-mermaid"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
     'legacy style + data-mermaid-id': '<pre class="language-mermaid" style="white-space: pre;" data-mermaid-id="m1"><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
