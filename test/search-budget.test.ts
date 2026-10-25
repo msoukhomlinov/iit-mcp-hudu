@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_INDEX_MAX_DOCS,
   MIN_INDEX_MAX_DOCS,
+  MAX_SCOPED_INDEX_CACHES,
   SCOPED_INDEX_BUDGET_DIVISOR,
   indexTextBudgetBytes,
   scopedIndexMaxDocs,
@@ -37,34 +38,44 @@ describe('indexTextBudgetBytes', () => {
 
 describe('scopedIndexTextBudgetBytes', () => {
   it('never hands one client more than its share of the process pool', () => {
-    for (const heapMiB of [140, 259, 512, 816, 4096]) {
-      const total = indexTextBudgetBytes(heapMiB * MiB);
-      expect(scopedIndexTextBudgetBytes(heapMiB * MiB), `${heapMiB} MiB`).toBeLessThanOrEqual(total / SCOPED_INDEX_BUDGET_DIVISOR);
+    for (const caches of [1, MAX_SCOPED_INDEX_CACHES]) {
+      for (const heapMiB of [140, 259, 512, 816, 4096]) {
+        const total = indexTextBudgetBytes(heapMiB * MiB);
+        expect(scopedIndexTextBudgetBytes(heapMiB * MiB, caches), `${heapMiB} MiB x${caches}`).toBeLessThanOrEqual(total / (SCOPED_INDEX_BUDGET_DIVISOR * caches));
+      }
     }
   });
 
-  it('keeps the whole cache inside the process pool', () => {
-    for (const heapMiB of [140, 259, 512, 816, 4096]) {
-      const heap = heapMiB * MiB;
-      const perClient = scopedIndexTextBudgetBytes(heap);
-      expect(perClient * SCOPED_INDEX_BUDGET_DIVISOR, `${heapMiB} MiB`).toBeLessThanOrEqual(indexTextBudgetBytes(heap));
+  it('keeps every per-mode cache inside the process pool', () => {
+    for (const caches of [1, MAX_SCOPED_INDEX_CACHES]) {
+      for (const heapMiB of [140, 259, 512, 816, 4096]) {
+        const heap = heapMiB * MiB;
+        const perClient = scopedIndexTextBudgetBytes(heap, caches);
+        expect(perClient * SCOPED_INDEX_BUDGET_DIVISOR * caches, `${heapMiB} MiB x${caches}`).toBeLessThanOrEqual(indexTextBudgetBytes(heap));
+      }
     }
   });
 
   it('is a whole MiB, at least one, and never above the pool', () => {
-    for (const heapMiB of [1, 64, 128, 259, 816, 4096]) {
-      const heap = heapMiB * MiB;
-      const share = scopedIndexTextBudgetBytes(heap);
-      expect(Number.isInteger(share / MiB), `${heapMiB} MiB`).toBe(true);
-      expect(share).toBeGreaterThanOrEqual(MiB);
-      expect(share).toBeLessThanOrEqual(indexTextBudgetBytes(heap));
+    for (const caches of [1, MAX_SCOPED_INDEX_CACHES]) {
+      for (const heapMiB of [1, 64, 128, 259, 816, 4096]) {
+        const heap = heapMiB * MiB;
+        const share = scopedIndexTextBudgetBytes(heap, caches);
+        expect(Number.isInteger(share / MiB), `${heapMiB} MiB x${caches}`).toBe(true);
+        expect(share).toBeGreaterThanOrEqual(MiB);
+        expect(share).toBeLessThanOrEqual(indexTextBudgetBytes(heap));
+      }
     }
   });
 
-  it('sizes the measured heaps to 8 MiB and 25 MiB per client', () => {
-    // 259 MiB -> a 16 MiB pool; 816 MiB -> a 51 MiB pool. Two clients either way.
-    expect(scopedIndexTextBudgetBytes(259 * MiB)).toBe(8 * MiB);
-    expect(scopedIndexTextBudgetBytes(816 * MiB)).toBe(25 * MiB);
+  it('sizes the measured heaps per profile: one cache (read-only), three (writes enabled)', () => {
+    // 259 MiB -> a 16 MiB pool; 816 MiB -> a 51 MiB pool.
+    expect(scopedIndexTextBudgetBytes(259 * MiB, 1)).toBe(8 * MiB);
+    expect(scopedIndexTextBudgetBytes(816 * MiB, 1)).toBe(25 * MiB);
+    // Three per-mode caches divide the same pool by six.
+    expect(MAX_SCOPED_INDEX_CACHES).toBe(3);
+    expect(scopedIndexTextBudgetBytes(259 * MiB, MAX_SCOPED_INDEX_CACHES)).toBe(2 * MiB);
+    expect(scopedIndexTextBudgetBytes(816 * MiB, MAX_SCOPED_INDEX_CACHES)).toBe(8 * MiB);
   });
 
   it('divides by the same cap the client cache enforces', async () => {
@@ -90,6 +101,8 @@ describe('scopedIndexMaxDocs', () => {
     const largeHeap = 1024 * MiB;
     expect(scopedIndexTextBudgetBytes(largeHeap)).toBe(32 * MiB);
     expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(largeHeap))).toBe(32_768);
+    // Writes enabled: three per-mode caches -> 8 MiB per client at an 816 MiB ceiling.
+    expect(scopedIndexMaxDocs(scopedIndexTextBudgetBytes(816 * MiB, MAX_SCOPED_INDEX_CACHES))).toBe(8192);
   });
 
   it('never exceeds the SDK default 50,000 documents, and floors at 1,500', () => {

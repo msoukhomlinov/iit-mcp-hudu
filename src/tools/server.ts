@@ -15,7 +15,7 @@ import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape, type CredentialAnomaly } from '../credential.js';
-import { SCOPED_INDEX_BUDGET_DIVISOR, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } from '../search-budget.js';
+import { MAX_SCOPED_INDEX_CACHES, SCOPED_INDEX_BUDGET_DIVISOR, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } from '../search-budget.js';
 import { runWithCredentialShapeView, type CredentialShapeView } from './results.js';
 import { registerTools } from './register.js';
 import { answerRenamedTools } from './renamed.js';
@@ -30,8 +30,9 @@ const SERVER_VERSION = (createRequire(import.meta.url)('../../package.json') as 
  *
  * Each scoped client owns its own Hudu knowledge index. An unbounded map would let enough distinct
  * callers grow the heap past the container limit, so the cache is capped and evicts
- * least-recently-used first. The cap is the same number the process-wide index text budget is
- * divided by (`search-budget.ts`), so two clients share one pool instead of each claiming it.
+ * least-recently-used first. The cap is the per-cache client count the process-wide index text
+ * budget is divided by (`search-budget.ts`); the factory builds one such cache per mode entry, and
+ * the budget is divided by that count too, so the caches together stay inside the pool.
  */
 export const MAX_SCOPED_CLIENTS = SCOPED_INDEX_BUDGET_DIVISOR;
 
@@ -487,12 +488,14 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
         ? [...reads, ...config.HUDU_WRITE_ALLOW.filter((key) => getCapability(key)?.effect === (mode === 'delete' ? 'destructive' : 'write')).flatMap((key) => withWriteDependencies(key, mode === 'delete' ? 'destructive' : 'write'))]
         : undefined;
     const scopedOptions = { ...options, mode, reveal: false, ...(allowOperations ? { allowOperations } : {}) };
-    // ONE scoped client's share of the process pool: the cache can hold MAX_SCOPED_CLIENTS of them,
-    // so handing each the whole pool would let the process hold MAX_SCOPED_CLIENTS times the text it
-    // was sized for (#51).
+    // ONE scoped client's share of the process pool: the process can hold MAX_SCOPED_CLIENTS clients
+    // in EACH per-mode cache (read, plus write and delete when writes are enabled), so handing each
+    // the whole pool would let it hold that many times the text it was sized for (#51). Divide by
+    // both factors, using the cache count the policy implies rather than how many are warm.
     // Only the per-(origin, credential) clients are divided — the parent keeps the pool, because
     // under `stdio` it is the only client and a deeper index is the point of serving that way.
-    const scopedTextBytes = scopedIndexTextBudgetBytes(heapLimitBytes);
+    const indexCaches = config.HUDU_WRITE_POLICY === 'deny' ? 1 : MAX_SCOPED_INDEX_CACHES;
+    const scopedTextBytes = scopedIndexTextBudgetBytes(heapLimitBytes, indexCaches);
     const scopedSearch = { ...options.search, maxIndexTextBytes: scopedTextBytes, maxDocs: scopedIndexMaxDocs(scopedTextBytes) };
     const parent = config.MCP_TRANSPORT === 'stdio'
       ? new HuduClient({ ...scopedOptions, apiKey: config.HUDU_API_KEY! })

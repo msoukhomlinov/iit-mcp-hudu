@@ -16,7 +16,7 @@ vi.mock('node-hudu', async (importOriginal) => {
 
 const { connect, connectForRequest } = await import('../helpers/mcp-session.js');
 const { MAX_SCOPED_CLIENTS } = await import('../../src/tools/server.js');
-const { indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } = await import('../../src/search-budget.js');
+const { MAX_SCOPED_INDEX_CACHES, indexTextBudgetBytes, scopedIndexMaxDocs, scopedIndexTextBudgetBytes } = await import('../../src/search-budget.js');
 const { getHeapStatistics } = await import('node:v8');
 
 describe('fixed SDK client options', () => {
@@ -66,13 +66,15 @@ describe('body-index text budget is pooled per process', () => {
     await session.close();
     const heap = getHeapStatistics().heap_size_limit;
     const pool = indexTextBudgetBytes(heap);
-    const share = scopedIndexTextBudgetBytes(heap);
+    // This fixture enables writes (HUDU_WRITE_POLICY: "all"), so the factory builds three per-mode
+    // caches and the share is the pool divided by clients x caches.
+    const share = scopedIndexTextBudgetBytes(heap, MAX_SCOPED_INDEX_CACHES);
     const budgets = captured.map((options) => (options.search as { maxIndexTextBytes: number }).maxIndexTextBytes);
     expect(budgets).toContain(pool);
     const scoped = budgets.filter((b) => b === share);
     expect(scoped.length).toBeGreaterThan(0);
-    // The cache cannot hold more than the pool, however many scopes are warm.
-    expect(scoped.length * MAX_SCOPED_CLIENTS).toBeLessThanOrEqual(pool);
+    // All the per-mode caches together cannot hold more than the pool.
+    expect(scoped.length * MAX_SCOPED_CLIENTS * MAX_SCOPED_INDEX_CACHES).toBeLessThanOrEqual(pool);
     expect(budgets.every((b) => b <= pool)).toBe(true);
   });
 
@@ -83,7 +85,7 @@ describe('body-index text budget is pooled per process', () => {
     await session.close();
     const searches = captured.map((options) => options.search as { maxIndexTextBytes: number; maxDocs: number });
     const pool = indexTextBudgetBytes(getHeapStatistics().heap_size_limit);
-    const share = scopedIndexTextBudgetBytes(getHeapStatistics().heap_size_limit);
+    const share = scopedIndexTextBudgetBytes(getHeapStatistics().heap_size_limit, MAX_SCOPED_INDEX_CACHES);
     // The stdio/http parent (the pool) and each scoped client (a share) both carry a derived cap.
     expect(searches.some((s) => s.maxIndexTextBytes === pool && s.maxDocs === scopedIndexMaxDocs(pool))).toBe(true);
     expect(searches.some((s) => s.maxIndexTextBytes === share && s.maxDocs === scopedIndexMaxDocs(share))).toBe(true);
