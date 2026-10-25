@@ -80,10 +80,11 @@ export const SCOPED_INDEX_EVICTION_TRANSIENT = 1;
  *
  * POOL FRACTION: the budget is per PROCESS, not per client. Up to
  * {@link SCOPED_INDEX_BUDGET_DIVISOR} scoped clients stay warm in each per-mode cache and each owns a
- * body index, so each is handed only {@link scopedIndexTextBudgetBytes} (the pool divided by the
- * per-cache client count and again by the number of caches). The trade: several credentials build shallower indexes (a scope
- * that hits its share reports index state "partial"); needing depth means raising the container
- * memory or serving over stdio, where one credential owns the whole pool.
+ * body index, so each is handed only {@link scopedIndexTextBudgetBytes}: the pool divided by
+ * ({@link SCOPED_INDEX_BUDGET_DIVISOR} clients + {@link SCOPED_INDEX_EVICTION_TRANSIENT} eviction of
+ * margin) times the number of caches. The trade: several credentials build shallower indexes (a
+ * scope that hits its share reports index state "partial"); needing depth means raising the
+ * container memory or serving over stdio, where the serving client owns the whole pool.
  *
  * MEASURED on the production tenant (2026-10-26), with the former division by eight: a scope retained
  * 4,666 assets and 1,478 of 3,204 articles, indexed 1,036 article bodies, and had evicted 317 bodies

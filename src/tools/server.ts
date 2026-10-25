@@ -449,7 +449,11 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // The body index's text budget follows the process's own heap ceiling, so a small container
     // reports index state "partial" instead of dying at the V8 heap limit (#51). This value is the
     // PROCESS-wide pool: the scoped clients below each take a share of it, since each materialises
-    // its own index. The parent client keeps the pool because under `stdio` it is the only client.
+    // its own index. The parent keeps the pool because under `stdio` it is the serving client and
+    // depth is the point of serving that way; with writes enabled there is one parent per mode
+    // (`read`, `write`, `delete`), so a raw `operations.searchKnowledge` invoked through the write or
+    // delete parent could build a second full-pool index (the `hudu_search` path uses the read
+    // parent only).
     // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
     search: {
       maxIndexTextBytes: poolTextBytes,
@@ -495,7 +499,9 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // sized for (#51). Divide by both factors, using the cache count the policy implies rather than
     // how many are warm.
     // Only the per-(origin, credential) clients are divided — the parent keeps the pool, because
-    // under `stdio` it is the only client and a deeper index is the point of serving that way.
+    // under `stdio` it is the serving client and a deeper index is the point of serving that way
+    // (one parent per mode there, so up to three pool-sized clients with writes enabled; the
+    // `hudu_search` path uses the read parent only).
     const indexCaches = modes.length;
     const scopedTextBytes = scopedIndexTextBudgetBytes(heapLimitBytes, indexCaches);
     const scopedSearch = { ...options.search, maxIndexTextBytes: scopedTextBytes, maxDocs: scopedIndexMaxDocs(scopedTextBytes) };

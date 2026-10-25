@@ -189,9 +189,11 @@ export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string
       );
     }
   }
-  // Under `http` the tier is deployment policy, so this path takes the same non-blocking route as
-  // `hudu_search`: a caller-supplied `tier` or `refresh` cannot make the call wait for a walk. That
-  // override is REPORTED, never silent: the dispatcher appends `tier-policy-override` to
+  // Under `http` the tier is deployment policy, so this path takes the same server-side route as
+  // `hudu_search`: a caller-supplied `tier` or `refresh` cannot widen it. Whether that route waits
+  // for a corpus walk is policy, not the caller: `auto` (the default) answers from the vendor tier,
+  // `HUDU_SEARCH_TIER_POLICY=index` waits for a complete index on both paths. That override is
+  // REPORTED, never silent: the dispatcher appends `tier-policy-override` to
   // `meta.reasons` and a clause to the response text.
   if (searchTierIsPolicy) {
     return {
