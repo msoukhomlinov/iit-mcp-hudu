@@ -56,9 +56,18 @@ describe('hudu_read search refusal ordering', () => {
     const s = await connectForRequest('caller-key', never, [], DEFAULTS, 'https://other.invalid');
     const r = await s.call('hudu_read', { operation: 'operations.searchAcrossResources', input: { query: 'reset', opts: { resources: ['articles'] } } });
     const body = JSON.parse(r.content[0]!.text);
-    expect(body).toMatchObject({ code: 'AUTH_ERROR', category: 'auth' });
-    expect(body.operation).toEqual(expect.any(String));
-    expect(body.message).toContain('attempt 1');
+    // The SDK's own envelope, recorded: it names the failing operation and carries the request
+    // line with 'attempt 1'. The early refusal (upfrontRefusal) has neither, so applying it to a
+    // non-isolating call would change these bytes.
+    expect(body).toEqual({
+      error: true,
+      code: 'AUTH_ERROR',
+      category: 'auth',
+      retryable: false,
+      operation: 'articles.search',
+      message: 'Auth strategy "x-hudu-base-url host not allowed" did not produce usable credential headers for GET /articles (attempt 1); no request was sent',
+      suggestedAction: 'Fix the auth strategy: headers(ctx) must return at least one non-empty header.',
+    });
     expect(s.urls).toEqual([]);
     await s.close();
   });
