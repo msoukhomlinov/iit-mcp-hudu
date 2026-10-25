@@ -3,6 +3,7 @@
  * `expand: true` (issue #22). Hudu is stubbed at `globalThis.fetch` by the shared session harness.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { COMPACT_FIELDS } from '../../src/tools/lists.js';
 import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -40,5 +41,18 @@ describe('hudu_list compact rows', () => {
     const full = await session.call('hudu_list', { resource: 'asset_layouts', expand: true });
     expect(full.structuredContent.rows[0]).toMatchObject(row);
     await session.close();
+  });
+});
+
+// Pinned explicitly: the SDK exports no runtime projection, so a node-hudu bump that changes a
+// `*Summary` shape must be reviewed here by hand.
+describe('COMPACT_FIELDS', () => {
+  it('pins the compact field list per resource', () => {
+    expect(COMPACT_FIELDS).toEqual({
+      companies: ['id', 'name', 'nickname', 'slug', 'website', 'phone_number', 'city', 'state', 'id_number', 'archived', 'url', 'created_at', 'updated_at'],
+      articles: ['id', 'name', 'slug', 'company_id', 'folder_id', 'draft', 'enable_sharing', 'url', 'created_at', 'updated_at'],
+      assets: ['id', 'name', 'company_id', 'company_name', 'asset_layout_id', 'primary_serial', 'asset_type', 'archived', 'url', 'created_at', 'updated_at'],
+      asset_layouts: ['id', 'name', 'slug', 'active', 'icon', 'color', 'url', 'created_at', 'updated_at'],
+    });
   });
 });

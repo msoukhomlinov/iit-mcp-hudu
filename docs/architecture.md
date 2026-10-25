@@ -34,7 +34,7 @@ A bounded LRU (`MAX_SCOPED_CLIENTS = 8`) holds per-(origin, credential) SDK clie
 
 ## 6. Article content format
 
-`hudu_read` and `hudu_write` pass `contentFormat: 'markdown'`; `hudu_get_article_context` asks for Markdown. A write whose body opens with block HTML is sent as HTML. List, search, fetch-many and company-context rows carry stored HTML because those operations take no format. The tool descriptions say so (`ARTICLE_FORMAT_NOTE`).
+`hudu_read` and `hudu_write` pass `contentFormat: 'markdown'`; `hudu_get_article_context` asks for Markdown. A write whose body opens with block HTML is sent as HTML. Fetch-many, `articles.list` (via `hudu_read`), search and company-context rows carry stored HTML because those operations take no format; `hudu_list` article rows carry no body unless `expand: true`. The tool descriptions say so (`ARTICLE_FORMAT_NOTE`, and a shorter note on `hudu_list`).
 
 ## 7. Configuration
 

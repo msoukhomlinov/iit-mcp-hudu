@@ -8,9 +8,9 @@ import { connect } from '../helpers/mcp-session.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// Measured after the hudu_list `expand` argument and compact-row sentence (issue #22): 39,633 / 34,088 (both under the 40,000 B target).
-const BUDGET_ALL = 39_850;
-const BUDGET_DENY = 34_270;
+// Measured after the markdown_lossy output fields and note clause: 39,473 / 33,928 (both under the 40,000 B target).
+const BUDGET_ALL = 39_600;
+const BUDGET_DENY = 34_050;
 
 const bytes = async (policy: 'all' | 'deny') => {
   const session = await connect(undefined, { HUDU_WRITE_POLICY: policy });

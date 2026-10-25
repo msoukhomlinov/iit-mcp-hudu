@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Behaviour change: `hudu_list` serves compact summary rows by default (the node-hudu `*Summary` field sets, plus `url` / `updated_at`) instead of full records, cutting a default page from ~49-88k to under 20k characters. `expand: true` returns the full records as before. Envelope, `page_size` default 25 and `asset_layouts` paging (no `page_size`) are unchanged. Callers that read custom `fields`, article `content` or layout `fields` from list rows must pass `expand: true` (issue #22). The served-surface size budgets are re-ratcheted to 39,850 / 34,270 bytes for the new argument and description sentence.
+- Behaviour change: `hudu_list` serves compact summary rows by default (the node-hudu `*Summary` field sets, plus `url` / `updated_at`) instead of full records, cutting a default page from ~49-88k to under 20k characters. `expand: true` returns the full records as before. Envelope, `page_size` default 25 and `asset_layouts` paging (no `page_size`) are unchanged. Callers that read custom `fields`, article `content` or layout `fields` from list rows must pass `expand: true` (issue #22).
 
 ## 0.3.0
 
