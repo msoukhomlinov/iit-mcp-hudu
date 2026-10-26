@@ -86,7 +86,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         // The Typesense probe is deployment configuration, not the caller's question, so it rides on
         // this answer only — and only when the tier is configured. It never fails the read: Hudu's
         // document is the answer, and `reachable: false` is a fact about the endpoint, not an error.
-        const typesense = await probeTypesense(hudu, config);
+        const typesense = typesenseConfigured ? await probeTypesense(hudu, config) : undefined;
         if (typesense === undefined) return oneResult('api info', record);
         return ok(record === null ? 'No api info matched.' : 'api info resolved.', {
           found: record !== null,

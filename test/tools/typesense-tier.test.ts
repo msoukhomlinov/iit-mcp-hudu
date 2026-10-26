@@ -10,6 +10,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../src/config.js';
+import { probeTypesense } from '../../src/tools/typesense-probe.js';
 import { runDoctor } from '../../src/doctor.js';
 import { bodySourceNote } from '../../src/tools/results.js';
 import { connect, connectForRequest, type Session } from '../helpers/mcp-session.js';
@@ -173,6 +174,64 @@ describe('hudu_get_api_info — the Typesense probe', () => {
     const result = await session.call('hudu_get_api_info', {});
     expect(result.structuredContent).not.toHaveProperty('typesense');
     await session.close();
+  });
+});
+
+describe('probeTypesense — the SDK call site', () => {
+  const config = loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE });
+  const host = (operations?: unknown) => ({ operations }) as unknown as Parameters<typeof probeTypesense>[0];
+
+  it('dials nothing and reports configured:false when the tier is unconfigured', async () => {
+    let dialed = 0;
+    const report = await probeTypesense(
+      host({ probeBodySearch: async () => (dialed++, { configured: true, collections: [], reachable: true, probeMs: 1 }) }),
+      loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123' }),
+    );
+    expect(dialed).toBe(0);
+    expect(report).toEqual({ configured: false, reachable: false, collections: [], probeMs: 0 });
+  });
+
+  it('maps the agreed 0.21.0 shape, including an error code', async () => {
+    const report = await probeTypesense(
+      host({
+        probeBodySearch: async () => ({
+          configured: true,
+          collections: ['arts', 'assets'],
+          reachable: false,
+          probeMs: 12,
+          error: { code: 'TYPESENSE_UNAUTHORIZED', message: 'search-only key rejected' },
+        }),
+      }),
+      config,
+    );
+    expect(report).toEqual({
+      configured: true,
+      reachable: false,
+      collections: ['arts', 'assets'],
+      probeMs: 12,
+      error: { code: 'TYPESENSE_UNAUTHORIZED', message: 'search-only key rejected' },
+    });
+  });
+
+  it('never fails the read when the probe throws, and carries no key', async () => {
+    const report = await probeTypesense(
+      host({
+        probeBodySearch: async () => {
+          throw Object.assign(new Error('boom'), { code: 'TYPESENSE_UNAVAILABLE' });
+        },
+      }),
+      config,
+    );
+    expect(report).toMatchObject({ configured: true, reachable: false, error: { code: 'TYPESENSE_UNAVAILABLE' } });
+    expect(JSON.stringify(report)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
+  });
+
+  it('reports reachable:false without dialing when the installed SDK has no probe (0.20.0)', async () => {
+    for (const operations of [undefined, {}, { probeBodySearch: 'not-a-function' }]) {
+      const report = await probeTypesense(host(operations), config);
+      expect(report).toMatchObject({ configured: true, reachable: false, collections: ['articles', 'assets'] });
+      expect(report.error).toBeUndefined();
+    }
   });
 });
 

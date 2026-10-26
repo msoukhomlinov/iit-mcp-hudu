@@ -2,62 +2,91 @@
  * typesense-probe.ts — the one live Typesense question `hudu_get_api_info` answers.
  *
  * A zero-wire `doctor` cannot report reachability (that is its whole contract), so the live probe
- * lives on a tool that is already a wire call. The probe itself belongs to the SDK (DESIGN §3 WP-2:
- * `TypesenseClient.probe()`, one `per_page=0` search that a search-only key may run); this module
- * only guards its call site.
+ * lives on a tool that is already a wire call. The request itself belongs to the SDK: one
+ * `q=*&per_page=0` search against the articles collection that a search-only key may run, and never
+ * a `GET /collections` (a search-only key cannot, and the collection names are configuration here).
  *
- * TODO(verify with node-hudu@0.21.0): 0.20.0 exposes no probe, so the accessor below is written
- * against the shape the SDK is expected to publish — `client.search.typesense.probe()`, i.e. the
- * `search.typesense` block this server already passes as config. Until 0.21.0 lands, a configured
- * deployment reports `reachable: false` and nothing is dialed, which is the honest answer: with no
- * probe there is no evidence either way, and claiming reachable would be a lie a caller could act on.
- * When the SDK lands, `probeTypesense` becomes a two-line function and the guard is deleted.
+ * TODO(drop when node-hudu@0.21.0 lands): 0.20.0 has no probe at all, so `probeBodySearch` is
+ * reached through the structural host below and one boundary cast. The agreed 0.21.0 contract
+ * (node-hudu#124) is `operations.probeBodySearch(): Promise<KnowledgeSearchBackendProbe>` returning
+ * `{ configured, collections, reachable, probeMs, error?: { code, message } }`, exported from the
+ * package root, never throwing. When the SDK lands, this module is a thin normaliser and the cast and
+ * the feature-detect are deleted together.
  */
 import type { HuduClient } from 'node-hudu';
 import { typesenseSearchBlock, type Config } from '../config.js';
 
-/** What `hudu_get_api_info` publishes. Always absent when the tier is unconfigured. */
+/** What `hudu_get_api_info` publishes. Always absent from the answer when the tier is unconfigured. */
 export interface TypesenseProbeReport {
-  configured: true;
+  configured: boolean;
   reachable: boolean;
   collections: string[];
   probeMs: number;
+  /** Why the endpoint did not answer, when the SDK reported a code. Never carries the key. */
+  error?: { code: string; message: string };
 }
 
-/** The SDK's probe result: a union, so a failure carries a code rather than a bare false. */
-interface SdkProbeResult {
-  ok: boolean;
-  code?: string;
-  message?: string;
+/** The SDK's agreed 0.21.0 probe result (node-hudu#124). */
+interface SdkBodyProbeReport {
+  configured: boolean;
+  collections: string[];
+  reachable: boolean;
+  probeMs: number;
+  error?: { code: string; message: string };
 }
 
-/** The 0.21.0 surface this call site assumes; see the module comment. */
-interface TypesenseProbeHost {
-  search?: { typesense?: { probe?: () => Promise<SdkProbeResult> } };
+/** The 0.21.0 surface this call site assumes: a method on `operations`. */
+interface BodyProbeHost {
+  operations?: { probeBodySearch?: () => Promise<SdkBodyProbeReport> };
 }
+
+const NOT_PROBED: Omit<TypesenseProbeReport, 'collections'> = {
+  configured: true,
+  reachable: false,
+  probeMs: 0,
+};
 
 /**
  * Ask the SDK whether the configured Typesense endpoint answers.
  *
- * @returns the report, or `undefined` when the deployment configured no tier — in which case the
- *   caller adds no field at all rather than a `configured: false` row.
+ * - unconfigured: `{ configured: false, reachable: false }` and no request at all — the caller
+ *   omits the field entirely, so this shape is for direct callers and tests.
+ * - 0.20.0 (no `probeBodySearch`): `reachable: false`, nothing dialed. An absent method is a
+ *   documented gap in the installed SDK, not an error, so the branch is feature-detected rather
+ *   than allowed to throw a TypeError. Claiming reachable without evidence would be a lie a caller
+ *   could act on.
+ * - configured and present: the SDK's answer, mapped; a throw or a rejection becomes
+ *   `reachable: false` with whatever code came back.
  */
-export async function probeTypesense(hudu: HuduClient, config: Config): Promise<TypesenseProbeReport | undefined> {
+export async function probeTypesense(hudu: HuduClient, config: Config): Promise<TypesenseProbeReport> {
   const block = typesenseSearchBlock(config);
-  if (block === undefined) return undefined;
+  if (block === undefined) return { configured: false, reachable: false, collections: [], probeMs: 0 };
   const collections = [block.collections.articles, block.collections.assets];
   const started = Date.now();
-  const host = hudu as unknown as TypesenseProbeHost;
-  const probe = host.search?.typesense?.probe;
+  const host = hudu as unknown as BodyProbeHost;
+  const probe = host.operations?.probeBodySearch;
   if (typeof probe !== 'function') {
-    return { configured: true, reachable: false, collections, probeMs: Date.now() - started };
+    return { ...NOT_PROBED, collections, probeMs: Date.now() - started };
   }
   try {
-    const result = await probe.call(host.search!.typesense);
-    return { configured: true, reachable: result.ok === true, collections, probeMs: Date.now() - started };
-  } catch {
+    const result = await probe.call(host.operations);
+    return {
+      // The SDK is asked about this very block, so its `configured` cannot disagree with ours.
+      configured: true,
+      reachable: result.reachable === true,
+      collections: Array.isArray(result.collections) && result.collections.length > 0 ? result.collections : collections,
+      probeMs: typeof result.probeMs === 'number' ? result.probeMs : Date.now() - started,
+      ...(result.error ? { error: { code: result.error.code, message: result.error.message } } : {}),
+    };
+  } catch (error) {
     // A probe is an advisory fact, never the reason a tool call fails: Hudu's own document is the
     // answer, and an unreachable endpoint is reported as such.
-    return { configured: true, reachable: false, collections, probeMs: Date.now() - started };
+    const code = (error as { code?: unknown }).code;
+    return {
+      ...NOT_PROBED,
+      collections,
+      probeMs: Date.now() - started,
+      ...(typeof code === 'string' ? { error: { code, message: 'probe failed' } } : {}),
+    };
   }
 }
