@@ -9,7 +9,7 @@
  *   wait for), a caller is told which body source answered, and the report/probe carry no key.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createClient } from 'node-hudu';
+import { TYPESENSE_DEGRADED_REASONS as SDK_DEGRADED_REASONS, createClient, isDisclosureReason } from 'node-hudu';
 import { loadConfig } from '../../src/config.js';
 import { TYPESENSE_DEGRADED_REASONS } from '../../src/tools/search-prose.js';
 import type { McpServer } from '@modelcontextprotocol/server';
@@ -28,6 +28,21 @@ const TYPESENSE = {
 } as const;
 
 const CORPUS_EXCLUDED = { HUDU_SEARCH_RESOURCES: ['companies'] };
+
+/** The URL a stubbed `fetch` was handed, for hosts that answer differently. */
+function urlOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return (input as Request).url;
+}
+
+/** Hudu-shaped for the Hudu host, Typesense-shaped for the Typesense host — never one stub for both. */
+function typesenseOrHudu(input: RequestInfo | URL): Response {
+  const url = urlOf(input);
+  return url.includes('typesense.example.com')
+    ? Response.json({ found: 0, hits: [], out_of: 0, page: 1, request_params: {} })
+    : Response.json({ version: 'as-test', date: '2026-01-01' });
+}
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -124,6 +139,7 @@ describe('hudu_search schema and prose', () => {
       'typesense-hits-stale',
       'typesense-hits-unhydratable',
     ]);
+
     // Every reason is in the help, in that order, and each carries its operator action...
     let cursor = -1;
     for (const reason of TYPESENSE_DEGRADED_REASONS) {
@@ -153,12 +169,13 @@ describe('hudu_search schema and prose', () => {
     // The config bug must not read as an outage, and the data problem must not read as staleness.
     expect(text).toContain('this is not an');
     expect(text).toContain('the data is the cause, not staleness');
-    // Staleness explains the 403/404 split truthfully, and the open question stays a LIMITATION.
-    expect(text).toContain('LIMITATION:');
+    // Staleness explains the 403/404 split truthfully, and the open question stays named as one.
+    // The clause is deliberately SHORT: the served surface is measured, so the detail lives in the
+    // README and the four facts a caller acts on stay in the help text.
+    expect(text).toContain('403 vs 404');
     expect(text).toContain('unverified upstream');
     expect(text).toContain('404 is a silent stale drop');
-    expect(text).toContain('403 is');
-    expect(text).toContain('surfaced read failure');
+    expect(text).toContain('403 a surfaced failure');
     expect(text).toContain('complete:false');
     expect(text).toContain('meta.errors');
     // The old claim (a 403 folded into the silent-drop path) must never come back.
@@ -241,7 +258,7 @@ describe('meta.bodySource in the compact header', () => {
     expect(bodySourceNote({ bodySource: 'typesense' })).toBe(' body source: typesense.');
     expect(bodySourceNote({ bodySource: 'index' })).toBe(' body source: index.');
     expect(bodySourceNote({ bodySource: 'none' })).toBe(' body source: none.');
-    // node-hudu 0.20.0 never sets the field; an unknown value is not vocabulary this server invents.
+    // An ABSENT or unknown value prints nothing: the note repeats the SDK's word and never invents one.
     expect(bodySourceNote({})).toBe('');
     expect(bodySourceNote({ bodySource: 'elsewhere' })).toBe('');
     expect(bodySourceNote(undefined)).toBe('');
@@ -251,22 +268,23 @@ describe('meta.bodySource in the compact header', () => {
 describe('hudu_get_api_info — the Typesense probe', () => {
   it('reports configured, reachable, collections and probeMs when the tier is on', async () => {
     const session = await stdioSession(TYPESENSE);
-    vi.stubGlobal('fetch', async () => Response.json({ version: 'as-test', date: '2026-01-01' }));
+    // Two hosts, two shapes: the Hudu read answers `api_info`, the Typesense search answers the one
+    // `q=*&per_page=0` probe request. A single Hudu-shaped stub would make the probe fail the parse
+    // and report TYPESENSE_QUERY_ERROR — a stub artefact, not the behaviour under test.
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => typesenseOrHudu(input));
     const result = await session.call('hudu_get_api_info', {});
     expect(result.isError).toBeUndefined();
     const typesense = result.structuredContent.typesense;
-    // 0.20.0 has no probe in its capability registry, so the build-time question fails first and the
-    // report says which question failed — it does not pretend the endpoint was unreachable.
     expect(typesense).toMatchObject({
       configured: true,
-      reachable: false,
+      reachable: true,
       collections: ['articles', 'assets'],
-      error: { code: 'NOT_IMPLEMENTED', message: 'this SDK version has no operations.probeBodySearch' },
     });
+    expect(typesense.error).toBeUndefined();
     expect(typeof typesense.probeMs).toBe('number');
     // The output schema is deliberately open (`z.unknown()`), so the SHAPE is asserted here instead:
     // exactly these keys, and `error` only when the probe could not answer.
-    expect(Object.keys(typesense).sort()).toEqual(['collections', 'configured', 'error', 'probeMs', 'reachable']);
+    expect(Object.keys(typesense).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
     // The probe must never fail the read, and it carries no key and no endpoint.
     expect(JSON.stringify(result.structuredContent)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
     expect(JSON.stringify(result.structuredContent)).not.toContain('typesense.example.com');
@@ -278,20 +296,42 @@ describe('hudu_get_api_info — the Typesense probe', () => {
     expect(report).toEqual({ configured: false, reachable: false, collections: [], probeMs: 0 });
   });
 
-  // TODO(node-hudu@0.21.0), a checklist item on #56: activates with the bump, and until it runs the
-  // bump must not land. It asserts the DEFAULT read policy PERMITS the operation (membership, not
-  // "does not throw") and that the permitted call returns the typed result with no error.
-  it.skip('the default read policy permits probeBodySearch, and the call returns its typed result', async () => {
-    const client = createClient({ baseUrl: 'https://hudu.example.com', apiKey: 'k-123' }) as unknown as {
-      operations: Record<string, unknown>;
-    };
+  // The #56 bump checklist item, live on node-hudu 0.21.0. It asserts the DEFAULT read policy
+  // PERMITS the operation — membership on `operations`, not merely "the call does not throw" — and
+  // that the permitted call returns the typed result with no error.
+  it('the default read policy permits probeBodySearch, and the call returns its typed result', async () => {
+    // The probe asks the CLIENT's own `search.typesense` block, so the client must carry the same
+    // block the MCP config maps in — a client without it answers configured:false and dials nothing.
+    const client = createClient({
+      baseUrl: 'https://hudu.example.com',
+      apiKey: 'k-123',
+      search: { typesense: { url: TYPESENSE.HUDU_TYPESENSE_URL, apiKey: TYPESENSE.HUDU_TYPESENSE_API_KEY } },
+    });
     expect('probeBodySearch' in client.operations).toBe(true);
     // The SDK dials its own Typesense endpoint; a search-only `per_page=0` answer is all it needs.
-    vi.stubGlobal('fetch', async () => Response.json({ found: 3, hits: [], out_of: 3, page: 1, request_params: {} }));
+    const wire: { path: string; params: URLSearchParams }[] = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = new URL(urlOf(input));
+      if (url.host !== 'typesense.example.com') return Response.json({ version: 'as-test', date: '2026-01-01' });
+      wire.push({ path: url.pathname, params: url.searchParams });
+      return Response.json({ found: 3, hits: [], out_of: 3, page: 1, request_params: {} });
+    });
     const report = await probeTypesense(
-      client as never,
+      client,
       loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE }),
     );
+    expect(wire).toHaveLength(1);
+    // The contract that keeps a SEARCH-ONLY key sufficient: one document search, both parameters the
+    // SDK sends, asserted by name — a `q` that is not `*` or a missing `query_by` is a different request.
+    expect(wire[0].path).toBe('/collections/articles/documents/search');
+    expect(wire[0].params.get('q')).toBe('*');
+    expect(wire[0].params.get('query_by')).toBe('name');
+    expect(wire[0].params.get('per_page')).toBe('0');
+    // And no schema listing, asserted on the PATHS rather than on a query string: `/collections` has
+    // no query, so a `not.toContain('/collections?')` check could never catch it. The only path that
+    // may start `/collections/` is the search endpoint above.
+    const listings = wire.filter((r) => r.path === '/collections' || (r.path.startsWith('/collections/') && r.path !== '/collections/articles/documents/search'));
+    expect(listings).toEqual([]);
     expect(report).toEqual({
       configured: true,
       reachable: true,
@@ -300,6 +340,7 @@ describe('hudu_get_api_info — the Typesense probe', () => {
     });
     expect(report.error).toBeUndefined();
     expect(Object.keys(report).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
+    expect(JSON.stringify(report)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
   });
 
   it('adds no field at all when the tier is unconfigured', async () => {
@@ -311,16 +352,22 @@ describe('hudu_get_api_info — the Typesense probe', () => {
   });
 });
 
-describe('hudu_get_api_info — the query-error clause', () => {
-  it('says a typesense-query-error is a COLLECTION NAME problem, not an outage', async () => {
+describe('the query-error clause lives where a caller looks for it', () => {
+  it('tells a configured caller that a typesense-query-error is a COLLECTION NAME problem, not an outage', async () => {
+    // It moved OUT of `hudu_get_api_info`'s description and into `hudu_search` help: the probe
+    // fields are self-describing, and a sentence repeated on every deployment that configures the
+    // tier is served bytes the surface budget cannot pay for (surface-size.test.ts measures it).
     const session = await stdioSession(TYPESENSE);
+    const help = String((await session.call('hudu_search', { mode: 'help' })).content[0].text);
+    expect(help).toContain('typesense-query-error');
+    expect(help).toContain('COLLECTION NAME or query is wrong');
+    expect(help).toContain('this is not an');
+    expect(help).toContain('outage');
+    // The tool description itself is the same string either way, and names no Typesense vocabulary.
     const description = String((await session.list()).find((x) => x.name === 'hudu_get_api_info')!.description);
-    expect(description).toContain('typesense-query-error');
-    expect(description).toContain('COLLECTION NAME is wrong');
-    expect(description).toContain('not that Typesense is down');
-    // Unconfigured deployments never see the field, so they never see the clause either.
+    expect(description).not.toContain('typesense');
     const unset = await stdioSession({});
-    expect(String((await unset.list()).find((x) => x.name === 'hudu_get_api_info')!.description)).not.toContain('typesense');
+    expect(String((await unset.list()).find((x) => x.name === 'hudu_get_api_info')!.description)).toBe(description);
     await unset.close();
     await session.close();
   });
@@ -399,5 +446,32 @@ describe('meta.degraded.reason is passed through, never mapped or renamed', () =
       expect(answered.structuredContent.meta.degraded.advice).toBe('SDK advice, verbatim.');
       expect(answered.content[0].text).toContain(`DEGRADED (${reason})`);
     }
+  });
+});
+
+
+describe('completeness and the reason union are the SDK\'s, not local restatements', () => {
+  it("the five reasons equal the SDK's exported union at runtime, in order", () => {
+    // Compared against the INSTALLED package, not a comment: a sixth reason added to node-hudu, or a
+    // reorder on either side, fails here instead of in production.
+    expect([...TYPESENSE_DEGRADED_REASONS]).toEqual([...SDK_DEGRADED_REASONS]);
+    expect(SDK_DEGRADED_REASONS).toHaveLength(5);
+  });
+
+  it('every Typesense degraded reason breaks completeness; none is a disclosure count', () => {
+    // The predicate the server imports for its own prose. All five are failures, so none is a count.
+    for (const reason of TYPESENSE_DEGRADED_REASONS) {
+      expect(isDisclosureReason(reason), `${reason} must break completeness`).toBe(false);
+    }
+  });
+
+  it('the disclosure counts the SDK documents are NOT in this server\'s reason list', () => {
+    // Exactly the two the SDK documents as counts; `result-limit` is deliberately NOT one (it omitted
+    // hits the caller could have had), which is why it is asserted false below.
+    for (const count of ['typesense-candidates-unverified:3', 'typesense-candidates-capped:5']) {
+      expect(isDisclosureReason(count)).toBe(true);
+      expect(TYPESENSE_DEGRADED_REASONS as readonly string[]).not.toContain(count);
+    }
+    expect(isDisclosureReason('result-limit')).toBe(false);
   });
 });

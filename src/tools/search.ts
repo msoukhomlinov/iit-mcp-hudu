@@ -3,7 +3,7 @@
  */
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
-import type { KnowledgeIndexMeta, KnowledgeResource, KnowledgeSearchOptions } from 'node-hudu';
+import { isDisclosureReason, type KnowledgeIndexMeta, type KnowledgeResource } from 'node-hudu';
 import { SEARCH_HELP, SEARCH_MODES, SEARCH_RESOURCES, configError } from 'node-hudu/mcp';
 import type { SearchTier } from '../config.js';
 import type { ToolContext } from './context.js';
@@ -326,18 +326,21 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           ? {}
           : {
               tier: z
-                .enum(['auto', 'vendor', 'index', 'typesense'])
+                // The enum is built, not literal: an unconfigured deployment must serve EXACTLY the
+                // three values it served before the tier existed (byte-identical `tools/list`), and
+                // naming `typesense` there would also advertise a tier it cannot run.
+                .enum(typesenseConfigured ? ['auto', 'vendor', 'index', 'typesense'] : ['auto', 'vendor', 'index'])
                 .optional()
                 .describe(
                   !bodySearchable
                     ? '"vendor" only here: articles or assets are excluded, so "index", "auto", "typesense" and refresh:true are refused (every body tier is corpus-wide).'
                     : toolDefaultTier === 'typesense'
-                      ? 'Defaults to "typesense": whole-corpus body search, no local index. "index" builds or awaits the local index; "vendor" is body-blind.'
+                      ? 'Defaults to "typesense": whole corpus, no local build. "index" awaits; "vendor" is body-blind.'
                       : toolDefaultTier === 'auto'
                         ? 'Defaults to "auto"; "index" waits; "vendor" is body-blind.'
                         : toolDefaultTier === 'vendor'
                           ? 'Defaults to "vendor" (policy); "index" waits; "auto" builds.'
-                          : `Defaults to "index": builds or awaits the body index. "vendor" is body-blind.${typesenseConfigured ? ' "typesense" searches the whole corpus.' : ''}`,
+                          : `Defaults to "index": builds or awaits the body index. "vendor" is body-blind.${typesenseConfigured ? ' "typesense" = corpus.' : ''}`,
                 ),
               refresh: z
                 .boolean()
@@ -496,9 +499,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           refresh,
           // The TOOL's default: "typesense" when configured, else "index" under stdio, "auto" under
           // http, "vendor" when the corpus is excluded.
-          // TODO(drop when node-hudu@0.21.0 lands): 0.20.0's KnowledgeSearchOptions has no
-          // 'typesense' member. One boundary cast on the value; no shim, no second code path.
-          tier: tier as unknown as KnowledgeSearchOptions['tier'],
+          tier,
         });
         let result;
         if (searchWaits) {
@@ -517,7 +518,12 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
         // 401: an auth failure is never an empty search. A scope where some resource
         // answered keeps the honest partial answer below, failures sanitized.
         if (credentialRefused(result.meta, result.hits)) return unauthorizedContent();
-        const incomplete = result.meta.complete ? '' : ` (partial: ${result.meta.reasons.join(', ')})`;
+        // Which reasons break completeness is the SDK's rule, not ours: `isDisclosureReason` (exported
+        // from the package root) is the single source of truth, so a disclosure COUNT that merely tells
+        // the caller something — `typesense-candidates-unverified:N`, `typesense-candidates-capped:N` —
+        // is never printed as a cause of a partial answer.
+        const causes = result.meta.reasons.filter((reason) => !isDisclosureReason(reason));
+        const incomplete = result.meta.complete || causes.length === 0 ? '' : ` (partial: ${causes.join(', ')})`;
         const bodyBlind = result.meta.degraded ? ` DEGRADED (${result.meta.degraded.reason}): ${result.meta.degraded.advice}` : '';
         // A failed resource is reported as unavailable, never with Hudu's own auth message: the
         // upstream detail names which resource this deployment's credential may not read.

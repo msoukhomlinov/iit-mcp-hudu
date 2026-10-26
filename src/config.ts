@@ -60,6 +60,17 @@ export type SecretReadPolicy = (typeof SECRET_READ_POLICIES)[number];
 export const SEARCH_TIER_POLICIES = ['auto', 'index', 'vendor', 'typesense'] as const;
 export type SearchTierPolicy = (typeof SEARCH_TIER_POLICIES)[number];
 
+/**
+ * The registry key of the SDK operation the Typesense tier is built on (node-hudu#124).
+ *
+ * Exported because two very different questions read it: config asks whether this BUILD has it (a
+ * startup refusal), and the probe asks whether the live client may call it (a report field).
+ */
+export const BODY_PROBE_OPERATION = 'operations.probeBodySearch';
+
+/** The first node-hudu release that builds the probe operation. Named in the boot refusal. */
+export const MIN_NODE_HUDU_FOR_TYPESENSE = '0.21.0';
+
 /** A blank value is a copied `.env.example` placeholder, never a value: normalise it to unset. */
 function blankToUndefined(raw: unknown): unknown {
   return typeof raw === 'string' && raw.trim() === '' ? undefined : raw;
@@ -480,6 +491,17 @@ const schema = z
           (typesenseUrl === undefined
             ? 'a key was set with no URL for it to reach (set HUDU_TYPESENSE_URL, or unset the key)'
             : 'a URL was set with no search key (set HUDU_TYPESENSE_API_KEY, or unset the URL to leave the Typesense tier off)'),
+      });
+    }
+    // The capability gate belongs HERE, with the rest of the boot refusals: a configured tier on an
+    // SDK build that cannot probe it would otherwise serve a default tier the SDK ignores while the
+    // prose claims Hudu's index answered — two contradictory stories in one process. Configuration
+    // that cannot run is a startup error, never a silent fallback.
+    if (typesenseUrl !== undefined && c.HUDU_TYPESENSE_API_KEY !== undefined && getCapability(BODY_PROBE_OPERATION) === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['HUDU_TYPESENSE_URL'],
+        message: `HUDU_TYPESENSE_URL/HUDU_TYPESENSE_API_KEY are set, but this build of node-hudu has no ${BODY_PROBE_OPERATION}: the Typesense tier needs node-hudu >= ${MIN_NODE_HUDU_FOR_TYPESENSE}. Unset both variables, or upgrade node-hudu.`,
       });
     }
     // An origin, not a URL. A scheme other than http/https is not a Typesense endpoint, and any

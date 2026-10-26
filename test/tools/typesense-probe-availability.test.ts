@@ -6,10 +6,10 @@
  * can permit what a build lacks and a build can carry what a policy omits, so one check cannot stand
  * for both — and their failure codes must differ, or a reader cannot tell which question failed.
  *
- * The registry is mocked here ONLY to make the "built" half reachable on 0.20.0, where the probe does
- * not exist yet; the mocked record is the plain data the real registry returns for a built operation.
- * Nothing else about node-hudu is stubbed, and the real 0.20.0 behaviour (NOT_IMPLEMENTED end to end)
- * is asserted in typesense-tier.test.ts without this mock.
+ * The registry is mocked here ONLY to keep the "not built" half reachable now that node-hudu 0.21.0
+ * builds the operation; the mocked record is the plain data the real registry returns for a built
+ * operation. Nothing else about node-hudu is stubbed, and the real 0.21.0 behaviour (the probe dials
+ * and answers) is asserted in typesense-tier.test.ts without this mock.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../src/config.js';
@@ -37,7 +37,23 @@ const TYPESENSE = {
   HUDU_TYPESENSE_URL: 'https://typesense.example.com',
   HUDU_TYPESENSE_API_KEY: 'test-key-not-real',
 } as const;
-const config = loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE });
+/**
+ * Built AFTER the registry flag is set: the boot gate refuses a configured tier on a build without
+ * the operation, so a config carrying the pair can only exist while `built` is true. The "not built"
+ * probe branch is still reachable for direct callers and is exercised below by flipping the flag
+ * after the config exists.
+ */
+const makeConfig = () => loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE });
+/** A config that carries the tier, built while the mocked registry says the operation exists. */
+const configWithTier = () => {
+  const saved = registry.built;
+  registry.built = true;
+  try {
+    return makeConfig();
+  } finally {
+    registry.built = saved;
+  }
+};
 const host = (operations?: unknown) => ({ operations }) as unknown as Parameters<typeof probeTypesense>[0];
 
 afterEach(() => vi.unstubAllGlobals());
@@ -45,8 +61,33 @@ beforeEach(() => {
   registry.built = false;
 });
 
+describe('boot gate — a configured tier on a build without the operation', () => {
+  it('fails boot, naming the SDK version requirement, instead of serving a tier it cannot probe', () => {
+    registry.built = false;
+    let message = '';
+    try {
+      makeConfig();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('HUDU_TYPESENSE_URL');
+    expect(message).toContain('operations.probeBodySearch');
+    expect(message).toContain('node-hudu >= 0.21.0');
+    // The refusal is a startup error, so the key is never echoed back in it.
+    expect(message).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
+  });
+
+  it('passes when the build carries the operation', () => {
+    registry.built = true;
+    expect(makeConfig().HUDU_TYPESENSE_URL).toBe(TYPESENSE.HUDU_TYPESENSE_URL);
+  });
+});
+
 describe('probeTypesense — not built into this SDK version', () => {
   it('reports NOT_IMPLEMENTED and dials nothing, even when a policy would permit it', async () => {
+    registry.built = true;
+    const config = makeConfig();
+    registry.built = false;
     let dialed = 0;
     const report = await probeTypesense(
       host({
@@ -69,8 +110,10 @@ describe('probeTypesense — not built into this SDK version', () => {
 });
 
 describe('probeTypesense — built, but this client policy does not permit it', () => {
+  let config!: ReturnType<typeof makeConfig>;
   beforeEach(() => {
     registry.built = true;
+    config = makeConfig();
   });
 
   it('reports POLICY_DENIED and dials nothing when the member is absent', async () => {
@@ -108,8 +151,10 @@ describe('probeTypesense — built, but this client policy does not permit it', 
 });
 
 describe('probeTypesense — built and permitted', () => {
+  let config!: ReturnType<typeof makeConfig>;
   beforeEach(() => {
     registry.built = true;
+    config = makeConfig();
   });
 
   const permitted = (impl: () => Promise<unknown>) => host({ probeBodySearch: impl });
@@ -166,7 +211,7 @@ describe('hudu_get_api_info publishes the same distinction', () => {
     registerReadTools(server, {
       hudu: { apiInfo: { resolve: async () => ({ version: 'as-test', date: '2026-01-01' }) }, operations },
       huduOrigin: 'https://hudu.example.com',
-      config,
+      config: configWithTier(),
       log: { debug() {}, info() {}, warn() {}, error() {} },
       ops: {},
       searchableResources: ['articles', 'assets'],

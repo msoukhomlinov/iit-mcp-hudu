@@ -321,7 +321,11 @@ describe('hudu_search min_score threshold-empty', () => {
     // ...and the honest signal IS there (the live shape): 4 candidates were scored, 0 returned.
     expect(meta.scanned).toBe(4);
     expect(meta.returned).toBe(0);
-    expect(JSON.parse(result.content[0]!.text).text).toBe('Found 0 ranked match(es).');
+    // node-hudu 0.21.0 names the source of the documents it actually scored: the floor emptied the
+    // emitted set, but four index documents were scored, so the answer says so. (0.20.0 left the
+    // field unset here, which is why this expectation moved with the bump.)
+    expect(meta.bodySource).toBe('index');
+    expect(JSON.parse(result.content[0]!.text).text).toBe('Found 0 ranked match(es). body source: index.');
     await session.close();
   });
 

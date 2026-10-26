@@ -76,7 +76,6 @@ export function ok(text: string, structuredContent: Record<string, unknown>, ori
   };
 }
 
-/** One-record result. A `null` from a helper is a complete, bounded "no match" answer. */
 /**
  * The `meta.bodySource` clause for a search's compact header.
  *
@@ -90,6 +89,7 @@ export function bodySourceNote(meta: unknown): string {
   return ` body source: ${source}.`;
 }
 
+/** One-record result. A `null` from a helper is a complete, bounded "no match" answer. */
 export function oneResult(what: string, record: unknown, origin?: string): ToolReturn {
   return ok(record === null ? `No ${what} matched.` : `${what} resolved.`, {
     found: record !== null,

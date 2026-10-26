@@ -48,10 +48,9 @@ const SEARCH_DEFAULT_INDEX_SENTENCE =
  * This server never maps, renames or reorders a reason it receives — it prints `degraded.reason`
  * verbatim, because a renamed reason silently breaks the pairing between the two packages.
  *
- * TODO(with node-hudu@0.21.0, follow-up in the #56 bump checklist): the SDK exports a completeness
- * predicate `isDisclosureReason`. Once it is published, the prose below about which reasons break
- * `complete` should point AT that rule instead of restating a local version of it, so the two cannot
- * disagree about what "complete" means.
+ * Which reasons break `complete` is NOT restated here: node-hudu exports `isDisclosureReason()` as
+ * the single source of that rule, and this server imports it wherever it explains an incomplete
+ * answer (src/tools/search.ts). The list below is only the vocabulary this help text prints.
  */
 export const TYPESENSE_DEGRADED_REASONS = [
   'typesense-unavailable',
@@ -93,11 +92,8 @@ const TYPESENSE_REASON_ACTION: Record<TypesenseDegradedReason, { group: string; 
       "Hudu's index still holds records this credential can no longer read",
       "(discarded or deleted, awaiting Hudu's reindex): retry later or",
       'widen the query.',
-      'LIMITATION: which answer Hudu returns for a permission-hidden record is',
-      'unverified upstream (it needs a live tenant to test). What IS settled: a',
-      '404 is a silent stale drop (the record is genuinely gone), while a 403 is',
-      'a surfaced read failure - the answer reports complete:false and names the',
-      'resource in meta.errors - so a hidden record is not folded into staleness.',
+      '403 vs 404 for permission-hidden records is unverified upstream; a 404 is a silent stale drop,',
+      'a 403 a surfaced failure (complete:false, meta.errors).',
     ],
   },
   'typesense-hits-unhydratable': {
@@ -132,8 +128,6 @@ const SEARCH_DEGRADED_TYPESENSE_BLOCK =
   '                                                identifiers were searched and article bodies were NOT.\n' +
   '                  The Typesense reasons, in the SDK\'s order, labelled with what YOU do about it:\n' +
   typesenseReasonLines() +
-  '                  A configured tier that is NOT BUILT or NOT PERMITTED is not a degraded reason: it is\n' +
-  '                  reported by hudu_get_api_info (NOT_IMPLEMENTED / POLICY_DENIED).\n' +
   '  meta.bodySource "index" | "typesense" | "none": which body source produced this answer. "none" means\n' +
   '                  body text was not searched at all on this call.';
 
@@ -363,11 +357,10 @@ export function searchToolDescription(ctx: ToolContext): string {
   // under `http` with HUDU_SEARCH_TIER_POLICY=index on a full corpus the base text would say the
   // TIER is a caller choice ("As a tool it defaults to tier \"index\""), while the field is not
   // served at all. Policy wins over the byte saving (#50 review 7).
-  // The typesense clause rides on every served variant, including the byte-saving early return:
-  // it is a fact about this deployment's answers, not about the tier sentence.
-  const withSource = (text: string): string =>
-    typesenseConfigured ? `${text} meta.bodySource names the body tier that answered.` : text;
-  if (fullSet && toolDefaultTier === 'index' && !searchTierIsPolicy) return withSource(base);
+  // No `bodySource` clause is added here: on a configured deployment the answer carries the field
+  // itself, and naming it in the served description costs bytes on every call while the help text
+  // (where a caller looks for `meta`) already documents it. The surface budget is measured.
+  if (fullSet && toolDefaultTier === 'index' && !searchTierIsPolicy) return base;
   const defaultSentence = 'defaults to tier "index": body-complete.';
   // Same order as the help text: under `http` the tier field is not served, so the corpus refusal
   // (which names refused field values) would describe a schema the caller never sees.
@@ -380,11 +373,11 @@ export function searchToolDescription(ctx: ToolContext): string {
             : ''
         }`
       : toolDefaultTier === 'typesense'
-      ? 'defaults to tier "typesense": whole-corpus body search through Hudu\'s index, no local build.'
+      ? 'defaults to tier "typesense": whole corpus.'
       : toolDefaultTier === 'auto'
       ? 'defaults to tier "auto": answers now, warms the index; "index" waits.'
       : toolDefaultTier === 'vendor'
-      ? `defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY); "index"/refresh:true uses the body index.${typesenseConfigured ? ' "typesense" searches the whole corpus.' : ''}`
+      ? `defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY); "index"/refresh:true uses the body index.${typesenseConfigured ? ' "typesense": corpus.' : ''}`
       : defaultSentence;
   let out = base;
   if (!fullSet) {
@@ -395,7 +388,7 @@ export function searchToolDescription(ctx: ToolContext): string {
   }
   // Fail loudly, not silently: a missed anchor would advertise a default tier this deployment refuses.
   if (!out.includes(defaultSentence)) throw new Error('hudu_search description: SDK default-tier sentence changed; update defaultSentence');
-  return withSource(out.replace(defaultSentence, replacement));
+  return out.replace(defaultSentence, replacement);
 }
 
 /**

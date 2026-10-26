@@ -27,21 +27,22 @@
  * policy", which is exactly the question a capability probe asks ("can I call it now?"). Because
  * `typeof` is never safe here, this guard must not be "simplified" back to it.
  *
- * TODO(drop when node-hudu@0.21.0 lands): 0.20.0 has no probe at all, so `probeBodySearch` is
- * reached through the structural host below and one boundary cast, and "is it built" comes from the
- * registry rather than from the type. The agreed 0.21.0 contract (node-hudu#124) is
- * `operations.probeBodySearch(): Promise<KnowledgeSearchBackendProbe>` returning
- * `{ configured, collections, reachable, probeMs, error?: { code, message } }`, exported from the
- * package root, never throwing. When the SDK lands, this module is a thin normaliser and the cast is
- * deleted — the two questions stay separate, because the policy half is not a build-time fact.
+ * node-hudu 0.21.0 builds the operation: `operations.probeBodySearch()` returns
+ * `KnowledgeSearchBackendProbe` (`{ configured, collections, reachable, probeMs, error? }`) and never
+ * throws. This module therefore calls it directly — no structural host, no cast, no method name
+ * held in a string — and stays a thin normaliser. The two questions above remain separate, because
+ * the policy half is not a build-time fact.
  */
 import type { HuduClient } from 'node-hudu';
 import { getCapability } from 'node-hudu/capabilities';
 import { typesenseSearchBlock, type Config } from '../config.js';
 
-/** The registry key and method name the probe lives under (node-hudu#124). */
-export const BODY_PROBE_OPERATION = 'operations.probeBodySearch';
-const BODY_PROBE_METHOD = 'probeBodySearch';
+/**
+ * The registry key and method name the probe lives under (node-hudu#124). Defined in `config.ts`,
+ * where the build-time refusal reads it, and re-exported here for the probe's callers.
+ */
+export { BODY_PROBE_OPERATION } from '../config.js';
+import { BODY_PROBE_OPERATION as PROBE_OPERATION } from '../config.js';
 
 /** What `hudu_get_api_info` publishes. Always absent from the answer when the tier is unconfigured. */
 export interface TypesenseProbeReport {
@@ -51,20 +52,6 @@ export interface TypesenseProbeReport {
   probeMs: number;
   /** Why the probe could not answer, with a code that names WHICH question failed. Never the key. */
   error?: { code: string; message: string };
-}
-
-/** The SDK's agreed 0.21.0 probe result (node-hudu#124). */
-interface SdkBodyProbeReport {
-  configured: boolean;
-  collections: string[];
-  reachable: boolean;
-  probeMs: number;
-  error?: { code: string; message: string };
-}
-
-/** The 0.21.0 surface this call site assumes: a method on `operations`. */
-interface BodyProbeHost {
-  operations?: Record<string, unknown>;
 }
 
 const NOT_PROBED: Omit<TypesenseProbeReport, 'collections'> = {
@@ -94,23 +81,21 @@ export async function probeTypesense(hudu: HuduClient, config: Config): Promise<
   if (block === undefined) return { configured: false, reachable: false, collections: [], probeMs: 0 };
   const collections = [block.collections.articles, block.collections.assets];
   const started = Date.now();
-  const host = hudu as unknown as BodyProbeHost;
-  const operations = host.operations;
 
   // Question 1, build-time, from plain data: no callable is touched, so no proxy can lie.
-  if (getCapability(BODY_PROBE_OPERATION) === undefined) {
-    return unavailable(collections, Date.now() - started, 'NOT_IMPLEMENTED', `this SDK version has no ${BODY_PROBE_OPERATION}`);
+  if (getCapability(PROBE_OPERATION) === undefined) {
+    return unavailable(collections, Date.now() - started, 'NOT_IMPLEMENTED', `this SDK version has no ${PROBE_OPERATION}`);
   }
-  // Question 2, this client's policy: membership, never `typeof` (see the module comment).
-  const permitted =
-    operations !== undefined && BODY_PROBE_METHOD in operations && typeof operations[BODY_PROBE_METHOD] === 'function';
-  if (!permitted) {
-    return unavailable(collections, Date.now() - started, 'POLICY_DENIED', `this client policy does not permit ${BODY_PROBE_OPERATION}`);
+  // Question 2, this client's policy: membership, never `typeof` (see the module comment). A real
+  // client always exposes `operations`; the optional local keeps a bare test double honest instead
+  // of throwing a TypeError that would read as a crash rather than a refusal.
+  const operations: HuduClient['operations'] | undefined = hudu.operations;
+  if (operations === undefined || !('probeBodySearch' in operations)) {
+    return unavailable(collections, Date.now() - started, 'POLICY_DENIED', `this client policy does not permit ${PROBE_OPERATION}`);
   }
 
-  const probe = operations[BODY_PROBE_METHOD] as () => Promise<SdkBodyProbeReport>;
   try {
-    const result = await probe.call(operations);
+    const result = await operations.probeBodySearch();
     return {
       // The SDK is asked about this very block, so its `configured` cannot disagree with ours.
       configured: true,
@@ -124,9 +109,13 @@ export async function probeTypesense(hudu: HuduClient, config: Config): Promise<
     // A refusal still says "not permitted"; anything else keeps its own code and is never filed as
     // a refusal, so the two can be told apart in a report.
     const code = (error as { code?: unknown }).code;
-    if (typeof code !== 'string') return { ...NOT_PROBED, collections, probeMs: Date.now() - started };
-    if (code === 'POLICY_DENIED') return unavailable(collections, Date.now() - started, code, `this client policy does not permit ${BODY_PROBE_OPERATION}`);
-    if (code === 'NOT_IMPLEMENTED') return unavailable(collections, Date.now() - started, code, `this SDK version has no ${BODY_PROBE_OPERATION}`);
+    // Always answer WHY. A throw that carries no string code still has to say something, or the
+    // report reads "not reachable" with no explanation at all — the one shape a caller cannot act on.
+    if (typeof code !== 'string') {
+      return unavailable(collections, Date.now() - started, 'PROBE_FAILED', 'the probe failed without an error code');
+    }
+    if (code === 'POLICY_DENIED') return unavailable(collections, Date.now() - started, code, `this client policy does not permit ${PROBE_OPERATION}`);
+    if (code === 'NOT_IMPLEMENTED') return unavailable(collections, Date.now() - started, code, `this SDK version has no ${PROBE_OPERATION}`);
     return unavailable(collections, Date.now() - started, code, 'the probe request failed');
   }
 }

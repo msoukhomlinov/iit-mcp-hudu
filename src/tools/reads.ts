@@ -10,7 +10,7 @@ import { lossyNote, takeContentLoss } from './article-loss.js';
 import type { ToolContext } from './context.js';
 import { toolDescription } from './tool-prose.js';
 import { contextErrorContent, errorContent, createResultBuilders, resolveErrorContent } from './results.js';
-import { API_INFO_OUTPUT, ASSET_IDENTIFIER, CONTEXT_OUTPUT, DEFAULT_LIMIT, EXPAND, HITS_OUTPUT, IDENTIFIER, LIMIT, ONE_OUTPUT, resourceEnum } from './schemas.js';
+import { ASSET_IDENTIFIER, CONTEXT_OUTPUT, DEFAULT_LIMIT, EXPAND, HITS_OUTPUT, IDENTIFIER, LIMIT, ONE_OUTPUT, apiInfoOutput, resourceEnum } from './schemas.js';
 import { probeTypesense } from './typesense-probe.js';
 
 /** Register the eleven CORE read tools after `hudu_search`, in `CORE_TOOLS` order. */
@@ -67,19 +67,17 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
     'hudu_get_api_info',
     {
       title: 'Get Api Info',
-      description: toolDescription(
-        'hudu_get_api_info',
-        // Deployment-specific: only a configured tier has a probe to report, so the unconfigured
-        // served description stays byte-identical.
-        typesenseConfigured
-          ? 'Also reports the Typesense body tier: configured (the pair is set), reachable (the probe answered, which needs the SDK build AND this client policy to permit it), collections (indexes searched), probeMs (probe latency); error {code, message} says which failed: NOT_IMPLEMENTED (this SDK version has no probe), POLICY_DENIED (this policy does not permit it), or the endpoint failure. A search answer with degraded.reason "typesense-query-error" means the COLLECTION NAME is wrong (Typesense answered 400/404/422), not that Typesense is down.'
-          : '',
-      ),
+      // The description is the SAME string either way: `typesense` is only ever an extra
+      // self-describing object in the answer (configured, reachable, collections, probeMs, error),
+      // and any sentence about it would be served bytes a caller pays for on every deployment that
+      // configures the tier. The field names carry the meaning; the degraded-reason advice lives in
+      // `hudu_search` help, where a caller already goes for it.
+      description: toolDescription('hudu_get_api_info'),
       inputSchema: z.object({
         identifier: IDENTIFIER.optional(),
         opts: z.object({ expand: EXPAND }).optional(),
       }),
-      outputSchema: API_INFO_OUTPUT,
+      outputSchema: apiInfoOutput(typesenseConfigured),
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => {
