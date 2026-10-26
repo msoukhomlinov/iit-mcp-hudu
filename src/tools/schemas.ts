@@ -85,6 +85,26 @@ export const ROWS = z.array(z.unknown());
 export const ONE_OUTPUT = z.object({ found: z.boolean(), record: z.unknown() });
 
 /**
+ * `hudu_get_api_info`: the one-record envelope, plus the Typesense body tier's live probe when the
+ * deployment configured one.
+ *
+ * Conditional, not "optional field": `tools/list` is compared byte for byte against the surface this
+ * server served before the tier existed, and an always-present optional field changes those bytes.
+ * An unconfigured deployment therefore gets the EXACT `ONE_OUTPUT` object it always had. The field
+ * carries booleans, collection names and a duration — never the key, never the endpoint.
+ */
+export const API_INFO_OUTPUT = ONE_OUTPUT;
+export const apiInfoOutput = (typesenseConfigured: boolean) => (typesenseConfigured ? ONE_OUTPUT.extend({
+  /**
+   * The Typesense tier's live probe (`typesense-probe.ts`); absent when the tier is unconfigured.
+   *
+   * Open on purpose, like `hudu_search`'s `meta`: a spelled-out object schema costs ~450 B of
+   * `tools/list` against a headroom measured in hundreds of bytes, and the field's shape is a fixed
+   * server-owned record (four keys) that a test asserts, not something a caller composes.
+   */
+  typesense: z.unknown().optional(),
+}) : ONE_OUTPUT);
+/**
  * `page` for the dedicated list tools.
  *
  * The SDK pages from here (`companies.listPages` / `articles.listPages`), and the tool returns this

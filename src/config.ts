@@ -51,9 +51,25 @@ export type SecretReadPolicy = (typeof SECRET_READ_POLICIES)[number];
  * `vendor` never builds an index at all. Unset means the transport default: `index` under `stdio`
  * (one long-lived credential, one warmed index) and `auto` under `http` (every caller's scope
  * starts cold, and a cold walk can outlast the consumer's call timeout).
+ *
+ * `typesense` answers the body search from Hudu's own Typesense index. It has no cold start, so it
+ * is the default under BOTH transports when `HUDU_TYPESENSE_URL` / `HUDU_TYPESENSE_API_KEY` are set
+ * — the transport asymmetry exists only for the in-memory walk. Naming it without that pair fails
+ * boot: a tier that cannot run must not be reachable by configuration typo.
  */
-export const SEARCH_TIER_POLICIES = ['auto', 'index', 'vendor'] as const;
+export const SEARCH_TIER_POLICIES = ['auto', 'index', 'vendor', 'typesense'] as const;
 export type SearchTierPolicy = (typeof SEARCH_TIER_POLICIES)[number];
+
+/**
+ * The registry key of the SDK operation the Typesense tier is built on (node-hudu#124).
+ *
+ * Exported because two very different questions read it: config asks whether this BUILD has it (a
+ * startup refusal), and the probe asks whether the live client may call it (a report field).
+ */
+export const BODY_PROBE_OPERATION = 'operations.probeBodySearch';
+
+/** The first node-hudu release that builds the probe operation. Named in the boot refusal. */
+export const MIN_NODE_HUDU_FOR_TYPESENSE = '0.21.0';
 
 /** A blank value is a copied `.env.example` placeholder, never a value: normalise it to unset. */
 function blankToUndefined(raw: unknown): unknown {
@@ -93,6 +109,26 @@ export type TypesenseSearchBlock = Omit<NonNullable<NonNullable<HuduConfig['sear
   collections: { articles: string; assets: string };
 };
 
+/**
+ * Whether `url` is an http(s) ORIGIN: no path, query or fragment.
+ *
+ * The boot check in `loadConfig`'s refinement applies these rules with a per-cause message; this
+ * predicate is the one the zero-wire doctor reports on, so the two cannot disagree about "shape ok".
+ */
+export function isTypesenseOrigin(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      (parsed.pathname === '' || parsed.pathname === '/') &&
+      parsed.search === '' &&
+      parsed.hash === ''
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Build the SDK block from an already-validated config. Never carries a value into a log sink. */
 export function typesenseSearchBlock(config: Config): TypesenseSearchBlock | undefined {
   const url = config.HUDU_TYPESENSE_URL;
@@ -125,6 +161,9 @@ export function describeTypesense(config: Config): string | undefined {
   if (block === undefined) return undefined;
   return `typesense: enabled (collections ${block.collections.articles}, ${block.collections.assets})`;
 }
+
+/** The tier a search call may use: the policy values are exactly the tiers the SDK implements. */
+export type SearchTier = SearchTierPolicy;
 
 /**
  * Parse `HUDU_WRITE_ALLOW` once, here, so every consumer reads the same list. */
@@ -454,6 +493,17 @@ const schema = z
             : 'a URL was set with no search key (set HUDU_TYPESENSE_API_KEY, or unset the URL to leave the Typesense tier off)'),
       });
     }
+    // The capability gate belongs HERE, with the rest of the boot refusals: a configured tier on an
+    // SDK build that cannot probe it would otherwise serve a default tier the SDK ignores while the
+    // prose claims Hudu's index answered — two contradictory stories in one process. Configuration
+    // that cannot run is a startup error, never a silent fallback.
+    if (typesenseUrl !== undefined && c.HUDU_TYPESENSE_API_KEY !== undefined && getCapability(BODY_PROBE_OPERATION) === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['HUDU_TYPESENSE_URL'],
+        message: `HUDU_TYPESENSE_URL/HUDU_TYPESENSE_API_KEY are set, but this build of node-hudu has no ${BODY_PROBE_OPERATION}: the Typesense tier needs node-hudu >= ${MIN_NODE_HUDU_FOR_TYPESENSE}. Unset both variables, or upgrade node-hudu.`,
+      });
+    }
     // An origin, not a URL. A scheme other than http/https is not a Typesense endpoint, and any
     // path, query or fragment would be dropped or misapplied by a client that joins paths onto it —
     // a silent wrong endpoint rather than a refused boot.
@@ -496,6 +546,18 @@ const schema = z
         code: 'custom',
         path: [c.HUDU_TYPESENSE_ASSETS_COLLECTION === undefined ? 'HUDU_TYPESENSE_ARTICLES_COLLECTION' : 'HUDU_TYPESENSE_ASSETS_COLLECTION'],
         message: `articles and assets must search different collections (both resolve to "${articlesCollection}"); set HUDU_TYPESENSE_ARTICLES_COLLECTION or HUDU_TYPESENSE_ASSETS_COLLECTION`,
+      });
+    }
+
+    // A tier that cannot run must not be reachable by configuration: naming `typesense` without the
+    // endpoint and key would otherwise degrade every search at the first call instead of failing
+    // the container once, at boot.
+    if (c.HUDU_SEARCH_TIER_POLICY === 'typesense' && typesenseUrl === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['HUDU_SEARCH_TIER_POLICY'],
+        message:
+          'HUDU_SEARCH_TIER_POLICY=typesense requires HUDU_TYPESENSE_URL and HUDU_TYPESENSE_API_KEY; set both, or choose auto|index|vendor',
       });
     }
 

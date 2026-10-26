@@ -19,7 +19,7 @@ describe('dispatcher genuine-401 branches keep the credential-shape view', () =>
     const hudu = new HuduClient({ baseUrl: 'https://hudu.invalid', apiKey: 'valid-key-000', mode: 'read', retry: false } as never);
     registerDispatchTools(server as never, {
       hudu, config: { ...config, HUDU_WRITE_POLICY: 'deny' }, log: createLogger('error', () => {}),
-      searchableResources: ['articles'], defaultSearchScope: ['articles'], indexSearchable: false, toolDefaultTier: 'vendor',
+      searchableResources: ['articles'], defaultSearchScope: ['articles'], bodySearchable: false, toolDefaultTier: 'vendor',
     } as never);
     return handler;
   }

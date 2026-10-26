@@ -277,10 +277,19 @@ which is exactly that knob's documented purpose. `meta.index` reports the index 
 `stdio` the one long-lived index stays warm, both fields stay in the schema, and the default is
 `"index"`; a caller there can still pass `tier:"index"` for a complete first answer.
 
-`HUDU_SEARCH_TIER_POLICY=auto|index|vendor` sets that policy explicitly (default `auto` under
-`http`, `index` under `stdio`): `vendor` forces the vendor tier and never builds a body index,
-`index` lets a call wait for a complete body-index answer. When `HUDU_SEARCH_RESOURCES` excludes
-articles or assets the policy is `vendor` and no index path runs, whatever the variable says.
+`HUDU_SEARCH_TIER_POLICY=auto|index|vendor|typesense` sets that policy explicitly (default `auto`
+under `http`, `index` under `stdio`, and `typesense` under **both** when the Typesense pair is
+configured — it has no cold start, so the transport asymmetry does not apply): `vendor` forces the
+vendor tier and never uses a body tier, `index` lets a call wait for a complete body-index answer,
+`typesense` searches the whole corpus through Hudu's own index. Naming `typesense` without the pair
+fails boot. When `HUDU_SEARCH_RESOURCES` excludes articles or assets the policy is `vendor` and no
+body tier runs, whatever the variable says: every body tier is corpus-wide.
+
+A search answer also reports **which** body source produced it: `meta.bodySource` is `index`,
+`typesense` or `none`, and the compact header names it. `meta.degraded.reason` gains
+`typesense-unavailable` (the configured endpoint refused or timed out; the answer fell back to the
+local index or the vendor tier) and `typesense-unauthorized` (the key was rejected — the key is the
+thing to fix), so a body-blind answer always says why.
 `HUDU_SEARCH_INDEX_TTL` (milliseconds, default `600000`) is the body index's freshness window. What
 the SDK does past it — answer from the stale index while rebuilding in the background — is
 UNVERIFIED here: this repo sets the knob (a test asserts it reaches the client) but has not measured
@@ -304,16 +313,19 @@ the boot log gains one line, `typesense: enabled (collections articles, assets)`
 only, never the URL or the key. With both unset nothing changes, boot output included: no Typesense
 request is ever made.
 
-Setting the pair is the whole of the setup currently available: no `HUDU_SEARCH_TIER_POLICY` value
-selects the Typesense tier yet, so `hudu_search` still answers from the in-memory body index and the
-vendor index exactly as documented above. The tier becomes selectable when the policy lands; until
-then the block only proves the pinned SDK accepts and validates it.
+Setting the pair makes the `typesense` tier the default for `hudu_search`: the call reads the whole
+corpus directly from Hudu's index, with no local build. `HUDU_SEARCH_TIER_POLICY` still chooses the
+tier explicitly — `index` or `vendor` overrides that default, and naming `typesense` without the pair
+fails boot. The served schema advertises the `typesense` value only on a deployment that configured
+it.
 
-`HUDU_TYPESENSE_VERIFY_HITS=true` re-reads every candidate id through the Hudu API before it is
-returned, under the credential that made the call. Hudu's index carries neither folder permissions
-nor deletions (it keeps discarded articles), so verification is what stops a hit being a record the
-caller may not see. `false` skips that re-read: faster, but a hit can be discarded or
-permission-hidden. Use `false` only on a single-tenant, non-restricted, read-only deployment.
+`HUDU_TYPESENSE_VERIFY_HITS` (default `true`) is the credential re-read flag. What the SDK does when
+it is on — re-read every candidate id through the Hudu API under the credential that made the call
+before returning a hit — is the SDK's behaviour: this repo sets the flag (a test asserts it reaches
+the client) and has not measured the re-read itself. Hudu's index carries neither folder permissions
+nor deletions (it keeps discarded articles), so the re-read is what stops a hit being a record the
+caller may not see. `false` skips it: faster, but a hit can be discarded or permission-hidden. Use
+`false` only on a single-tenant, non-restricted, read-only deployment.
 
 A request cancelled while a call waits on a body-index build answers instead of throwing.
 `meta.degraded.reason` stays `body-not-indexed` (the SDK's closed union), `meta.cancelled` records

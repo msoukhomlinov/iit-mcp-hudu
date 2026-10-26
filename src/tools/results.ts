@@ -76,6 +76,19 @@ export function ok(text: string, structuredContent: Record<string, unknown>, ori
   };
 }
 
+/**
+ * The `meta.bodySource` clause for a search's compact header.
+ *
+ * Empty unless the SDK reported the field. node-hudu 0.21.0 sets it whenever a body tier ran
+ * (`'index'`, `'typesense'`) or when body text was not searched at all (`'none'`); with node-hudu
+ * 0.20.0 the key is absent and this returns `''`, so the header is byte-identical to before.
+ */
+export function bodySourceNote(meta: unknown): string {
+  const source = (meta as { bodySource?: unknown } | null | undefined)?.bodySource;
+  if (source !== 'index' && source !== 'typesense' && source !== 'none') return '';
+  return ` body source: ${source}.`;
+}
+
 /** One-record result. A `null` from a helper is a complete, bounded "no match" answer. */
 export function oneResult(what: string, record: unknown, origin?: string): ToolReturn {
   return ok(record === null ? `No ${what} matched.` : `${what} resolved.`, {
