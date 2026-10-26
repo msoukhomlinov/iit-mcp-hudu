@@ -71,7 +71,9 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         'hudu_get_api_info',
         // Deployment-specific: only a configured tier has a probe to report, so the unconfigured
         // served description stays byte-identical.
-        typesenseConfigured ? 'Also reports the Typesense body tier: {configured, reachable, collections, probeMs}.' : '',
+        typesenseConfigured
+          ? 'Also reports the Typesense body tier: configured (the pair is set), reachable (the one probe answered), collections (indexes searched), probeMs (probe latency), error {code, message} when the probe failed.'
+          : '',
       ),
       inputSchema: z.object({
         identifier: IDENTIFIER.optional(),

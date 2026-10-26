@@ -29,22 +29,31 @@ that types `search.typesense` — the boundary cast the tier needed is gone.
   `index`, `auto` or `typesense` is refused, naming both body tiers.
 - Add: `hudu_get_api_info` reports `typesense: { configured, reachable, collections, probeMs }`
   when the tier is configured (absent otherwise), from the SDK's one-request probe that a
-  search-only key may run. `doctor` stays zero-wire: it gains a config-shape row (`configured`,
-  `keyPresent`, `urlShapeOk`) only, and the row is absent when the tier is off.
+  search-only key may run; `error {code, message}` appears only when that probe failed. The tool
+  description names each field, and a test pins the exact emitted key set, because the output schema
+  keeps that field open (`z.unknown()`) to stay inside the `tools/list` byte budget. `doctor` stays
+  zero-wire: it gains a config-shape row (`configured`, `keyPresent`, `urlShapeOk`) only, and the row
+  is absent when the tier is off.
 - Add: the tier's degradation vocabulary is one closed five-reason set, exported from the SDK and
-  compared against the server's at runtime: `typesense-unavailable`, `typesense-unauthorized`,
-  `typesense-query-error` and the two stale/unhydratable reasons. Counts are disclosures, never
-  reasons. `hudu_search` help names `meta.bodySource` (`index` | `typesense` | `none`), and the
-  compact result header states the body source.
-- Docs: README and `.env.example` document the six variables, the reach modes (LAN, SSH tunnel,
-  allow-listed egress) and the verification trade. All of it is present only where the tier can be
-  configured; the unset surface and boot output are unchanged, asserted against frozen fixtures.
+  compared against the server's at runtime: `typesense-unavailable` (refused or timed out),
+  `typesense-unauthorized` (key rejected), `typesense-query-error` (the index answered with an
+  error), `typesense-hits-stale` (candidates returned but none readable by this credential, so the
+  empty answer is disclosed) and `typesense-hits-unhydratable`. Counts are disclosures, never
+  reasons.
+- Docs: `hudu_search` help names `meta.bodySource` (`index` | `typesense` | `none`) and the tier's
+  degraded reasons; the compact result header states the body source. The tier sentence names the
+  corpus resolution where it states the policy: on a deployment that excludes articles or assets, a
+  configured Typesense tier is corpus-wide too, so the corpus gate resolves it to `vendor` and the
+  answer carries no body source. All of it is present only where the tier is configured, so the
+  unset surface stays byte-identical. README and `.env.example` document the six variables, the
+  reach modes (LAN, SSH tunnel, allow-listed egress) and the verification trade.
 - Tests: config XOR both ways, defaults and every refusal branch, key never echoed; the block
   reaching every SDK client and staying absent when unset; the default-tier matrix
   (`configured`/`unset` x `stdio`/`http` x full/excluded corpus); the schema enum and the prose (only
-  when configured); `bodySource` header rendering; the api_info probe block; the doctor row without
-  key material; the capability gate failing on a mock SDK without the probe; and a documentation
-  drift test derived from the config schema rather than a hand-written list.
+  when configured); `bodySource` header rendering; the api_info probe block and its emitted key set;
+  the doctor row without key material; the capability gate failing on a mock SDK without the probe;
+  the runtime enum comparison against the SDK's; and a documentation drift test derived from the
+  config schema rather than a hand-written list.
 
 ## 0.7.0
 

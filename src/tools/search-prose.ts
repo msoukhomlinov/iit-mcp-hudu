@@ -30,10 +30,15 @@ const SEARCH_DEFAULT_INDEX_SENTENCE =
   'This TOOL defaults to tier "index" (build or await the body index), so a\n' +
   '                  cold, body-blind answer is not the default it hands an agent - and when it happens it says so.';
 /**
- * The SDK's `meta.degraded` block, extended with the two Typesense reasons and `meta.bodySource`.
+ * The SDK's `meta.degraded` block, extended with the three Typesense reasons and `meta.bodySource`.
  *
  * Applied only when the deployment configured the tier: a deployment without it must keep the SDK
- * text byte-for-byte, because no answer there can carry either reason.
+ * text byte-for-byte, because no answer there can carry any of those reasons.
+ *
+ * TODO(with node-hudu@0.21.0): `typesense-hits-stale` (candidates returned, none readable) is agreed
+ * but absent from 0.20.0's degraded-reason union, so no 0.20.0 answer can produce it. The prose is
+ * written now because a caller on 0.21.0 must recognise it; no cast is involved (the reason travels
+ * as SDK data), and the line stays correct once the SDK publishes it.
  */
 const SEARCH_DEGRADED_TYPESENSE_BLOCK =
   '  meta.degraded   null when article BODIES were searched. Otherwise {reason, advice}:\n' +
@@ -44,6 +49,10 @@ const SEARCH_DEGRADED_TYPESENSE_BLOCK =
   '                  reason "typesense-unavailable"  the Typesense tier is configured but refused or timed out;\n' +
   '                                              the answer came from the local index or from the vendor tier.\n' +
   '                  reason "typesense-unauthorized" the Typesense key was rejected; the key is the thing to fix.\n' +
+  '                  reason "typesense-hits-stale"    the tier returned candidates but this credential could no\n' +
+  '                                              longer read any of them (rows deleted or moved, awaiting Hudu\n' +
+  "                                              reindex), so the empty answer is disclosed: retry later or widen\n" +
+  '                                              the query.\n' +
   '  meta.bodySource "index" | "typesense" | "none": which body source produced this answer. "none" means\n' +
   '                  body text was not searched at all on this call.';
 
@@ -116,10 +125,17 @@ export function adjustHelpText(ctx: ToolContext, text: string): string {
   // Order matters: under `http` no tier field is served at all, so a refusal naming "index", "auto"
   // and refresh would describe a schema that does not exist there. The deployment policy comes
   // first; the corpus refusal applies only where the caller holds the field.
+  // Said wherever the tier is stated, and only where a body tier is configured: the unset text stays
+  // byte-identical. A configured tier that cannot run because the corpus is narrowed must not read
+  // as if it runs.
+  const corpusResolution =
+    typesenseConfigured && !bodySearchable
+      ? ' The configured Typesense tier is corpus-wide too, so the corpus gate resolves it to "vendor" as well.'
+      : '';
   const tier = searchTierIsPolicy
-    ? `tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter.`
+    ? `tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter.${corpusResolution}`
     : !bodySearchable
-      ? 'tool default "vendor"; "index", "auto" and refresh are refused because HUDU_SEARCH_RESOURCES excludes articles or assets.'
+      ? `tool default "vendor"; "index", "auto" and refresh are refused because HUDU_SEARCH_RESOURCES excludes articles or assets.${corpusResolution}`
       : toolDefaultTier === 'auto'
       ? 'tool default "auto" (answers from Hudu search now; builds the body index in the background so a later search is body-aware); "index" waits for a complete body-index answer before returning.'
       : toolDefaultTier === 'vendor'
@@ -277,7 +293,11 @@ export function searchToolDescription(ctx: ToolContext): string {
   const replacement = searchTierIsPolicy
     ? serverPolicyTierSentence(ctx)
     : !bodySearchable
-      ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
+      ? `This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.${
+          typesenseConfigured
+            ? ' The configured Typesense tier is corpus-wide too, so the corpus gate resolves it to "vendor" as well.'
+            : ''
+        }`
       : toolDefaultTier === 'typesense'
       ? 'defaults to tier "typesense": whole-corpus body search through Hudu\'s index, no local build.'
       : toolDefaultTier === 'auto'
@@ -304,7 +324,7 @@ export function searchToolDescription(ctx: ToolContext): string {
  * one: it describes what the deployment does with the tier it resolved.
  */
 function serverPolicyTierSentence(ctx: ToolContext): string {
-  const { toolDefaultTier } = ctx;
+  const { toolDefaultTier, bodySearchable, typesenseConfigured } = ctx;
   if (toolDefaultTier === 'typesense') {
     return 'Tier is set server-side to "typesense": every call searches the whole corpus through Hudu\'s index.';
   }
@@ -312,6 +332,11 @@ function serverPolicyTierSentence(ctx: ToolContext): string {
     return 'Tier is set server-side to "index": a call waits for a complete body-index answer.';
   }
   if (toolDefaultTier === 'vendor') {
+    if (typesenseConfigured && !bodySearchable) {
+      // The corpus gate beats a configured "typesense" policy, and the sentence says so where the
+      // policy is stated - not in a footnote: a caller must not read "configured" as "it runs".
+      return 'Tier is set server-side to "vendor": this deployment excludes articles or assets, so no body tier runs, and the configured Typesense tier is corpus-wide too, so the corpus gate resolves it to "vendor" as well.';
+    }
     return 'Tier is set server-side to "vendor": every call answers immediately and no body index is built.';
   }
   return 'Tier is set server-side to "auto": it answers now and warms the body index in the background, so a later search is body-aware; a body-blind answer says so in meta.degraded.';

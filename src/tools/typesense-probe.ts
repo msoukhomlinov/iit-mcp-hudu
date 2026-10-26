@@ -64,10 +64,16 @@ export async function probeTypesense(hudu: HuduClient, config: Config): Promise<
   const collections = [block.collections.articles, block.collections.assets];
   const started = Date.now();
   const host = hudu as unknown as BodyProbeHost;
-  const probe = host.operations?.probeBodySearch;
-  if (typeof probe !== 'function') {
+  const operations = host.operations;
+  // `typeof` alone is NOT evidence: 0.20.0's policy proxy fabricates a callable for any name and
+  // throws POLICY_DENIED when it is called, so an unknown method looks present and fails like a
+  // refusal. The `in` test DOES reflect the real member set there (verified against 0.20.0:
+  // `'probeBodySearch' in hudu.operations` is false while `hudu.operations.probeBodySearch` is a
+  // function), so it is the feature detection.
+  if (operations === undefined || !('probeBodySearch' in operations) || typeof operations.probeBodySearch !== 'function') {
     return { ...NOT_PROBED, collections, probeMs: Date.now() - started };
   }
+  const probe = operations.probeBodySearch;
   try {
     const result = await probe.call(host.operations);
     return {

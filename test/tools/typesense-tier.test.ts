@@ -25,6 +25,13 @@ const CORPUS_EXCLUDED = { HUDU_SEARCH_RESOURCES: ['companies'] };
 
 afterEach(() => vi.unstubAllGlobals());
 
+async function excludedHelp() {
+  const session = await stdioSession({ ...TYPESENSE, ...CORPUS_EXCLUDED });
+  const result = await session.call('hudu_search', { mode: 'help' });
+  await session.close();
+  return result;
+}
+
 const toolOf = async (session: Session) => (await session.list()).find((t) => t.name === 'hudu_search')!;
 
 async function stdioSession(override: Record<string, unknown>): Promise<Session> {
@@ -104,6 +111,7 @@ describe('hudu_search schema and prose', () => {
     expect(text).toContain('meta.bodySource');
     expect(text).toContain('typesense-unavailable');
     expect(text).toContain('typesense-unauthorized');
+    expect(text).toContain('typesense-hits-stale');
     await session.close();
   });
 
@@ -114,6 +122,39 @@ describe('hudu_search schema and prose', () => {
     expect(text).not.toContain('typesense');
     expect(text).not.toContain('meta.bodySource');
     await session.close();
+  });
+
+  it('resolves a configured typesense policy to vendor on an excluded corpus, claiming no body source', async () => {
+    // The corpus gate beats the policy: the tier is vendor, so the answer must never carry
+    // `bodySource: "typesense"` (that would claim a body tier ran) nor advertise one.
+    const session = await stdioSession({ ...TYPESENSE, ...CORPUS_EXCLUDED, HUDU_SEARCH_TIER_POLICY: 'typesense' });
+    vi.stubGlobal('fetch', async () => Response.json([]));
+    const result = await session.call('hudu_search', { mode: 'search', query: 'reset' });
+    expect(result.isError).toBeUndefined();
+    const bodySource = (result.structuredContent.meta as Record<string, unknown>).bodySource;
+    expect(bodySource).not.toBe('typesense');
+    expect([undefined, 'none']).toContain(bodySource);
+    expect(String(result.content[0].text)).not.toContain('body source: typesense');
+    await session.close();
+  });
+
+  it('states the corpus resolution where it states the tier policy', async () => {
+    const excluded = await stdioSession({ ...TYPESENSE, ...CORPUS_EXCLUDED });
+    expect(String((await toolOf(excluded)).description)).toContain('corpus gate resolves it to "vendor"');
+    await excluded.close();
+    const http = await httpSession({ ...TYPESENSE, ...CORPUS_EXCLUDED });
+    const description = String((await toolOf(http)).description);
+    expect(description).toContain('no body tier runs');
+    expect(description).toContain('corpus gate resolves it to "vendor"');
+    await http.close();
+    // The on-demand help states it in the same sentence as the tier, too.
+    const help = JSON.parse(String((await excludedHelp()).content[0]?.text ?? '{}')).text as string;
+    expect(help).toContain('corpus gate resolves it to "vendor" as well');
+    // ...and it is absent from the full-corpus help, where no resolution happens.
+    const full = await stdioSession(TYPESENSE);
+    const fullHelp = JSON.parse(String((await full.call('hudu_search', { mode: 'help' })).content[0]?.text ?? '{}')).text as string;
+    expect(fullHelp).not.toContain('corpus gate resolves it');
+    await full.close();
   });
 
   it('refuses tier:"typesense" when the corpus is excluded, naming both body tiers', async () => {
@@ -162,6 +203,9 @@ describe('hudu_get_api_info — the Typesense probe', () => {
     expect(typesense).toMatchObject({ configured: true, collections: ['articles', 'assets'] });
     expect(typeof typesense.reachable).toBe('boolean');
     expect(typeof typesense.probeMs).toBe('number');
+    // The output schema is deliberately open (`z.unknown()`), so the SHAPE is asserted here instead:
+    // exactly these four keys, and `error` only when the probe reported one.
+    expect(Object.keys(typesense).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
     // The probe must never fail the read, and it carries no key and no endpoint.
     expect(JSON.stringify(result.structuredContent)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
     expect(JSON.stringify(result.structuredContent)).not.toContain('typesense.example.com');
@@ -226,11 +270,28 @@ describe('probeTypesense — the SDK call site', () => {
     expect(JSON.stringify(report)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
   });
 
+  it('is not fooled by 0.20.0\'s policy proxy, which fabricates a callable for any name', async () => {
+    // The real 0.20.0 client answers `operations.probeBodySearch` with a function that throws
+    // POLICY_DENIED, while `'probeBodySearch' in operations` is false. That gap is the detection.
+    let called = 0;
+    const fabricating = new Proxy({}, {
+      get: () => () => {
+        called += 1;
+        throw Object.assign(new Error('unknown operation'), { code: 'POLICY_DENIED' });
+      },
+    });
+    const report = await probeTypesense(host(fabricating), config);
+    expect(called).toBe(0);
+    expect(report).toEqual({ configured: true, reachable: false, collections: ['articles', 'assets'], probeMs: expect.any(Number) });
+    expect(report.error).toBeUndefined();
+  });
+
   it('reports reachable:false without dialing when the installed SDK has no probe (0.20.0)', async () => {
     for (const operations of [undefined, {}, { probeBodySearch: 'not-a-function' }]) {
       const report = await probeTypesense(host(operations), config);
       expect(report).toMatchObject({ configured: true, reachable: false, collections: ['articles', 'assets'] });
       expect(report.error).toBeUndefined();
+      expect(Object.keys(report).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
     }
   });
 });
