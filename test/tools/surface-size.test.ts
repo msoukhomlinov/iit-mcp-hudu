@@ -54,20 +54,29 @@ const BUDGET_SEARCH = 2_900;
 const MIN_HEADROOM = 200;
 
 /**
- * The bytes a CONFIGURED tier adds that the unset surface cannot pay for and that no prose in this PR
- * can remove: the `typesense` enum value (~14 B), the probe field in `hudu_get_api_info`'s output
- * schema (~20 B) and one short tier sentence. With the tier's prose reduced to its shortest honest
- * form, three configured profiles land just under the 200 B margin:
+ * The bytes a CONFIGURED tier adds that the unset surface can neither pay for nor remove, and
+ * NOTHING else:
  *
- *   stdio + auto   read-only 197 B   (3 B short)
- *   stdio + vendor read-only 168 B   (32 B short, the binding case)
- *   stdio + vendor hudu_search 198 B (2 B short)
+ *   +14 B  the `typesense` value in `hudu_search`'s tier enum
+ *   +20 B  the `typesense` probe field in `hudu_get_api_info`'s output schema
+ *   ----   (the tier sentences are already down to one short line each and are inside the margin)
+ *   =32 B
  *
- * This constant is the PROPOSAL under review, not a silent ceiling raise: it applies to CONFIGURED
- * variants only, the raw ceilings (`BUDGET_*`) are still asserted unchanged for every variant, and
- * `MIN_HEADROOM` still applies to every unconfigured variant and to configured write profiles.
- * Setting it to 0 fails exactly the three profiles above, by exactly those bytes — so the cost of
- * the tier is visible in the gate instead of hidden outside it.
+ * Measured with that minimal prose, three configured profiles fall short of the 200 B margin:
+ *
+ *   stdio + auto   read-only     197 B  (3 B short)
+ *   stdio + vendor read-only     168 B  (32 B short - the binding case)
+ *   stdio + vendor hudu_search   198 B  (2 B short)
+ *
+ * This constant absorbs ONLY the configured-surface additions. It is NOT headroom for future prose:
+ * a new sentence still has to fit the margin the other configured profiles keep. It buys MARGIN,
+ * never CEILING — every configured profile is asserted against the raw 28,000 / 23,000 / 2,900 B
+ * before the margin is considered — and it applies to configured variants only, so every unset
+ * profile keeps the strict 200 B (asserted separately below, allowance-free).
+ *
+ * Setting it to 0 fails exactly those three profiles, by exactly those bytes; the tests below
+ * re-derive both facts on every run, so a fourth shortfall (a regression elsewhere) fails instead of
+ * being absorbed by a bigger constant.
  */
 const CONFIGURED_ALLOWANCE = 32;
 
@@ -160,4 +169,48 @@ describe('served tools/list size', () => {
       }
     }
   }
+});
+
+/**
+ * Strict headroom (allowance = 0) for every profile the gate asserts on, keyed
+ * `"<transport> <variant> <feature> <metric>"`. The allowance is only ever allowed to cover a
+ * MEASURED shortfall, so the tests below read this map rather than trusting the constant.
+ */
+async function strictHeadrooms(): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const transport of TRANSPORTS) {
+    for (const variant of VARIANTS) {
+      for (const feature of FEATURES) {
+        const key = `${transport} ${variant} ${feature}`;
+        out[`${key} write`] = BUDGET_WRITE - (await measure(transport, 'all', variant, feature)).size;
+        const readOnly = await measure(transport, 'deny', variant, feature);
+        out[`${key} read-only`] = BUDGET_READ_ONLY - readOnly.size;
+        out[`${key} hudu_search`] = BUDGET_SEARCH - readOnly.search;
+      }
+    }
+  }
+  return out;
+}
+
+describe('CONFIGURED_ALLOWANCE is a measurement, not a budget raid', () => {
+  it('covers exactly the three configured profiles that fall short, by exactly their shortfall', async () => {
+    const heads = await strictHeadrooms();
+    const short = Object.entries(heads).filter(([, headroom]) => headroom < MIN_HEADROOM);
+    // Named, not counted: a fourth shortfall means a regression elsewhere, and the allowance must
+    // not be widened to swallow it. The numbers are re-derived on every run.
+    expect(Object.fromEntries(short.sort(([a], [b]) => a.localeCompare(b)))).toEqual({
+      'stdio auto configured read-only': 197,
+      'stdio vendor configured hudu_search': 198,
+      'stdio vendor configured read-only': 168,
+    });
+    // The constant IS the largest measured shortfall — never more, so it cannot grow quietly.
+    expect(MIN_HEADROOM - Math.min(...short.map(([, headroom]) => headroom))).toBe(CONFIGURED_ALLOWANCE);
+  });
+
+  it('grants nothing to an unset profile: every one keeps the full margin with allowance 0', async () => {
+    const heads = await strictHeadrooms();
+    const unset = Object.entries(heads).filter(([key]) => key.includes(' unset '));
+    expect(unset).toHaveLength(TRANSPORTS.length * VARIANTS.length * 3);
+    for (const [key, headroom] of unset) expect(headroom, key).toBeGreaterThanOrEqual(MIN_HEADROOM);
+  });
 });
