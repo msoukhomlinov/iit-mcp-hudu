@@ -284,7 +284,7 @@ describe('hudu_get_api_info — the Typesense probe', () => {
     expect(typeof typesense.probeMs).toBe('number');
     // The output schema is deliberately open (`z.unknown()`), so the SHAPE is asserted here instead:
     // exactly these keys, and `error` only when the probe could not answer.
-    expect(Object.keys(typesense).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
+    expect(Object.keys(typesense).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable', 'results']);
     // The probe must never fail the read, and it carries no key and no endpoint.
     expect(JSON.stringify(result.structuredContent)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
     expect(JSON.stringify(result.structuredContent)).not.toContain('typesense.example.com');
@@ -320,26 +320,31 @@ describe('hudu_get_api_info — the Typesense probe', () => {
       client,
       loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE }),
     );
-    expect(wire).toHaveLength(1);
+    expect(wire).toHaveLength(2);
     // The contract that keeps a SEARCH-ONLY key sufficient: one document search, both parameters the
     // SDK sends, asserted by name — a `q` that is not `*` or a missing `query_by` is a different request.
     expect(wire[0].path).toBe('/collections/articles/documents/search');
+    expect(wire[1].path).toBe('/collections/assets/documents/search');
     expect(wire[0].params.get('q')).toBe('*');
     expect(wire[0].params.get('query_by')).toBe('name');
     expect(wire[0].params.get('per_page')).toBe('0');
     // And no schema listing, asserted on the PATHS rather than on a query string: `/collections` has
     // no query, so a `not.toContain('/collections?')` check could never catch it. The only path that
     // may start `/collections/` is the search endpoint above.
-    const listings = wire.filter((r) => r.path === '/collections' || (r.path.startsWith('/collections/') && r.path !== '/collections/articles/documents/search'));
+    const listings = wire.filter((r) => r.path === '/collections' || (r.path.startsWith('/collections/') && !r.path.endsWith('/documents/search')));
     expect(listings).toEqual([]);
     expect(report).toEqual({
       configured: true,
       reachable: true,
       collections: ['articles', 'assets'],
       probeMs: expect.any(Number),
+      results: [
+        { collection: 'articles', reachable: true, found: 3 },
+        { collection: 'assets', reachable: true, found: 3 },
+      ],
     });
     expect(report.error).toBeUndefined();
-    expect(Object.keys(report).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
+    expect(Object.keys(report).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable', 'results']);
     expect(JSON.stringify(report)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
   });
 
