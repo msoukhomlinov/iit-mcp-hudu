@@ -153,6 +153,10 @@ describe('hudu_search schema and prose', () => {
     // The config bug must not read as an outage, and the data problem must not read as staleness.
     expect(text).toContain('this is not an');
     expect(text).toContain('the data is the cause, not staleness');
+    // The 403-vs-404 limitation is stated as a LIMITATION where staleness is explained, not as fact.
+    expect(text).toContain('LIMITATION:');
+    expect(text).toContain('403 and a 404 both map to the same silent-drop path');
+    expect(text).toContain('indistinguishable from a discarded one');
     await session.close();
   });
 

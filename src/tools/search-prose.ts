@@ -47,6 +47,11 @@ const SEARCH_DEFAULT_INDEX_SENTENCE =
  *
  * This server never maps, renames or reorders a reason it receives — it prints `degraded.reason`
  * verbatim, because a renamed reason silently breaks the pairing between the two packages.
+ *
+ * TODO(with node-hudu@0.21.0, follow-up in the #56 bump checklist): the SDK exports a completeness
+ * predicate `isDisclosureReason`. Once it is published, the prose below about which reasons break
+ * `complete` should point AT that rule instead of restating a local version of it, so the two cannot
+ * disagree about what "complete" means.
  */
 export const TYPESENSE_DEGRADED_REASONS = [
   'typesense-unavailable',
@@ -88,6 +93,10 @@ const TYPESENSE_REASON_ACTION: Record<TypesenseDegradedReason, { group: string; 
       "Hudu's index still holds records this credential can no longer read",
       "(discarded or deleted, awaiting Hudu's reindex): retry later or",
       'widen the query.',
+      'LIMITATION: Hudu\'s real semantics for permission-hidden articles are',
+      'unverified upstream (they need a live tenant to test); in this tier a',
+      '403 and a 404 both map to the same silent-drop path, so a hidden',
+      'article is indistinguishable from a discarded one.',
     ],
   },
   'typesense-hits-unhydratable': {
