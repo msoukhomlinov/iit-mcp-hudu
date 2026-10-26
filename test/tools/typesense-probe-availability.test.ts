@@ -168,6 +168,32 @@ describe('probeTypesense — built and permitted', () => {
     expect(Object.keys(report).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
   });
 
+  it('maps the 0.22.0 result, including per-collection results when present', async () => {
+    const report = await probeTypesense(
+      permitted(async () => ({
+        configured: true,
+        collections: ['articles', 'assets'],
+        reachable: true,
+        probeMs: 12,
+        results: [
+          { collection: 'articles', reachable: true, found: 100 },
+          { collection: 'assets', reachable: false, code: 'TYPESENSE_UNAVAILABLE' },
+        ],
+      })),
+      config,
+    );
+    expect(report).toEqual({
+      configured: true,
+      reachable: true,
+      collections: ['articles', 'assets'],
+      probeMs: 12,
+      results: [
+        { collection: 'articles', reachable: true, found: 100 },
+        { collection: 'assets', reachable: false, code: 'TYPESENSE_UNAVAILABLE' },
+      ],
+    });
+  });
+
   it('keeps a transport failure named as such, never as a refusal', async () => {
     const report = await probeTypesense(
       permitted(async () => {

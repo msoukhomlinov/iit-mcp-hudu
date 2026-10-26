@@ -3,8 +3,9 @@ allowBuilds:
 minimumReleaseAgeExclude:
   # node-hudu 0.21.0 published 2026-10-26T02:49Z, so it is only 24 h old at 2026-10-27T02:49Z: the
   # expiry must sit PAST that instant, not at midnight UTC, or the 1-day release-age gate refuses the
-  # install again for the last three hours. Delete this entry after 2026-10-27T03:00Z.
+  # install again for the last three hours. Delete both entries after 2026-10-27T10:00Z.
   - node-hudu@0.21.0
+  - node-hudu@0.22.0
 overrides:
   source-map-js: 1.2.2
   vite: ">=8.3.3 <9"

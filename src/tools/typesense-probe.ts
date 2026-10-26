@@ -52,6 +52,8 @@ export interface TypesenseProbeReport {
   reachable: boolean;
   collections: string[];
   probeMs: number;
+  /** Per-collection results, when this SDK version reports them (node-hudu >= 0.22.0). */
+  results?: Array<{ collection: string; reachable: boolean; found?: number; code?: string }>;
   /** Why the probe could not answer, with a code that names WHICH question failed. Never the key. */
   error?: { code: string; message: string };
 }
@@ -104,6 +106,7 @@ export async function probeTypesense(hudu: HuduClient, config: Config): Promise<
       reachable: result.reachable === true,
       collections: Array.isArray(result.collections) && result.collections.length > 0 ? result.collections : collections,
       probeMs: typeof result.probeMs === 'number' ? result.probeMs : Date.now() - started,
+      ...(Array.isArray(result.results) && result.results.length > 0 ? { results: result.results } : {}),
       ...(result.error ? { error: { code: result.error.code, message: result.error.message } } : {}),
     };
   } catch (error) {

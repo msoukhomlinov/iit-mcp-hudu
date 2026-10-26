@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0
+
+**Upgrading from 0.8.0:** no configuration change. The pinned `node-hudu` moves from 0.21.0 to 0.22.0,
+which closes four MAJOR and three MINOR defects in the Typesense body tier found by an adversarial
+audit. Nothing changes for a deployment that leaves the tier unset.
+
+- Add: `probeBodySearch` results now carry the additive per-collection `results[]` field
+  (`node-hudu` 0.22.0). The probe report maps it when present, so a caller can see WHICH collection
+  answered or failed instead of only the aggregate `reachable`.
+- Change: the pinned SDK's tier is honest about its bounds. Articles are hydrated in full through a
+  bounded pool of reads (so title matches ranked 11+ reach the local scorer), `meta.typesense` splits
+  `capped` / `unreadable` / `unscored`, the circuit breaker is per collection, a 401 from one
+  collection is no longer reported as a bad key when a sibling answered, and `verifyHits:false`
+  discloses that the tier contributed no hit. See `node-hudu` 0.22.0 release notes.
+
 ## 0.8.0
 
 **Upgrading from 0.7.0:** no configuration change for any existing deployment. Six new optional
