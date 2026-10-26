@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.10.0
+
+**Upgrading from 0.9.1:** no configuration change. This release adopts node-hudu 0.23.0 and
+documents its text-channel tolerance in the three dispatch tools' descriptions.
+
+- Dependency: `node-hudu` 0.22.0 -> 0.23.0. `operations.invoke` now accepts the exact string
+  literal of a value in a declared `integer` / `number` / `boolean` field of the
+  `hudu_read` / `hudu_write` / `hudu_delete` `input` bag: `"61"` for an id, `"25"` for a limit,
+  `"true"` for a flag. A text-channel client (e.g. a Copilot Studio bot that quotes every
+  argument) that reads a company id out of a search hit and sends it quoted now gets the company
+  instead of a `CONFIG_ERROR`; the converted value dispatches and addresses the same record as
+  the unquoted number. Any other string is refused exactly as before, and the #97 path-traversal
+  protection is preserved (node-hudu#128).
+- Change: the `hudu_read`, `hudu_write` and `hudu_delete` descriptions now state that tolerance
+  in one sentence (verbatim from the node-hudu contract text). The size budgets in
+  `test/tools/surface-size.test.ts` moved deliberately for this change and the frozen unset
+  surface in `test/tools/surface-unset-frozen.test.ts` was re-recorded (deltas are exactly the
+  sentence bytes: 543 B write profile, 181 B read-only).
+- Test: `test/tools/text-channel-tolerance.test.ts` — `hudu_read` with `operation:
+  "companies.get"` and `input: { id: "61" }` dispatches `GET /companies/61`; `id: "abc"` is
+  refused with `expected integer, got string` and issues zero requests (iit-mcp-hudu#62).
+
 ## 0.9.1
 
 **Upgrading from 0.9.0:** no configuration change. This release sharpens the argument prose a calling

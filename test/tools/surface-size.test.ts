@@ -29,17 +29,30 @@ afterEach(() => vi.unstubAllGlobals());
  * Measured matrix (write / read-only / hudu_search, UTF-8 bytes of the served `tools/list` JSON),
  * re-measured from the built `dist`: the write and read-only figures are 5 B below the previous
  * comment's (its own arithmetic was stale), the `hudu_search` figures are unchanged.
- *   stdio default  27,470 / 22,742 / 2,626      http default  27,363 / 22,635 / 2,519
- *   stdio auto     27,505 / 22,777 / 2,661      http auto     27,363 / 22,635 / 2,519
- *   stdio index    27,470 / 22,742 / 2,626      http index    27,252 / 22,524 / 2,408
- *   stdio vendor   27,511 / 22,783 / 2,667      http vendor   27,265 / 22,537 / 2,421
- * The binding configuration is `stdio` + `vendor`: 217 B of read-only headroom and 233 B of
+ * #62 (node-hudu#128, node-hudu 0.23.0): the one-sentence text-channel tolerance landed on the
+ * hudu_read/hudu_write/hudu_delete descriptions — +543 B (serialized) to the write profile
+ * (the sentence on all three tools) and +181 B to the read-only profile (hudu_read only); the
+ * `hudu_search` figures are unchanged. Re-measured on the 0.23.0 surface:
+ *   stdio default  28,013 / 22,923 / 2,626      http default  27,906 / 22,816 / 2,519
+ *   stdio auto     28,048 / 22,958 / 2,661      http auto     27,906 / 22,816 / 2,519
+ *   stdio index    28,013 / 22,923 / 2,626      http index    27,795 / 22,705 / 2,408
+ *   stdio vendor   28,054 / 22,964 / 2,667      http vendor   27,808 / 22,718 / 2,421
+ * The binding configuration is `stdio` + `vendor`: 286 B of read-only headroom (237 B on the
+ * configured variant), 247 B of write headroom (on the configured binding) and 233 B of
  * `hudu_search` headroom (`MIN_HEADROOM` below). `stdio` sizes carry the strict object's
  * `additionalProperties: false`; `http` carries the loose `{}` that lets an override be reported.
  * (`http` default and `auto` coincide: `auto` is already that transport's tier.)
  */
-const BUDGET_WRITE = 28_000;
-const BUDGET_READ_ONLY = 23_000;
+/**
+ * Raised 28,000 -> 28,350 for #62 (node-hudu#128): the 0.23.0 tolerance sentence costs the
+ * write profile 543 B (served on all three dispatch tools). Deliberate exception to "never raise
+ * to go green": the prose is node-hudu's own served sentence, mirrored here on purpose, so the
+ * ceiling follows the measurement (new maximum 28,103, on the configured stdio+vendor profile)
+ * while keeping the 200 B margin on every write profile.
+ */
+const BUDGET_WRITE = 28_350;
+/** Raised 23,000 -> 23,250 for #62 (same sentence; the read-only profile serves hudu_read only: +181 B). */
+const BUDGET_READ_ONLY = 23_250;
 /** `hudu_search` is the largest single tool and must fit under every tier-policy setting. */
 const BUDGET_SEARCH = 2_900;
 
@@ -57,28 +70,24 @@ const MIN_HEADROOM = 200;
  * The bytes a CONFIGURED tier adds that the unset surface can neither pay for nor remove, and
  * NOTHING else:
  *
- * The binding number is MEASURED, not summed: 200 B margin - 168 B measured headroom = 32 B. The
- * bytes are the `typesense` value in `hudu_search`'s tier enum (measured 12 B), the `typesense`
- * probe field in `hudu_get_api_info`'s output schema (measured 15 B), and the ~5 B of tier sentence
- * that remains even in its shortest honest form — 12 + 15 + 5 = 32 B, matching 200 - 168.
- *
- * Measured with that minimal prose, three configured profiles fall short of the 200 B margin:
- *
- *   stdio + auto   read-only     197 B  (3 B short)
- *   stdio + vendor read-only     168 B  (32 B short - the binding case)
- *   stdio + vendor hudu_search   198 B  (2 B short)
- *
- * This constant absorbs ONLY the configured-surface additions. It is NOT headroom for future prose:
+ * Pre-#62 this was 32 B: the binding number was MEASURED, not summed — 200 B margin - 168 B
+ * measured headroom = 32 B (12 B `typesense` tier enum + 15 B `hudu_get_api_info` probe field +
+ * ~5 B of tier sentence in its shortest honest form). #62's budget raises (28,000 -> 28,350 /
+ * 23,000 -> 23,250, see above) absorbed the two read-only shortfalls, leaving exactly one profile
+ * still under the margin: the `hudu_search` single-tool size under `stdio` + `vendor` +
+ * configured (198 B headroom under BUDGET_SEARCH, 2 B short of the 200 B margin). The constant is
+ * that measured 2 B — never more, so it cannot grow quietly. It is NOT headroom for future prose:
  * a new sentence still has to fit the margin the other configured profiles keep. It buys MARGIN,
- * never CEILING — every configured profile is asserted against the raw 28,000 / 23,000 / 2,900 B
+ * never CEILING — every configured profile is asserted against the raw 28,350 / 23,250 / 2,900 B
  * before the margin is considered — and it applies to configured variants only, so every unset
  * profile keeps the strict 200 B (asserted separately below, allowance-free).
  *
- * Setting it to 0 fails exactly those three profiles, by exactly those bytes; the tests below
- * re-derive both facts on every run, so a fourth shortfall (a regression elsewhere) fails instead of
- * being absorbed by a bigger constant.
+ * Setting it to 0 fails exactly that one profile, by exactly those 2 B; the tests below
+ * re-derive both facts on every run, so any other shortfall (a regression elsewhere) fails instead
+ * of being absorbed by a bigger constant. (The write-profile headroom is carried by
+ * BUDGET_WRITE itself — the allowance never masks prose, only the tier's own additions.)
  */
-const CONFIGURED_ALLOWANCE = 32;
+const CONFIGURED_ALLOWANCE = 2;
 
 /**
  * Every tier setting the gate measures: the three `HUDU_SEARCH_TIER_POLICY` values plus the unset
@@ -193,17 +202,16 @@ async function strictHeadrooms(): Promise<Record<string, number>> {
 }
 
 describe('CONFIGURED_ALLOWANCE is a measurement, not a budget raid', () => {
-  it('covers exactly the three configured profiles that fall short, by exactly their shortfall', async () => {
+  it('covers exactly the one remaining configured shortfall, by exactly its shortfall', async () => {
     const heads = await strictHeadrooms();
     const short = Object.entries(heads).filter(([, headroom]) => headroom < MIN_HEADROOM);
-    // Named, not counted: a fourth shortfall means a regression elsewhere, and the allowance must
+    // Named, not counted: any other shortfall means a regression elsewhere, and the allowance must
     // not be widened to swallow it. The numbers are re-derived on every run.
     expect(Object.fromEntries(short.sort(([a], [b]) => a.localeCompare(b)))).toEqual({
-      'stdio auto configured read-only': 197,
       'stdio vendor configured hudu_search': 198,
-      'stdio vendor configured read-only': 168,
     });
     // The constant IS the largest measured shortfall — never more, so it cannot grow quietly.
+    // #62's budget raises left exactly this pre-existing 2 B search shortfall to cover.
     expect(MIN_HEADROOM - Math.min(...short.map(([, headroom]) => headroom))).toBe(CONFIGURED_ALLOWANCE);
   });
 

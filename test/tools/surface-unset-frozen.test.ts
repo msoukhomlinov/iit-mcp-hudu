@@ -24,15 +24,15 @@ vi.mock('node:child_process', () => ({ spawnSync: () => ({}) }));
  * the env-wiring PR head (`4e9bf0b`) with no Typesense variable set.
  */
 const FROZEN: Record<string, { sha: string; bytes: number }> = {
-  // Re-recorded when the argument prose changed to name the narrowing semantics (numeric
-  // company_id, omit = all companies + global articles). BYTES ARE UNCHANGED from the previous
-  // capture — the wording was funded by trimming min_score/query prose in the same tool — so this
-  // is a hash-only change: the served surface is the same size, and no deployment that never set
-  // HUDU_TYPESENSE_* sees a bigger surface than before.
-  'stdio-all': { sha: '75466d30e4afca59', bytes: 27469 },
-  'stdio-deny': { sha: 'ff9fc8a5ae470fb3', bytes: 22741 },
-  'http-all': { sha: 'abb26e217ca461a0', bytes: 27362 },
-  'http-deny': { sha: '0422e631e794b56e', bytes: 22634 },
+  // Re-recorded for #62 (node-hudu#128, node-hudu 0.23.0): the one-sentence text-channel
+  // tolerance was added to the hudu_read/hudu_write/hudu_delete descriptions — +543 B to the
+  // write profiles and +181 B to the read-only profiles. The unset surface IS meant to change
+  // (the sentence is served on every profile); every deployment's surface grows by exactly the
+  // sentence, so no conditional tier clause leaked into the unset path.
+  'stdio-all': { sha: '660f3fce392aef98', bytes: 28012 },
+  'stdio-deny': { sha: '1c177d15cace4d8c', bytes: 22922 },
+  'http-all': { sha: 'c3c4510e0974be84', bytes: 27905 },
+  'http-deny': { sha: 'b67ad71a74eed8cf', bytes: 22815 },
 };
 
 async function served(transport: 'stdio' | 'http', policy: 'all' | 'deny') {
