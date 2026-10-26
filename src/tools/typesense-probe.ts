@@ -87,12 +87,19 @@ export async function probeTypesense(hudu: HuduClient, config: Config): Promise<
   } catch (error) {
     // A probe is an advisory fact, never the reason a tool call fails: Hudu's own document is the
     // answer, and an unreachable endpoint is reported as such.
+    //
+    // A refusal is NOT an endpoint problem and must not be dressed as one: when the client's policy
+    // omits the operation (POLICY_DENIED) or this SDK build has no such operation
+    // (NOT_IMPLEMENTED), the report says the operation is not permitted - "unavailable" - and stays
+    // silent about Typesense, because nothing about the endpoint was learned.
     const code = (error as { code?: unknown }).code;
+    if (typeof code !== 'string') return { ...NOT_PROBED, collections, probeMs: Date.now() - started };
+    const notPermitted = code === 'POLICY_DENIED' || code === 'NOT_IMPLEMENTED';
     return {
       ...NOT_PROBED,
       collections,
       probeMs: Date.now() - started,
-      ...(typeof code === 'string' ? { error: { code, message: 'probe failed' } } : {}),
+      error: { code, message: notPermitted ? 'the operation is not permitted by this client policy' : 'the probe request failed' },
     };
   }
 }

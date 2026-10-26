@@ -13,6 +13,10 @@ import { loadConfig } from '../../src/config.js';
 import { probeTypesense } from '../../src/tools/typesense-probe.js';
 import { runDoctor } from '../../src/doctor.js';
 import { bodySourceNote } from '../../src/tools/results.js';
+import type { McpServer } from '@modelcontextprotocol/server';
+import { createLogger } from '../../src/logger.js';
+import { registerReadTools } from '../../src/tools/reads.js';
+import type { ToolContext } from '../../src/tools/context.js';
 import { connect, connectForRequest, type Session } from '../helpers/mcp-session.js';
 
 /** Obvious fakes only: no real key enters a test. */
@@ -293,6 +297,104 @@ describe('probeTypesense — the SDK call site', () => {
       expect(report.error).toBeUndefined();
       expect(Object.keys(report).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
     }
+  });
+});
+
+describe('hudu_get_api_info — the refused probe, end to end at the tool boundary', () => {
+  /**
+   * Drive the registered `hudu_get_api_info` handler with a fake client whose `operations` object
+   * HAS `probeBodySearch` but whose policy denies it — the shape the SDK will take once a policy can
+   * omit the operation. The report must read "unavailable, not permitted", never "Typesense failed".
+   */
+  function apiInfoHarness(operations: Record<string, unknown>) {
+    let handler!: (args: Record<string, unknown>) => Promise<unknown>;
+    const server = {
+      registerTool: (name: string, _spec: unknown, h: (args: Record<string, unknown>) => Promise<unknown>) => {
+        if (name === 'hudu_get_api_info') handler = h;
+      },
+    } as unknown as McpServer;
+    const ctx = {
+      hudu: { apiInfo: { resolve: async () => ({ version: 'as-test', date: '2026-01-01' }) }, operations },
+      huduOrigin: 'https://hudu.example.com',
+      config: loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE }),
+      log: createLogger('error', () => {}),
+      ops: {},
+      searchableResources: ['articles', 'assets'],
+      defaultSearchScope: ['articles', 'assets'],
+      bodySearchable: true,
+      typesenseConfigured: true,
+      toolDefaultTier: 'typesense',
+      searchTierIsPolicy: false,
+    } as unknown as ToolContext;
+    registerReadTools(server, ctx);
+    return handler;
+  }
+
+  it('says the operation is not permitted, with configured still true and reachable false', async () => {
+    const call = apiInfoHarness({
+      probeBodySearch: async () => {
+        throw Object.assign(new Error('denied by policy'), { code: 'POLICY_DENIED' });
+      },
+    });
+    const result = (await call({})) as { structuredContent: Record<string, unknown> };
+    expect(result.structuredContent.typesense).toEqual({
+      configured: true,
+      reachable: false,
+      collections: ['articles', 'assets'],
+      probeMs: expect.any(Number),
+      error: { code: 'POLICY_DENIED', message: 'the operation is not permitted by this client policy' },
+    });
+  });
+
+  // TODO(node-hudu@0.21.0): activates with the bump, when a default read policy PERMITS
+  // `operations.probeBodySearch`. Until then the member is absent from 0.20.0 and the honest report
+  // is `reachable: false` with no error — so the permitted branch cannot be exercised here.
+  it.skip('reports the SDK probe result when the default read policy permits it', async () => {
+    const call = apiInfoHarness({
+      probeBodySearch: async () => ({ configured: true, collections: ['articles', 'assets'], reachable: true, probeMs: 7 }),
+    });
+    const result = (await call({})) as { structuredContent: Record<string, unknown> };
+    expect(result.structuredContent.typesense).toEqual({
+      configured: true,
+      reachable: true,
+      collections: ['articles', 'assets'],
+      probeMs: 7,
+    });
+  });
+});
+
+describe('probeTypesense — a policy that refuses the operation is UNAVAILABLE, not an endpoint failure', () => {
+  const config = loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE });
+
+  /** A client whose operations object HAS the member but the policy denies it. */
+  const denied = (code: string) => {
+    const operations: Record<string, unknown> = {
+      probeBodySearch: async () => {
+        throw Object.assign(new Error(`${code}: hidden`), { code });
+      },
+    };
+    return { operations } as unknown as Parameters<typeof probeTypesense>[0];
+  };
+
+  it('reports reachable:false with an error that says the operation is not permitted', async () => {
+    for (const code of ['POLICY_DENIED', 'NOT_IMPLEMENTED']) {
+      const report = await probeTypesense(denied(code), config);
+      expect(report).toEqual({
+        configured: true,
+        reachable: false,
+        collections: ['articles', 'assets'],
+        probeMs: expect.any(Number),
+        error: { code, message: 'the operation is not permitted by this client policy' },
+      });
+      // Nothing about the endpoint was learned, so nothing about Typesense is claimed.
+      expect(JSON.stringify(report)).not.toMatch(/typesense/i);
+    }
+  });
+
+  it('keeps a real transport failure named as such, and never as a refusal', async () => {
+    const report = await probeTypesense(denied('TYPESENSE_UNAVAILABLE'), config);
+    expect(report.error).toEqual({ code: 'TYPESENSE_UNAVAILABLE', message: 'the probe request failed' });
+    expect(report.reachable).toBe(false);
   });
 });
 
