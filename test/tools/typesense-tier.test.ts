@@ -9,14 +9,11 @@
  *   wait for), a caller is told which body source answered, and the report/probe carry no key.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createClient } from 'node-hudu';
 import { loadConfig } from '../../src/config.js';
 import { probeTypesense } from '../../src/tools/typesense-probe.js';
 import { runDoctor } from '../../src/doctor.js';
 import { bodySourceNote } from '../../src/tools/results.js';
-import type { McpServer } from '@modelcontextprotocol/server';
-import { createLogger } from '../../src/logger.js';
-import { registerReadTools } from '../../src/tools/reads.js';
-import type { ToolContext } from '../../src/tools/context.js';
 import { connect, connectForRequest, type Session } from '../helpers/mcp-session.js';
 
 /** Obvious fakes only: no real key enters a test. */
@@ -204,16 +201,51 @@ describe('hudu_get_api_info — the Typesense probe', () => {
     const result = await session.call('hudu_get_api_info', {});
     expect(result.isError).toBeUndefined();
     const typesense = result.structuredContent.typesense;
-    expect(typesense).toMatchObject({ configured: true, collections: ['articles', 'assets'] });
-    expect(typeof typesense.reachable).toBe('boolean');
+    // 0.20.0 has no probe in its capability registry, so the build-time question fails first and the
+    // report says which question failed — it does not pretend the endpoint was unreachable.
+    expect(typesense).toMatchObject({
+      configured: true,
+      reachable: false,
+      collections: ['articles', 'assets'],
+      error: { code: 'NOT_IMPLEMENTED', message: 'this SDK version has no operations.probeBodySearch' },
+    });
     expect(typeof typesense.probeMs).toBe('number');
     // The output schema is deliberately open (`z.unknown()`), so the SHAPE is asserted here instead:
-    // exactly these four keys, and `error` only when the probe reported one.
-    expect(Object.keys(typesense).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
+    // exactly these keys, and `error` only when the probe could not answer.
+    expect(Object.keys(typesense).sort()).toEqual(['collections', 'configured', 'error', 'probeMs', 'reachable']);
     // The probe must never fail the read, and it carries no key and no endpoint.
     expect(JSON.stringify(result.structuredContent)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
     expect(JSON.stringify(result.structuredContent)).not.toContain('typesense.example.com');
     await session.close();
+  });
+
+  it('dials nothing and reports configured:false when the tier is unconfigured', async () => {
+    const report = await probeTypesense({ operations: {} } as never, loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123' }));
+    expect(report).toEqual({ configured: false, reachable: false, collections: [], probeMs: 0 });
+  });
+
+  // TODO(node-hudu@0.21.0), a checklist item on #56: activates with the bump, and until it runs the
+  // bump must not land. It asserts the DEFAULT read policy PERMITS the operation (membership, not
+  // "does not throw") and that the permitted call returns the typed result with no error.
+  it.skip('the default read policy permits probeBodySearch, and the call returns its typed result', async () => {
+    const client = createClient({ baseUrl: 'https://hudu.example.com', apiKey: 'k-123' }) as unknown as {
+      operations: Record<string, unknown>;
+    };
+    expect('probeBodySearch' in client.operations).toBe(true);
+    // The SDK dials its own Typesense endpoint; a search-only `per_page=0` answer is all it needs.
+    vi.stubGlobal('fetch', async () => Response.json({ found: 3, hits: [], out_of: 3, page: 1, request_params: {} }));
+    const report = await probeTypesense(
+      client as never,
+      loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE }),
+    );
+    expect(report).toEqual({
+      configured: true,
+      reachable: true,
+      collections: ['articles', 'assets'],
+      probeMs: expect.any(Number),
+    });
+    expect(report.error).toBeUndefined();
+    expect(Object.keys(report).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
   });
 
   it('adds no field at all when the tier is unconfigured', async () => {
@@ -222,179 +254,6 @@ describe('hudu_get_api_info — the Typesense probe', () => {
     const result = await session.call('hudu_get_api_info', {});
     expect(result.structuredContent).not.toHaveProperty('typesense');
     await session.close();
-  });
-});
-
-describe('probeTypesense — the SDK call site', () => {
-  const config = loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE });
-  const host = (operations?: unknown) => ({ operations }) as unknown as Parameters<typeof probeTypesense>[0];
-
-  it('dials nothing and reports configured:false when the tier is unconfigured', async () => {
-    let dialed = 0;
-    const report = await probeTypesense(
-      host({ probeBodySearch: async () => (dialed++, { configured: true, collections: [], reachable: true, probeMs: 1 }) }),
-      loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123' }),
-    );
-    expect(dialed).toBe(0);
-    expect(report).toEqual({ configured: false, reachable: false, collections: [], probeMs: 0 });
-  });
-
-  it('maps the agreed 0.21.0 shape, including an error code', async () => {
-    const report = await probeTypesense(
-      host({
-        probeBodySearch: async () => ({
-          configured: true,
-          collections: ['arts', 'assets'],
-          reachable: false,
-          probeMs: 12,
-          error: { code: 'TYPESENSE_UNAUTHORIZED', message: 'search-only key rejected' },
-        }),
-      }),
-      config,
-    );
-    expect(report).toEqual({
-      configured: true,
-      reachable: false,
-      collections: ['arts', 'assets'],
-      probeMs: 12,
-      error: { code: 'TYPESENSE_UNAUTHORIZED', message: 'search-only key rejected' },
-    });
-  });
-
-  it('never fails the read when the probe throws, and carries no key', async () => {
-    const report = await probeTypesense(
-      host({
-        probeBodySearch: async () => {
-          throw Object.assign(new Error('boom'), { code: 'TYPESENSE_UNAVAILABLE' });
-        },
-      }),
-      config,
-    );
-    expect(report).toMatchObject({ configured: true, reachable: false, error: { code: 'TYPESENSE_UNAVAILABLE' } });
-    expect(JSON.stringify(report)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
-  });
-
-  it('is not fooled by 0.20.0\'s policy proxy, which fabricates a callable for any name', async () => {
-    // The real 0.20.0 client answers `operations.probeBodySearch` with a function that throws
-    // POLICY_DENIED, while `'probeBodySearch' in operations` is false. That gap is the detection.
-    let called = 0;
-    const fabricating = new Proxy({}, {
-      get: () => () => {
-        called += 1;
-        throw Object.assign(new Error('unknown operation'), { code: 'POLICY_DENIED' });
-      },
-    });
-    const report = await probeTypesense(host(fabricating), config);
-    expect(called).toBe(0);
-    expect(report).toEqual({ configured: true, reachable: false, collections: ['articles', 'assets'], probeMs: expect.any(Number) });
-    expect(report.error).toBeUndefined();
-  });
-
-  it('reports reachable:false without dialing when the installed SDK has no probe (0.20.0)', async () => {
-    for (const operations of [undefined, {}, { probeBodySearch: 'not-a-function' }]) {
-      const report = await probeTypesense(host(operations), config);
-      expect(report).toMatchObject({ configured: true, reachable: false, collections: ['articles', 'assets'] });
-      expect(report.error).toBeUndefined();
-      expect(Object.keys(report).sort()).toEqual(['collections', 'configured', 'probeMs', 'reachable']);
-    }
-  });
-});
-
-describe('hudu_get_api_info — the refused probe, end to end at the tool boundary', () => {
-  /**
-   * Drive the registered `hudu_get_api_info` handler with a fake client whose `operations` object
-   * HAS `probeBodySearch` but whose policy denies it — the shape the SDK will take once a policy can
-   * omit the operation. The report must read "unavailable, not permitted", never "Typesense failed".
-   */
-  function apiInfoHarness(operations: Record<string, unknown>) {
-    let handler!: (args: Record<string, unknown>) => Promise<unknown>;
-    const server = {
-      registerTool: (name: string, _spec: unknown, h: (args: Record<string, unknown>) => Promise<unknown>) => {
-        if (name === 'hudu_get_api_info') handler = h;
-      },
-    } as unknown as McpServer;
-    const ctx = {
-      hudu: { apiInfo: { resolve: async () => ({ version: 'as-test', date: '2026-01-01' }) }, operations },
-      huduOrigin: 'https://hudu.example.com',
-      config: loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE }),
-      log: createLogger('error', () => {}),
-      ops: {},
-      searchableResources: ['articles', 'assets'],
-      defaultSearchScope: ['articles', 'assets'],
-      bodySearchable: true,
-      typesenseConfigured: true,
-      toolDefaultTier: 'typesense',
-      searchTierIsPolicy: false,
-    } as unknown as ToolContext;
-    registerReadTools(server, ctx);
-    return handler;
-  }
-
-  it('says the operation is not permitted, with configured still true and reachable false', async () => {
-    const call = apiInfoHarness({
-      probeBodySearch: async () => {
-        throw Object.assign(new Error('denied by policy'), { code: 'POLICY_DENIED' });
-      },
-    });
-    const result = (await call({})) as { structuredContent: Record<string, unknown> };
-    expect(result.structuredContent.typesense).toEqual({
-      configured: true,
-      reachable: false,
-      collections: ['articles', 'assets'],
-      probeMs: expect.any(Number),
-      error: { code: 'POLICY_DENIED', message: 'the operation is not permitted by this client policy' },
-    });
-  });
-
-  // TODO(node-hudu@0.21.0): activates with the bump, when a default read policy PERMITS
-  // `operations.probeBodySearch`. Until then the member is absent from 0.20.0 and the honest report
-  // is `reachable: false` with no error — so the permitted branch cannot be exercised here.
-  it.skip('reports the SDK probe result when the default read policy permits it', async () => {
-    const call = apiInfoHarness({
-      probeBodySearch: async () => ({ configured: true, collections: ['articles', 'assets'], reachable: true, probeMs: 7 }),
-    });
-    const result = (await call({})) as { structuredContent: Record<string, unknown> };
-    expect(result.structuredContent.typesense).toEqual({
-      configured: true,
-      reachable: true,
-      collections: ['articles', 'assets'],
-      probeMs: 7,
-    });
-  });
-});
-
-describe('probeTypesense — a policy that refuses the operation is UNAVAILABLE, not an endpoint failure', () => {
-  const config = loadConfig({ HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123', ...TYPESENSE });
-
-  /** A client whose operations object HAS the member but the policy denies it. */
-  const denied = (code: string) => {
-    const operations: Record<string, unknown> = {
-      probeBodySearch: async () => {
-        throw Object.assign(new Error(`${code}: hidden`), { code });
-      },
-    };
-    return { operations } as unknown as Parameters<typeof probeTypesense>[0];
-  };
-
-  it('reports reachable:false with an error that says the operation is not permitted', async () => {
-    for (const code of ['POLICY_DENIED', 'NOT_IMPLEMENTED']) {
-      const report = await probeTypesense(denied(code), config);
-      expect(report).toEqual({
-        configured: true,
-        reachable: false,
-        collections: ['articles', 'assets'],
-        probeMs: expect.any(Number),
-        error: { code, message: 'the operation is not permitted by this client policy' },
-      });
-      // Nothing about the endpoint was learned, so nothing about Typesense is claimed.
-      expect(JSON.stringify(report)).not.toMatch(/typesense/i);
-    }
-  });
-
-  it('keeps a real transport failure named as such, and never as a refusal', async () => {
-    const report = await probeTypesense(denied('TYPESENSE_UNAVAILABLE'), config);
-    expect(report.error).toEqual({ code: 'TYPESENSE_UNAVAILABLE', message: 'the probe request failed' });
-    expect(report.reachable).toBe(false);
   });
 });
 

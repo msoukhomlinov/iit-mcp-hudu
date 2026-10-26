@@ -72,7 +72,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         // Deployment-specific: only a configured tier has a probe to report, so the unconfigured
         // served description stays byte-identical.
         typesenseConfigured
-          ? 'Also reports the Typesense body tier: configured (the pair is set), reachable (the one probe answered), collections (indexes searched), probeMs (probe latency), error {code, message} when the probe failed.'
+          ? 'Also reports the Typesense body tier: configured (the pair is set), reachable (the probe answered, which needs the SDK build AND this client policy to permit it), collections (indexes searched), probeMs (probe latency); error {code, message} says which failed: NOT_IMPLEMENTED (this SDK version has no probe), POLICY_DENIED (this policy does not permit it), or the endpoint failure.'
           : '',
       ),
       inputSchema: z.object({

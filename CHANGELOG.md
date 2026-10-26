@@ -29,7 +29,9 @@ that types `search.typesense` — the boundary cast the tier needed is gone.
   `index`, `auto` or `typesense` is refused, naming both body tiers.
 - Add: `hudu_get_api_info` reports `typesense: { configured, reachable, collections, probeMs }`
   when the tier is configured (absent otherwise), from the SDK's one-request probe that a
-  search-only key may run; `error {code, message}` appears only when that probe failed. The tool
+  search-only key may run; `error {code, message}` appears only when the probe could not answer, and
+  its code says which question failed — `NOT_IMPLEMENTED` (this SDK version has no probe),
+  `POLICY_DENIED` (the client's policy does not permit it) or the endpoint's own code. The tool
   description names each field, and a test pins the exact emitted key set, because the output schema
   keeps that field open (`z.unknown()`) to stay inside the `tools/list` byte budget. `doctor` stays
   zero-wire: it gains a config-shape row (`configured`, `keyPresent`, `urlShapeOk`) only, and the row
