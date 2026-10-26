@@ -24,11 +24,12 @@ export const MAX_INDEX_TEXT_BYTES = 64 * MIB;
  * indexed (MEASURED on the live server, 2026-10-26).
  *
  * RESULTING DEPTH: a read-only deployment (one cache, `HUDU_WRITE_POLICY=deny`) gives each scope
- * 17 MiB and 17,408 documents at a ~816 MB ceiling; that is INFERRED to cover the tenant's article
- * bodies almost entirely (about 2,800 of its 3,204 articles) and to keep all 3,204 articles, because
- * the measured run retained articles at roughly a quarter of the freshest-document density. A
- * write-enabled deployment has three caches, so the same pool is divided by nine and each scope gets
- * 5.67 MiB and 5,802 documents.
+ * 17 MiB and 17,408 documents at a ~816 MB ceiling. MEASURED after deployment: that alone did NOT
+ * keep every article — 15,588 assets and 1,820 articles at 17,408 documents, and 19,991 assets and
+ * 1,854 articles at the 21,845-document ceiling, because the SDK's global cap follows `updated_at`
+ * and the account holds far more assets than articles. The article reservation below is what fixes
+ * it. A write-enabled deployment has three caches, so the same pool is divided by nine and each
+ * scope gets 5.67 MiB and 5,802 documents.
  *
  * SIZED FOR, NOT ENFORCED: the share is the pool divided by `(capacity + 1) x caches`, where the +1
  * leaves one eviction of margin per cache — the scope the LRU just dropped, which an in-flight
@@ -122,6 +123,38 @@ export function scopedIndexTextBudgetBytes(heapLimitBytes: number, caches: numbe
 
 /** 1: the cap follows the share's KiB count, so it never exceeds the text budget it is paired with. */
 export const MIN_INDEX_MAX_DOCS = 1;
+
+/**
+ * The per-resource document caps to send with a document cap: ARTICLES reserved the WHOLE cap.
+ *
+ * MEASURED on the production tenant (2026-10-26): the SDK's global cap keeps the freshest
+ * `updated_at` across ALL resources, and the account holds 19,991 assets against 3,204 articles
+ * (23,195 documents). At a 21,845-document cap every asset fit and 1,350 articles were dropped, so
+ * only 1,854 of the 3,204 articles were body-searchable — while the asset rows, which carry titles
+ * and custom fields rather than bodies, took 19,991 slots. Articles went 1,478 -> 1,820 -> 1,846 ->
+ * 1,854 as the cap grew from 6,144 to 21,845 (a 3.6x range): room alone never fixed it.
+ *
+ * node-hudu 0.20.0's `maxDocsByResource` makes a named resource's cap a HARD reservation inside
+ * `maxDocs`, and the global pass then trims only the unreserved remainder. Naming articles with the
+ * whole cap therefore means "articles first, assets take whatever is left", which is what the index
+ * is for: article rows carry the long text, asset rows do not.
+ *
+ * THE ASSET SHARE IS DERIVED, AND CAN BE ZERO: assets keep `maxDocs - min(articles, maxDocs)` slots.
+ * On the production tenant that is 18,641 of 21,845, but wherever the article corpus meets or
+ * exceeds the cap the assets get none — the 512 MiB write-enabled profile derives a 1,820-document
+ * cap against 3,204 articles, so `docs.assets.indexed` is 0 there and asset hits come from Hudu's
+ * own title/custom-field search alone (which every call runs). The response names the loss:
+ * `meta.index.docs.<resource>.capped` is the SDK's count of documents the caps dropped.
+ *
+ * A smaller fraction was rejected because a reservation is also a hard CEILING on the named
+ * resource: with a quarter reserved, 300 articles and 5 assets at a 100-document cap retained 30
+ * documents (25 + 5), and the whole cap retains 100 (MEASURED with a probe against the SDK; an
+ * asset-heavy corpus fills the cap either way, 10 articles + 500 assets -> 10 + 90).
+ */
+export function indexDocCaps(maxDocs: number): Record<string, number> {
+  return { articles: maxDocs };
+}
+
 /** 50,000: the SDK's own default doc count, and the most one index should ever hold. */
 export const MAX_INDEX_MAX_DOCS = 50_000;
 /** ~1 KB of record + postings per indexed document, on top of the ~4x text ratio. ESTIMATE. */
@@ -164,11 +197,11 @@ const INDEX_DOC_BYTES = 1024;
  * tenant at the former division by eight (6,144 documents): 4,666 assets and 1,478 of the 3,204
  * articles were retained; 1,036 article bodies were indexed, 317 had been evicted by the text budget
  * and 3 truncated (the counts do not decompose the 1,478 — some retained articles carry no body
- * text). At the 1 GiB read-only figures above (17 MiB and 17,408 documents) the measured article
- * density (1,478 of the freshest 6,144) implies all 3,204 articles now fall inside the cap, so the
- * article loss is expected to disappear (INFERRED, not measured at this division); at 512 MiB
- * (5,461 documents) 3,204 articles would leave only 2,257 slots for assets, so the loss remains. The
- * order is the SDK's.
+ * text). That measurement is why the article slots are RESERVED rather than left to freshness: the
+ * deployment showed that room alone does not keep them (1,478 -> 1,820 -> 1,854 articles across
+ * 6,144 -> 17,408 -> 21,845 documents, against 19,991 assets). The reservation is the whole document
+ * cap for `articles`, so articles are never crowded out and assets take whatever room is left; the
+ * order within each resource is still the SDK's `updated_at`.
  *
  * Named for its scoped use because that is where it matters: the pool is divided per client, and the
  * cap travels the same `search` object as `maxIndexTextBytes`.

@@ -31,7 +31,7 @@ four old names. Rows are compact summaries by default (id, name, key scalar fiel
 25-row assets page under 20,000 characters instead of ~88,000; pass `expand: true` for the full
 records (`hudu_read` `articles.list` rows are always full). Article rows carry no body unless expanded. Paging is unchanged (`asset_layouts` still takes no `page_size`).
 
-These tools run on node-hudu 0.19.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
+These tools run on node-hudu 0.20.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -337,15 +337,43 @@ plus postings per document, on top of the text ratio), so the pair bounds growth
 peak. HONEST SCOPE: the SDK upserts every walked document and calls its cap only AFTER the walk, so
 `maxDocs` bounds the RETAINED index, not the build-time peak; the peak during a walk is bounded by
 the heap ceiling and the text budget's eviction, not by `maxDocs`. A capped index reports index state
-`partial`, exactly as it already does when the text budget bites. WHICH documents the cap keeps is
-the SDK's choice: the freshest `updated_at` across ALL resources, so assets can outrank older
-articles. MEASURED on the production tenant with the former division by eight (6,144 documents):
-4,666 assets and 1,478 of 3,204 articles retained; 1,036 article bodies indexed, 317 evicted by the
-text budget and 3 truncated (the counts do not decompose the 1,478 — some retained articles carry no
-body text). The same measurement is why a read-only scope now gets a THIRD of the pool instead of an
-eighth: 17 MiB and 17,408 documents at 1 GiB are expected (INFERRED, not measured at this division)
-to keep all 3,204 articles and about 2,800 of their bodies, while at 512 MiB (5,461 documents) 3,204
-articles leave only 2,257 slots for assets and the loss remains.
+`partial`, exactly as it already does when the text budget bites.
+
+ARTICLES ARE RESERVED THE WHOLE CAP. Without a reservation the SDK keeps the freshest `updated_at`
+across ALL resources, so on an account with more assets than articles the assets take every slot and
+the older articles have no index entry at all. `maxDocsByResource` (node-hudu 0.20.0) is a hard
+reservation inside `maxDocs`: the server names `articles` with the whole cap, which makes it
+articles-first — each article keeps its slot up to the cap, and assets fill whatever room is left,
+in the SDK's `updated_at` order. That is the resource split the index exists for: article rows carry
+the long text, asset rows do not.
+A smaller reservation would also be a hard ceiling on articles, so an article-heavy account would
+drop articles while its cap sat half empty (measured against the SDK: 300 articles and 5 assets at a
+100-document cap retain 30 documents with a quarter reserved and 100 with the whole cap; an
+asset-heavy corpus fills the cap either way).
+
+THE ASSET SHARE IS DERIVED, AND CAN BE ZERO: assets keep `maxDocs - min(articles, maxDocs)` slots.
+On the production corpus that is 18,641 of 21,845; where the article corpus meets or exceeds the cap
+the assets get none — the 512 MiB write-enabled profile derives a 1,820-document cap against 3,204
+articles, so `docs.assets.indexed` is 0 there and asset hits come from Hudu's own title/custom-field
+search, which every call runs. `meta.index.docs.<resource>.capped` (node-hudu 0.20.0) names the
+documents the caps dropped, per resource, so the loss is visible in the answer. The reservation
+tracks the cap,
+so it deepens with the heap like the rest of the budget: 17,408 article slots at a 1 GiB container's
+assumed ~816 MB heap ceiling, 21,845 at a 1024 MB one, 50,000 in a stdio parent. This is what the
+Unreleased CHANGELOG entry measures.
+
+MEASURED on the production tenant (19,991 assets + 3,204 articles = 23,195 documents). At the former
+division by eight (6,144 documents): 4,666 assets and 1,478 of the 3,204 articles retained, 1,036
+article bodies indexed, 317 evicted by the text budget and 3 truncated (the counts do not decompose
+the 1,478 — some retained articles carry no body text). Dividing the pool by two instead of eight
+was expected (INFERRED at the time) to keep all 3,204 articles at 17 MiB / 17,408 documents; the
+deployment measured that expectation FALSE — 15,588 assets and 1,820 articles — because the asset
+count fills whatever cap the pool offers. At the 21,845-document ceiling the split was 19,991 assets
+and 1,854 articles, i.e. 1,350 articles with no body index, while the asset rows (titles and custom
+fields, no long text) held 91% of the cap. Reserving the cap for articles is the fix: the same
+21,845-document cap then keeps all 3,204 articles and gives assets the remaining 18,641 slots (the
+SDK's reservation arithmetic, reproduced with a synthetic corpus in `test/index-reservation.test.ts`);
+`node-hudu` #122 has the upstream detail.
 
 BEFORE THE DIVISOR CHANGE. The round-10 end-to-end run measured the real server (`dist/main.js`) under
 a 259 MiB V8 ceiling: peak heapUsed 187.96 MB with a 24.6 MB baseline, so the INDEX STRUCTURES cost
@@ -487,7 +515,7 @@ pnpm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.19.0`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.20.0`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `pnpm install --frozen-lockfile`.
 
 ## Deployment

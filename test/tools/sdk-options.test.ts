@@ -77,6 +77,13 @@ describe('body-index text budget is pooled per process', () => {
     expect(scoped.length * share).toBeLessThanOrEqual(pool);
     expect((SCOPED_INDEX_BUDGET_DIVISOR + SCOPED_INDEX_EVICTION_TRANSIENT) * CACHES_WRITES * share).toBeLessThanOrEqual(pool);
     expect(budgets.every((b) => b <= pool)).toBe(true);
+    // Every client reserves its whole document cap for articles, so assets can only take what is
+    // left of it (the SDK rejects a reservation larger than `maxDocs`).
+    for (const options of captured) {
+      const search = options.search as { maxDocs?: number; maxDocsByResource?: Record<string, number> } | undefined;
+      const cap = search?.maxDocs ?? 0;
+      expect(search?.maxDocsByResource, `${cap}`).toEqual({ articles: cap });
+    }
   });
 
   it('divides by one cache when writes are denied, so the share is the one-cache share', async () => {

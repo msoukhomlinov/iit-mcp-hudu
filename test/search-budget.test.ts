@@ -5,6 +5,7 @@ import {
   MIN_INDEX_MAX_DOCS,
   SCOPED_INDEX_BUDGET_DIVISOR,
   SCOPED_INDEX_EVICTION_TRANSIENT,
+  indexDocCaps,
   indexTextBudgetBytes,
   scopedIndexMaxDocs,
   scopedIndexTextBudgetBytes,
@@ -163,5 +164,25 @@ describe('scopedIndexMaxDocs', () => {
     expect(scopedIndexMaxDocs(pool)).toBe(16_384);
     expect(scopedIndexMaxDocs(share)).toBe(5_461);
     expect(scopedIndexMaxDocs(share) * 3).toBeLessThanOrEqual(scopedIndexMaxDocs(pool));
+  });
+});
+
+describe('indexDocCaps', () => {
+  it('reserves the whole document cap for articles, so assets take only what is left', () => {
+    // The measured caps: production (21,845), a 1 GiB read-only ceiling (17,408), a stdio parent
+    // (50,000), the 512 MiB write-enabled profile (1,820) and the smallest pool (910).
+    for (const cap of [21_845, 17_408, 50_000, 1_820, 910, 1]) {
+      expect(indexDocCaps(cap), `${cap}`).toEqual({ articles: cap });
+    }
+  });
+
+  it('names only resources the SDK indexes, and never exceeds the cap it comes from', () => {
+    // node-hudu rejects any key outside its index resources and any reservation above `maxDocs`.
+    for (const cap of [1, 910, 16_384, 50_000]) {
+      const caps = indexDocCaps(cap);
+      expect(Object.keys(caps), `${cap}`).toEqual(['articles']);
+      const reserved = Object.values(caps).reduce((total, value) => total + value, 0);
+      expect(reserved, `${cap}`).toBeLessThanOrEqual(cap);
+    }
   });
 });
