@@ -7,6 +7,7 @@
  *
  */
 import * as z from 'zod';
+import type { HuduConfig } from 'node-hudu';
 import { getCapability } from 'node-hudu/capabilities';
 import { SEARCH_RESOURCES } from 'node-hudu/mcp';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape } from './credential.js';
@@ -54,7 +55,79 @@ export type SecretReadPolicy = (typeof SECRET_READ_POLICIES)[number];
 export const SEARCH_TIER_POLICIES = ['auto', 'index', 'vendor'] as const;
 export type SearchTierPolicy = (typeof SEARCH_TIER_POLICIES)[number];
 
-/** Parse `HUDU_WRITE_ALLOW` once, here, so every consumer reads the same list. */
+/** A blank value is a copied `.env.example` placeholder, never a value: normalise it to unset. */
+function blankToUndefined(raw: unknown): unknown {
+  return typeof raw === 'string' && raw.trim() === '' ? undefined : raw;
+}
+
+/**
+ * The Typesense body-search tier's fixed defaults. Of the knobs the design names, only the
+ * collection names, the deadline and the verification gate are environment-tunable.
+ *
+ * Two knobs are deliberately NOT here and NOT set by this server: the candidate count and the
+ * circuit-breaker window. They are the SDK's own calibrated values (DESIGN §3 WP-1) — 40 candidates
+ * and a 30 s cooldown at node-hudu 0.21.0 — and this server passes neither key, so the library's
+ * calibration applies and CANNOT be shadowed by a stale copy here. The intent is not left untested:
+ * `test/typesense-config.test.ts` reads the RESOLVED SDK config and asserts those two values, so a
+ * recalibration in a future node-hudu release fails a test and shows up in review instead of
+ * silently changing behaviour.
+ */
+export const TYPESENSE_DEFAULTS = {
+  /** Hudu's own collection names, so an operator who provisions a search-only key sets nothing. */
+  articlesCollection: 'articles',
+  assetsCollection: 'assets',
+  /** Whole-call deadline for one Typesense search request. */
+  timeoutMs: 4000,
+  /** Refused above this: one search must never become the slowest thing in a tool call. */
+  maxTimeoutMs: 15000,
+} as const;
+
+/**
+ * The `search.typesense` block handed to the SDK, or `undefined` when the tier is off.
+ *
+ * Kept out of {@link Config} on purpose: `Config` is the environment surface, and this block is a
+ * derived view of it (defaults applied, blanks normalised). Both variables must be set for the
+ * block to exist — `loadConfig` refuses a half-configured pair before this is ever called.
+ */
+export type TypesenseSearchBlock = Omit<NonNullable<NonNullable<HuduConfig['search']>['typesense']>, 'collections'> & {
+  collections: { articles: string; assets: string };
+};
+
+/** Build the SDK block from an already-validated config. Never carries a value into a log sink. */
+export function typesenseSearchBlock(config: Config): TypesenseSearchBlock | undefined {
+  const url = config.HUDU_TYPESENSE_URL;
+  const apiKey = config.HUDU_TYPESENSE_API_KEY;
+  if (url === undefined || apiKey === undefined) return undefined;
+  return {
+    url,
+    apiKey,
+    collections: {
+      articles: config.HUDU_TYPESENSE_ARTICLES_COLLECTION ?? TYPESENSE_DEFAULTS.articlesCollection,
+      assets: config.HUDU_TYPESENSE_ASSETS_COLLECTION ?? TYPESENSE_DEFAULTS.assetsCollection,
+    },
+    timeoutMs: config.HUDU_TYPESENSE_TIMEOUT_MS ?? TYPESENSE_DEFAULTS.timeoutMs,
+    // No `candidateLimit` and no `cooldownMs`: both are the SDK's calibration, and omission is what
+    // keeps this server from pinning a copy that silently overrides a future recalibration.
+    verifyHits: config.HUDU_TYPESENSE_VERIFY_HITS ?? true,
+  };
+}
+
+/**
+ * The one boot-time line describing the tier — `undefined` when it is off.
+ *
+ * Shape only: never the URL or the key, only the collection names the operator can already read in
+ * the environment. A disabled feature is INVISIBLE in boot output, because the byte-identical
+ * promise for unset deployments covers the log as well as the tool surface. Exported so a test can
+ * assert the line without booting a server.
+ */
+export function describeTypesense(config: Config): string | undefined {
+  const block = typesenseSearchBlock(config);
+  if (block === undefined) return undefined;
+  return `typesense: enabled (collections ${block.collections.articles}, ${block.collections.assets})`;
+}
+
+/**
+ * Parse `HUDU_WRITE_ALLOW` once, here, so every consumer reads the same list. */
 function parseAllowList(raw: string | undefined): string[] {
   return (raw ?? '')
     .split(',')
@@ -189,6 +262,63 @@ const schema = z
      */
     HUDU_SEARCH_INDEX_TTL: z.coerce.number().int().positive().optional(),
     /**
+     * The Typesense body-search endpoint: the origin only, e.g.
+     * `https://typesense.hudu.intellectit.com.au`, or `http://127.0.0.1:8108` through an SSH tunnel
+     * (DESIGN §7.3). No path, query or fragment — a Typesense base URL is an origin and a path there
+     * would silently point every search at nothing.
+     *
+     * Set together with {@link HUDU_TYPESENSE_API_KEY} or not at all: `loadConfig` refuses a
+     * half-configured pair, because a URL with no key is an unreachable tier and a key with no URL
+     * has nowhere to go. Both unset means the tier is off and the server behaves exactly as before.
+     */
+    HUDU_TYPESENSE_URL: z.preprocess(
+      blankToUndefined,
+      z.string().url('HUDU_TYPESENSE_URL must be an absolute URL, e.g. https://typesense.example.com').optional(),
+    ),
+    /**
+     * The Typesense search-only key (`documents:search` on the two body collections). Never logged,
+     * never echoed in an error, never part of `doctor` output — a boolean and a probe result code
+     * are the only facts that leave the process.
+     */
+    HUDU_TYPESENSE_API_KEY: z.preprocess(blankToUndefined, z.string().min(1, 'HUDU_TYPESENSE_API_KEY must not be empty').optional()),
+    /** The articles collection name. Defaults to Hudu's own name; a rename is config, not code. */
+    HUDU_TYPESENSE_ARTICLES_COLLECTION: z.preprocess(blankToUndefined, z.string().min(1).optional()),
+    /** The assets collection name. Defaults to Hudu's own name. */
+    HUDU_TYPESENSE_ASSETS_COLLECTION: z.preprocess(blankToUndefined, z.string().min(1).optional()),
+    /**
+     * Whole-call deadline for one Typesense search, in milliseconds (default 4000).
+     *
+     * Bounded rather than free: a search has a vendor fallback, so waiting longer than a few seconds
+     * is always the wrong trade. Above {@link TYPESENSE_DEFAULTS.maxTimeoutMs} the container fails
+     * boot instead of accepting a value the tier was never designed for.
+     */
+    HUDU_TYPESENSE_TIMEOUT_MS: z.preprocess(
+      blankToUndefined,
+      z.coerce
+        .number()
+        .int()
+        .positive()
+        .max(TYPESENSE_DEFAULTS.maxTimeoutMs, `HUDU_TYPESENSE_TIMEOUT_MS must be at most ${TYPESENSE_DEFAULTS.maxTimeoutMs}; the tier has a vendor fallback and a search must not outlast the call`)
+        .optional(),
+    ),
+    /**
+     * Whether every Typesense hit is re-read through the Hudu API under the caller's own credential
+     * before it is returned (default `true`).
+     *
+     * Hudu's index does not carry folder permissions and keeps discarded articles, so a raw hit is
+     * an unverified claim about a record this credential may not be allowed to see. `false` is
+     * faster and is documented as acceptable only for single-tenant, non-restricted deployments.
+     */
+    HUDU_TYPESENSE_VERIFY_HITS: z.preprocess(
+      // Same treatment as every other new knob: a blank placeholder is unset, and the value is
+      // matched case-insensitively so `TRUE` (a shell convention) is not a boot failure.
+      (raw) => {
+        const value = blankToUndefined(raw);
+        return typeof value === 'string' ? value.trim().toLowerCase() : value;
+      },
+      z.enum(['true', 'false']).optional().transform((value) => (value === undefined ? undefined : value === 'true')),
+    ),
+    /**
      * The single switch for mutation. `deny` (the default) registers no `hudu_write` / `hudu_delete`
      * tool at all; `allow_list` and `all` register them and gate every call. Read effects are never
      * touched. See {@link WRITE_POLICIES}.
@@ -308,6 +438,67 @@ const schema = z
       }
     }
 
+    // The Typesense pair is all-or-nothing. A URL with no key searches nowhere; a key with no URL
+    // has nowhere to go, and a key typed into the wrong deployment is a secret in the wrong place.
+    // Name BOTH variables in one message so the operator fixes the pair, not one guess at a time.
+    const typesenseUrl = c.HUDU_TYPESENSE_URL;
+    const typesenseKey = c.HUDU_TYPESENSE_API_KEY;
+    if ((typesenseUrl === undefined) !== (typesenseKey === undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [typesenseUrl === undefined ? 'HUDU_TYPESENSE_URL' : 'HUDU_TYPESENSE_API_KEY'],
+        message:
+          'HUDU_TYPESENSE_URL and HUDU_TYPESENSE_API_KEY must be set together or not at all: ' +
+          (typesenseUrl === undefined
+            ? 'a key was set with no URL for it to reach (set HUDU_TYPESENSE_URL, or unset the key)'
+            : 'a URL was set with no search key (set HUDU_TYPESENSE_API_KEY, or unset the URL to leave the Typesense tier off)'),
+      });
+    }
+    // An origin, not a URL. A scheme other than http/https is not a Typesense endpoint, and any
+    // path, query or fragment would be dropped or misapplied by a client that joins paths onto it —
+    // a silent wrong endpoint rather than a refused boot.
+    if (typesenseUrl !== undefined) {
+      let parsed: URL | undefined;
+      try {
+        parsed = new URL(typesenseUrl);
+      } catch {
+        parsed = undefined;
+      }
+      if (parsed === undefined || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['HUDU_TYPESENSE_URL'],
+          message: 'HUDU_TYPESENSE_URL must be an http:// or https:// origin, e.g. https://typesense.example.com',
+        });
+      } else if (parsed.username !== '' || parsed.password !== '') {
+        // Credentials in the URL would be sent to the vendor on every probe and would land in a log
+        // the moment anything printed the endpoint. Refused, and the message never repeats the value
+        // (it is a credential, and this is the one place it could leak by accident).
+        ctx.addIssue({
+          code: 'custom',
+          path: ['HUDU_TYPESENSE_URL'],
+          message: 'HUDU_TYPESENSE_URL must not carry credentials: put the key in HUDU_TYPESENSE_API_KEY, and never in the URL',
+        });
+      } else if ((parsed.pathname !== '' && parsed.pathname !== '/') || parsed.search !== '' || parsed.hash !== '') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['HUDU_TYPESENSE_URL'],
+          message: 'HUDU_TYPESENSE_URL must be an origin only: no path, query or fragment (e.g. https://typesense.example.com)',
+        });
+      }
+    }
+    // Two resources in one collection would make every hit ambiguous: an article id and an asset id
+    // are both bare numbers, and the caller's `resources` scope could not be honoured.
+    const articlesCollection = c.HUDU_TYPESENSE_ARTICLES_COLLECTION ?? TYPESENSE_DEFAULTS.articlesCollection;
+    const assetsCollection = c.HUDU_TYPESENSE_ASSETS_COLLECTION ?? TYPESENSE_DEFAULTS.assetsCollection;
+    if (articlesCollection === assetsCollection) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [c.HUDU_TYPESENSE_ASSETS_COLLECTION === undefined ? 'HUDU_TYPESENSE_ARTICLES_COLLECTION' : 'HUDU_TYPESENSE_ASSETS_COLLECTION'],
+        message: `articles and assets must search different collections (both resolve to "${articlesCollection}"); set HUDU_TYPESENSE_ARTICLES_COLLECTION or HUDU_TYPESENSE_ASSETS_COLLECTION`,
+      });
+    }
+
     // `HUDU_WRITE_ALLOW` is only meaningful under `allow_list`, where a bad list must fail the
     // container rather than a call six months later. Every problem is reported at once, on the one
     // error path `loadConfig` already owns.
@@ -349,6 +540,17 @@ const schema = z
       }
     }
   });
+
+/**
+ * Every `HUDU_TYPESENSE_*` knob the schema accepts, derived from the schema rather than retyped.
+ *
+ * The documentation-drift test reads THIS list: a knob added to the schema and forgotten in
+ * `.env.example` / the README then fails the test, which a hand-written list in the test could not
+ * catch — the test would have been asserting its own copy.
+ */
+export const TYPESENSE_ENV_NAMES: readonly string[] = Object.keys(schema.shape).filter((name) =>
+  name.startsWith('HUDU_TYPESENSE_'),
+);
 
 /**
  * Apply the same check to `HUDU_API_KEY` here as to the per-request key under `http`.

@@ -57,8 +57,10 @@ describe('meta discovery and credential tool surface', () => {
     // 0.13.2 -> 0.14.0: +2 rows (articles.getSection a read, reachable under deny; articles.patchSection
     // a write, refused by deny). Moved with the SDK's plan hash in src/tools.ts.
     // 0.14.0 -> 0.16.0: 230 -> 236 rows (articles.pin/unpin, asset_passwords share ops x4).
+    // 0.20.0 -> 0.21.0: 236 -> 237 rows, +1 REACHABLE read (operations.probeBodySearch): a read
+    // helper, so `deny` does not refuse it — the reachable side moves and the refused side does not.
     expect(CATALOG.some((row) => row.op === 'operations.fetchMany')).toBe(true);
-    expect(result.structuredContent.reachable_operations).toBe(89);
+    expect(result.structuredContent.reachable_operations).toBe(90);
     expect(result.structuredContent.unreachable_operations).toBe(147);
     await session.close();
   });
@@ -71,7 +73,8 @@ describe('meta discovery and credential tool surface', () => {
     // `all` opens the write surface but not the credential one: the reachable
     // asset_passwords/password_folders rows stay refused under the secret-read default.
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
-    expect(result.structuredContent.reachable_operations).toBe(169);
+    // 0.20.0 -> 0.21.0: +1 reachable (operations.probeBodySearch, a read helper); refused unchanged.
+    expect(result.structuredContent.reachable_operations).toBe(170);
     expect(result.structuredContent.unreachable_operations).toBe(67);
     await session.close();
   });
@@ -83,7 +86,8 @@ describe('meta discovery and credential tool surface', () => {
     // 0.9.2 -> 0.12.0: +1 reachable row (operations.fetchMany, a read).
     // 0.13.2 -> 0.14.0: +2 (articles.getSection, articles.patchSection).
     // 0.16.0: asset_passwords.createShare is never reachable (SDK reveal_required; this server never grants reveal).
-    expect(result.structuredContent.reachable_operations).toBe(187);
+    // 0.20.0 -> 0.21.0: +1 reachable (operations.probeBodySearch, a read helper); refused unchanged.
+    expect(result.structuredContent.reachable_operations).toBe(188);
     expect(result.structuredContent.unreachable_operations).toBe(49);
     await session.close();
   });

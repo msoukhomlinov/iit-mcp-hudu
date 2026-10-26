@@ -1,0 +1,2 @@
+{"ts":"<ts>","level":"info","msg":"effective write policy: no write tools registered","read_only":false,"requested":"deny","effective":"deny","tools_registered":[]}
+{"ts":"<ts>","level":"info","msg":"serving","transport":"stdio"}

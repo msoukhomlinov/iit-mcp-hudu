@@ -7,7 +7,7 @@
  */
 import { createRequire } from 'node:module';
 import { createMcpHandler } from '@modelcontextprotocol/server';
-import { ConfigError, loadConfig } from './config.js';
+import { ConfigError, describeTypesense, loadConfig } from './config.js';
 import { logEffectiveWritePolicy } from './policy.js';
 import { runDoctor } from './doctor.js';
 import { createLogger } from './logger.js';
@@ -89,6 +89,11 @@ function main(): void {
 
   const log = createLogger(config.LOG_LEVEL);
   logEffectiveWritePolicy(config, log, process.env);
+  // Shapes only: whether the body tier is on and which collections it searches. The URL and the
+  // key never reach a log sink (DESIGN §4 WP-7). An UNCONFIGURED deployment logs nothing at all —
+  // "typesense: disabled" on every stock boot would contradict the byte-identical promise.
+  const typesenseLine = describeTypesense(config);
+  if (typesenseLine !== undefined) log.info(typesenseLine);
   // `HUDU_SEARCH_TIER_POLICY=index` under `http` re-introduces the #49 blocking wait on purpose:
   // every caller's scope starts cold, so each first call can wait on a corpus-wide body-index walk.
   // Make the trade visible to the operator who set it; never fail the boot over it.

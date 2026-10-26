@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+**Upgrading from 0.7.0:** no configuration change for an existing deployment, and no change to its
+tool surface or boot output. node-hudu is now pinned at 0.21.0 (exact) and this server types the
+`search.typesense` block against it, which removes the boundary cast the previous release carried.
+The Typesense tier itself is documented but not yet selectable — `HUDU_SEARCH_TIER_POLICY` still
+accepts `auto | index | vendor`.
+
+- Add: `HUDU_TYPESENSE_*` describe the optional Typesense body tier, and the SDK client is built with
+  the resulting typed `search.typesense` block. Callers see nothing yet: no tier selects it, and no
+  request is made when the pair is unset. A deployment that sets the pair gets one extra boot line
+  naming its collections (never the URL or the key); a deployment that does not gets byte-identical
+  boot output, asserted against a frozen fixture.
+- Add: `HUDU_TYPESENSE_VERIFY_HITS` accepts any case and treats a blank value as unset, like every
+  other knob, so a copied `.env.example` or a shell-exported `TRUE` boots.
+- Fix: `HUDU_TYPESENSE_URL` refuses a URL carrying userinfo (`https://user:pass@host`). The refusal
+  names the credential-free form and never repeats the value.
+- Change: node-hudu 0.20.0 -> 0.21.0 (exact pin), `server.json` `versionRange`, and the workspace
+  exclusion entry that keeps the pinned version out of the pnpm store's shared range until
+  2026-10-27T03:00Z.
+
 ## 0.7.0
 
 **Upgrading from 0.6.1:** no configuration change. The articles in the body index are now reserved their slots, so an account with many more assets than articles indexes every article instead of the freshest few: the 512 MiB write-enabled profile derives a 1,820-document cap against a larger article corpus and therefore indexes no assets at all (they stay searchable through Hudu's own title search). node-hudu is now 0.20.0, and `meta.index.docs.<resource>.capped` reports what the caps dropped. Serve over `http` with a 1 GiB container to index a whole midsize article corpus.

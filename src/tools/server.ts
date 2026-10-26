@@ -10,7 +10,7 @@ import { getHeapStatistics } from 'node:v8';
 import { HuduClient } from 'node-hudu';
 import { AuthError, HuduConfigError } from 'node-hudu';
 import type { AuthStrategy, HuduConfig } from 'node-hudu';
-import { applyReadOnly, type Config } from '../config.js';
+import { applyReadOnly, typesenseSearchBlock, type Config } from '../config.js';
 import type { Logger } from '../logger.js';
 import { headerRecord, readHuduBase, readHuduKey } from '../auth.js';
 import { baseHostAllowed, originOf } from '../base-hosts.js';
@@ -415,6 +415,44 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
   // The process-wide body-index text pool, and the doc cap derived from that same pool (search-budget.ts).
   const poolTextBytes = indexTextBudgetBytes(heapLimitBytes);
   const poolMaxDocs = scopedIndexMaxDocs(poolTextBytes);
+  /** The Typesense body-search block, or `undefined` when the tier is off. */
+  const typesenseSearch = typesenseSearchBlock(config);
+  // The body index's text budget follows the process's own heap ceiling, so a small container
+  // reports index state "partial" instead of dying at the V8 heap limit (#51). This value is the
+  // PROCESS-wide pool: the scoped clients below each take a share of it, since each materialises
+  // its own index. The parent keeps the pool because under `stdio` it is the serving client and
+  // depth is the point of serving that way; with writes enabled there is one parent per mode
+  // (`read`, `write`, `delete`), so a raw `operations.searchKnowledge` invoked through the write or
+  // delete parent could build a second full-pool index (the `hudu_search` path uses the read
+  // parent only).
+  // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
+  const searchDefaults: Omit<NonNullable<HuduConfig['search']>, 'typesense'> = {
+    maxIndexTextBytes: poolTextBytes,
+    // The doc cap comes from the SAME pool: the text budget bounds extracted text only, while a
+    // document whose text it evicted keeps its record and postings, and the SDK's own default is
+    // 50,000 documents. One document per KiB of text budget, so the two caps grow together.
+    // HONEST SCOPE: the SDK upserts every walked document and applies this cap only AFTER the walk,
+    // so `maxDocs` bounds the RETAINED index, not the build peak; the peak during a walk is bounded
+    // by the heap ceiling and the text budget's eviction (an estimate, not a proof), and a capped
+    // index reports index state "partial".
+    maxDocs: poolMaxDocs,
+    // Articles are reserved the whole cap and assets take what is left: the SDK's global cap keeps
+    // the freshest documents across ALL resources, and an account with far more assets than
+    // articles would otherwise fill every slot with asset rows and drop article bodies from the
+    // index (MEASURED: 1,854 of 3,204 articles before the reservation).
+    maxDocsByResource: indexDocCaps(poolMaxDocs),
+    ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL }),
+  };
+
+  /**
+   * The SDK `search` options: the body-index defaults above, plus the Typesense block when the
+   * deployment configured one. Typed by the SDK itself — `search.typesense` is a real field on
+   * `HuduConfig['search']`, so no boundary cast stands between the config and the client.
+   */
+  const sdkSearch: HuduConfig['search'] = typesenseSearch === undefined
+    ? searchDefaults
+    : { ...searchDefaults, typesense: typesenseSearch };
+
   const options: HuduConfig = {
     baseUrl: config.MCP_TRANSPORT === 'http' ? HTTP_PLACEHOLDER_ORIGIN : config.HUDU_BASE_URL!,
     logger: log,
@@ -446,32 +484,7 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
     // private IP. No env override: it is a security property, not a deployment preference.
     profile: 'agent',
     cache: 'recommended',
-    // The body index's text budget follows the process's own heap ceiling, so a small container
-    // reports index state "partial" instead of dying at the V8 heap limit (#51). This value is the
-    // PROCESS-wide pool: the scoped clients below each take a share of it, since each materialises
-    // its own index. The parent keeps the pool because under `stdio` it is the serving client and
-    // depth is the point of serving that way; with writes enabled there is one parent per mode
-    // (`read`, `write`, `delete`), so a raw `operations.searchKnowledge` invoked through the write or
-    // delete parent could build a second full-pool index (the `hudu_search` path uses the read
-    // parent only).
-    // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
-    search: {
-      maxIndexTextBytes: poolTextBytes,
-      // The doc cap comes from the SAME pool: the text budget bounds extracted text only, while a
-      // document whose text it evicted keeps its record and postings, and the SDK's own default is
-      // 50,000 documents. One document per KiB of text budget, so the two caps grow together.
-      // HONEST SCOPE: the SDK upserts every walked document and applies this cap only AFTER the walk,
-      // so `maxDocs` bounds the RETAINED index, not the build peak; the peak during a walk is bounded
-      // by the heap ceiling and the text budget's eviction (an estimate, not a proof), and a capped
-      // index reports index state "partial".
-      maxDocs: poolMaxDocs,
-      // Articles are reserved the whole cap and assets take what is left: the SDK's global cap keeps
-      // the freshest documents across ALL resources, and an account with far more assets than
-      // articles would otherwise fill every slot with asset rows and drop article bodies from the
-      // index (MEASURED: 1,854 of 3,204 articles before the reservation).
-      maxDocsByResource: indexDocCaps(poolMaxDocs),
-      ...(config.HUDU_SEARCH_INDEX_TTL === undefined ? {} : { indexTtlMs: config.HUDU_SEARCH_INDEX_TTL }),
-    },
+    search: sdkSearch,
     timeoutMs: 30000,
     cooldown: { enabled: true },
     // One line per Hudu request, on the success and the error path. The SDK redacts every
