@@ -3,10 +3,11 @@
  */
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
-import type { KnowledgeIndexMeta, KnowledgeResource } from 'node-hudu';
+import type { KnowledgeIndexMeta, KnowledgeResource, KnowledgeSearchOptions } from 'node-hudu';
 import { SEARCH_HELP, SEARCH_MODES, SEARCH_RESOURCES, configError } from 'node-hudu/mcp';
+import type { SearchTier } from '../config.js';
 import type { ToolContext } from './context.js';
-import { errorContent, createResultBuilders, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
+import { bodySourceNote, errorContent, createResultBuilders, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
 import { HELP_TOPICS, SEARCH_OUTPUT, resourceEnum } from './schemas.js';
 import { credentialRefused, sanitizeIndexMeta, sanitizeSearchFailures } from './search-policy.js';
 import { adjustHelpText, adjustedSearchModes, searchQueryDescription, searchToolDescription } from './search-prose.js';
@@ -278,7 +279,7 @@ export function cancelledSearchContent(cancel: CancelledSearch): { text: string;
 // for programmatic callers; a TOOL under stdio must not hand an agent a degraded answer by default.
 export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
   const { ok } = createResultBuilders(ctx.huduOrigin);
-  const { ops, searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy, log } = ctx;
+  const { ops, searchableResources, defaultSearchScope, bodySearchable, typesenseConfigured, toolDefaultTier, searchTierIsPolicy, log } = ctx;
   // Under `http` the tier/refresh fields are not served; the object stays LOOSE there so a caller
   // that still sends one reaches the handler and is TOLD it was overridden (meta.policyOverride)
   // instead of being rejected before the policy path can answer. Under `stdio` every field is
@@ -325,16 +326,18 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           ? {}
           : {
               tier: z
-                .enum(['auto', 'vendor', 'index'])
+                .enum(['auto', 'vendor', 'index', 'typesense'])
                 .optional()
                 .describe(
-                  !indexSearchable
-                    ? '"vendor" only here: articles or assets are excluded, so "index", "auto" and refresh:true are refused (the walk is corpus-wide).'
-                    : toolDefaultTier === 'auto'
-                      ? 'Defaults to "auto"; "index" waits; "vendor" is body-blind.'
-                      : toolDefaultTier === 'vendor'
-                        ? 'Defaults to "vendor" (policy); "index" waits; "auto" builds.'
-                        : 'Defaults to "index": builds or awaits the body index. "vendor" is body-blind.',
+                  !bodySearchable
+                    ? '"vendor" only here: articles or assets are excluded, so "index", "auto", "typesense" and refresh:true are refused (every body tier is corpus-wide).'
+                    : toolDefaultTier === 'typesense'
+                      ? 'Defaults to "typesense": whole-corpus body search, no local index. "index" builds or awaits the local index; "vendor" is body-blind.'
+                      : toolDefaultTier === 'auto'
+                        ? 'Defaults to "auto"; "index" waits; "vendor" is body-blind.'
+                        : toolDefaultTier === 'vendor'
+                          ? 'Defaults to "vendor" (policy); "index" waits; "auto" builds.'
+                          : `Defaults to "index": builds or awaits the body index. "vendor" is body-blind.${typesenseConfigured ? ' "typesense" searches the whole corpus.' : ''}`,
                 ),
               refresh: z
                 .boolean()
@@ -440,7 +443,7 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
       }
       // The tier and refresh this call may use. Under `http` both are deployment policy (the schema
       // omits them); under `stdio` the caller's own value wins, defaulting to the tool's tier.
-      const tier = searchTierIsPolicy ? toolDefaultTier : ((args as { tier?: 'auto' | 'vendor' | 'index' }).tier ?? toolDefaultTier);
+      const tier = searchTierIsPolicy ? toolDefaultTier : ((args as { tier?: SearchTier }).tier ?? toolDefaultTier);
       const refresh = searchTierIsPolicy ? false : (args as { refresh?: boolean }).refresh;
       // Under `http` the served schema omits both fields, but the object is loose: a client may still
       // send them. They are deployment policy, so they are ignored — and SAID to be, with the same
@@ -453,10 +456,10 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
       // resource, NO index-backed path may run: an explicit "index" or "auto" tier, or `refresh`
       // (which forces a full rebuild), would each walk the excluded endpoint. Refuse them rather
       // than silently downgrading, and never walk a resource the credential may not read.
-      if (!indexSearchable && (tier === 'index' || tier === 'auto' || refresh === true)) {
+      if (!bodySearchable && (tier === 'index' || tier === 'auto' || tier === 'typesense' || refresh === true)) {
         return errorContent(
           configError(
-            'hudu_search: the body index is unavailable because HUDU_SEARCH_RESOURCES excludes articles or assets; its walk is corpus-wide. Use tier:"vendor" without refresh, or restore the corpus resources.',
+            'hudu_search: no body tier is available because HUDU_SEARCH_RESOURCES excludes articles or assets; the body index walk and the Typesense query set are both corpus-wide. Use tier:"vendor" without refresh, or restore the corpus resources.',
           ),
         );
       }
@@ -491,7 +494,11 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           min_score: args.min_score,
           exact_only: args.exact_only,
           refresh,
-          tier, // the TOOL's default: "index" under stdio, "auto" under http, "vendor" when the corpus is excluded
+          // The TOOL's default: "typesense" when configured, else "index" under stdio, "auto" under
+          // http, "vendor" when the corpus is excluded.
+          // TODO(drop when node-hudu@0.21.0 lands): 0.20.0's KnowledgeSearchOptions has no
+          // 'typesense' member. One boundary cast on the value; no shim, no second code path.
+          tier: tier as unknown as KnowledgeSearchOptions['tier'],
         });
         let result;
         if (searchWaits) {
@@ -519,7 +526,9 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           ? ` ${failures.length} resource(s) unavailable: ${failures.map((f) => f.resource ?? 'unknown').join(', ')}.`
           : '';
         const overrideNote = overridden ? ` The ${stripped.join('/')} field(s) this call carried were overridden by the server search tier policy.` : '';
-        return ok(`Found ${result.hits.length} ranked match(es)${incomplete}.${bodyBlind}${failedNote}${overrideNote}`, {
+        // Which body source answered (DESIGN §4 WP-10): empty unless the SDK reported it, so an
+        // unconfigured deployment's header is unchanged.
+        return ok(`Found ${result.hits.length} ranked match(es)${incomplete}.${bodySourceNote(result.meta)}${bodyBlind}${failedNote}${overrideNote}`, {
           mode: 'search',
           query: args.query,
           hits: result.hits,

@@ -32,7 +32,7 @@ function hangingReadHandler(): { handler: Handler; fetches: () => number } {
     log: createLogger('error', () => {}),
     searchableResources: ['articles', 'assets'],
     defaultSearchScope: ['articles', 'assets'],
-    indexSearchable: true,
+    bodySearchable: true,
     toolDefaultTier: 'index',
     searchTierIsPolicy: false,
   } as never);

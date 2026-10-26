@@ -30,7 +30,7 @@ const DESCRIPTIONS: Record<string, string> = {
   hudu_resolve_any:
     "Resolve an identifier across resources when the type is unknown; else use hudu_get_<singular>. Unreadable resources are listed in `unauthorized`; fails only if all are refused. Narrow `resources` to skip asset_passwords/password_folders.",
   hudu_get_api_info:
-    "Return the API information document. Prefer api_info.get. Omit `identifier` for the tenant-wide document; expand:true returns the full record.",
+    "The API information document; prefer api_info.get. Omit `identifier` for the tenant-wide document; expand:true returns it all.",
   hudu_get_company_context:
     "Fetch a company with its bounded context (CompanyContext). Required: numeric `id`, never a name or slug. Without password_access it 401s unless opts.skip omits asset_passwords; a refused sub-list answers UNAUTHORIZED.",
   hudu_get_article_context:

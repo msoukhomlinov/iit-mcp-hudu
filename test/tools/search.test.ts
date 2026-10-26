@@ -388,7 +388,7 @@ describe('hudu_search credential refusal annotation', () => {
       }),
     };
     registerSearchTool(server as never, {
-      ops, searchableResources: ['articles'], defaultSearchScope: ['articles'], indexSearchable: false, toolDefaultTier: 'vendor',
+      ops, searchableResources: ['articles'], defaultSearchScope: ['articles'], bodySearchable: false, toolDefaultTier: 'vendor',
       config: {}, hudu: {}, log: {},
     } as never);
     const args = { mode: 'search', query: 'reset', tier: 'vendor' };

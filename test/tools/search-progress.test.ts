@@ -46,7 +46,7 @@ function harness(options: { searchKnowledge: ToolContext['ops']['searchKnowledge
     ops: { searchKnowledge: options.searchKnowledge } as unknown as ToolContext['ops'],
     searchableResources: ['articles', 'assets'],
     defaultSearchScope: ['articles', 'assets'],
-    indexSearchable: true,
+    bodySearchable: true,
     toolDefaultTier: 'index',
     searchTierIsPolicy: false,
     ...overrides,

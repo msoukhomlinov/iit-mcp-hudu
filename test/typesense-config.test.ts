@@ -181,6 +181,19 @@ describe('HUDU_TYPESENSE_* — the on path', () => {
   });
 });
 
+describe('HUDU_SEARCH_TIER_POLICY=typesense', () => {
+  it('fails boot without the endpoint and key, naming the policy and both variables', () => {
+    const message = bootError({ HUDU_SEARCH_TIER_POLICY: 'typesense' });
+    expect(message).toContain('HUDU_SEARCH_TIER_POLICY');
+    expect(message).toContain('HUDU_TYPESENSE_URL');
+    expect(message).toContain('HUDU_TYPESENSE_API_KEY');
+  });
+
+  it('is accepted when the pair is configured', () => {
+    expect(loadConfig({ ...valid, ...TS, HUDU_SEARCH_TIER_POLICY: 'typesense' }).HUDU_SEARCH_TIER_POLICY).toBe('typesense');
+  });
+});
+
 describe('HUDU_TYPESENSE_* — documentation drift', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const example = readFileSync(`${root}.env.example`, 'utf8');

@@ -29,6 +29,24 @@ const SEARCH_DEGRADED_BLOCK_VENDOR =
 const SEARCH_DEFAULT_INDEX_SENTENCE =
   'This TOOL defaults to tier "index" (build or await the body index), so a\n' +
   '                  cold, body-blind answer is not the default it hands an agent - and when it happens it says so.';
+/**
+ * The SDK's `meta.degraded` block, extended with the two Typesense reasons and `meta.bodySource`.
+ *
+ * Applied only when the deployment configured the tier: a deployment without it must keep the SDK
+ * text byte-for-byte, because no answer there can carry either reason.
+ */
+const SEARCH_DEGRADED_TYPESENSE_BLOCK =
+  '  meta.degraded   null when article BODIES were searched. Otherwise {reason, advice}:\n' +
+  '                  reason "body-not-indexed"   bodies exist but are not indexed (indexArticles:false, or every\n' +
+  '                                              body exceeded maxDocBytes), or the index could not be built.\n' +
+  '                  reason "vendor-only"        no body tier was used, so titles, names, custom-field values and\n' +
+  '                                              identifiers were searched and article bodies were NOT.\n' +
+  '                  reason "typesense-unavailable"  the Typesense tier is configured but refused or timed out;\n' +
+  '                                              the answer came from the local index or from the vendor tier.\n' +
+  '                  reason "typesense-unauthorized" the Typesense key was rejected; the key is the thing to fix.\n' +
+  '  meta.bodySource "index" | "typesense" | "none": which body source produced this answer. "none" means\n' +
+  '                  body text was not searched at all on this call.';
+
 const SEARCH_DEFAULT_VENDOR_SENTENCE =
   'This deployment defaults to tier "vendor", so a cold answer is not a failure - and it says so.';
 const CREDENTIAL_RESOURCES = ['asset_passwords', 'password_folders'];
@@ -94,28 +112,34 @@ function narrowedSearchSummary(ctx: ToolContext): string {
  * never computes, so the correction applies to every deployment, full set included.
  */
 export function adjustHelpText(ctx: ToolContext, text: string): string {
-  const { defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
+  const { defaultSearchScope, bodySearchable, typesenseConfigured, toolDefaultTier, searchTierIsPolicy } = ctx;
   // Order matters: under `http` no tier field is served at all, so a refusal naming "index", "auto"
   // and refresh would describe a schema that does not exist there. The deployment policy comes
   // first; the corpus refusal applies only where the caller holds the field.
   const tier = searchTierIsPolicy
     ? `tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter.`
-    : !indexSearchable
+    : !bodySearchable
       ? 'tool default "vendor"; "index", "auto" and refresh are refused because HUDU_SEARCH_RESOURCES excludes articles or assets.'
       : toolDefaultTier === 'auto'
       ? 'tool default "auto" (answers from Hudu search now; builds the body index in the background so a later search is body-aware); "index" waits for a complete body-index answer before returning.'
       : toolDefaultTier === 'vendor'
-      ? 'tool default "vendor" (HUDU_SEARCH_TIER_POLICY: answers come from Hudu search alone, so no body index is built or awaited); "index" waits for one, "auto" builds it in the background.'
-      : 'tool default "index" (complete answer); "auto" = the SDK default.';
+      ? 'tool default "vendor" (HUDU_SEARCH_TIER_POLICY: answers come from Hudu search alone, so no body tier is built or awaited); "index" waits for one, "auto" builds it in the background.'
+      : toolDefaultTier === 'typesense'
+      ? 'tool default "typesense": whole-corpus body search through Hudu\'s own Typesense index, so no local index is built or waited for; "index" builds or awaits the local index, "vendor" is body-blind.'
+      : `tool default "index" (complete answer); "auto" = the SDK default.${typesenseConfigured ? ' "typesense" searches the whole corpus through Hudu\'s index.' : ''}`;
   let adjusted = text
     .replace('default ["articles","assets"].', `default ${JSON.stringify(defaultSearchScope)}.`)
     .replace('tool default "index" (complete answer); "auto" = the SDK default.', tier)
     .replace(SDK_MIN_SCORE_PROMISE, MIN_SCORE_TRUTH);
-  if (!indexSearchable) {
+  if (!bodySearchable) {
     adjusted = adjusted
       .replace(SEARCH_MODES_BODY_PHRASE, narrowedSearchSummary(ctx))
       .replace(SEARCH_DEGRADED_BLOCK, SEARCH_DEGRADED_BLOCK_VENDOR)
       .replace(SEARCH_DEFAULT_INDEX_SENTENCE, SEARCH_DEFAULT_VENDOR_SENTENCE);
+  } else if (typesenseConfigured) {
+    // The two new reasons and `meta.bodySource` exist only where the tier is configured, so the
+    // unconfigured deployment keeps the SDK text unchanged.
+    adjusted = adjusted.replace(SEARCH_DEGRADED_BLOCK, SEARCH_DEGRADED_TYPESENSE_BLOCK);
   }
   adjusted = adjusted.replace(`\n  ${CREDENTIAL_REDACTION_LINE}`, credentialRedactionLine(ctx));
   // Two tool-choice hints the compact served descriptions dropped. They are NOT field guidance, so
@@ -135,7 +159,7 @@ export function adjustHelpText(ctx: ToolContext, text: string): string {
     ' Re-read the stored article with articles.get before editing it.';
   // `refresh` is a stdio-only field: it rebuilds this process's local body index, not anything in
   // Hudu. Help is the one surface where the cost can be stated in full.
-  if (!searchTierIsPolicy && indexSearchable) {
+  if (!searchTierIsPolicy && bodySearchable) {
     adjusted +=
       '\n\n  refresh=true rebuilds THIS SERVER\'S local body index before answering. It changes nothing in Hudu,' +
       ' can take minutes (the walk is corpus-wide), and is a stdio-only field.';
@@ -160,20 +184,20 @@ export function adjustHelpText(ctx: ToolContext, text: string): string {
  * are vendor-tier resources like the rest, so they join the vendor list and the ordered list.
  */
 function multiWordParagraph(ctx: ToolContext): string {
-  const { searchableResources, indexSearchable } = ctx;
+  const { searchableResources, bodySearchable } = ctx;
   const set = new Set(searchableResources);
   const orderedBase = MULTI_WORD_ORDERED.filter((r) => set.has(r));
   const exact = MULTI_WORD_EXACT.filter((r) => set.has(r));
   const body = BODY_INDEXED.filter((r) => set.has(r));
-  const vendorSet = indexSearchable
+  const vendorSet = bodySearchable
     ? MULTI_WORD_VENDOR_EVERY.filter((r) => set.has(r))
     : [...searchableResources];
   const lines = [MULTI_WORD_START];
   // On the index tier articles/assets score per word (not in order), so they only anchor the
   // ordered list when the deployment has no body index at all.
-  const orderedSubjects = orderedBase.length ? orderedBase : indexSearchable ? [] : body;
+  const orderedSubjects = orderedBase.length ? orderedBase : bodySearchable ? [] : body;
   if (orderedSubjects.length) {
-    const bodyClause = indexSearchable && body.length ? ` (and ${body.join('/')} on tier "vendor")` : '';
+    const bodyClause = bodySearchable && body.length ? ` (and ${body.join('/')} on tier "vendor")` : '';
     lines.push(
       `${capitalize(joinList(orderedSubjects))}${bodyClause} match the words in order with gaps allowed, so reordered` +
         ' words can miss a record ("acme corp" finds "Acme Corp Pty", "corp acme" may not).',
@@ -186,10 +210,10 @@ function multiWordParagraph(ctx: ToolContext): string {
     lines.push('Some instances answer from a fuzzy index that returns records matching only some words.');
     lines.push(
       `${capitalize(joinList(vendorSet))} are answered by that vendor search on EVERY tier` +
-        (indexSearchable ? '; only articles and assets are also indexed, and there each word scores separately.' : '.'),
+        (bodySearchable ? '; only articles and assets are also indexed, and there each word scores separately.' : '.'),
     );
     lines.push(MULTI_WORD_RETRY);
-  } else if (indexSearchable) {
+  } else if (bodySearchable) {
     lines.push('Articles and assets are also indexed, and there each word scores separately.');
   }
   return lines.map((line) => `  ${line}`).join('\n');
@@ -219,8 +243,8 @@ function credentialRedactionLine(ctx: ToolContext): string {
 
 /** The structured `help.modes` list, with the same body-index rewrite on the `search` summary. */
 export function adjustedSearchModes(ctx: ToolContext) {
-  const { indexSearchable } = ctx;
-  if (indexSearchable) return SEARCH_MODES;
+  const { bodySearchable } = ctx;
+  if (bodySearchable) return SEARCH_MODES;
   return SEARCH_MODES.map((mode) =>
     mode.mode === 'search' ? { ...mode, summary: mode.summary.replace(SEARCH_MODES_BODY_PHRASE, narrowedSearchSummary(ctx)) } : mode,
   );
@@ -234,7 +258,7 @@ export function adjustedSearchModes(ctx: ToolContext) {
  * sentences the policy falsifies are rewritten; the drift test asserts the rewrite lands.
  */
 export function searchToolDescription(ctx: ToolContext): string {
-  const { searchableResources, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
+  const { searchableResources, bodySearchable, typesenseConfigured, toolDefaultTier, searchTierIsPolicy } = ctx;
   const base = toolDescription('hudu_search');
   const searchableSet = new Set(searchableResources);
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
@@ -242,18 +266,24 @@ export function searchToolDescription(ctx: ToolContext): string {
   // under `http` with HUDU_SEARCH_TIER_POLICY=index on a full corpus the base text would say the
   // TIER is a caller choice ("As a tool it defaults to tier \"index\""), while the field is not
   // served at all. Policy wins over the byte saving (#50 review 7).
-  if (fullSet && toolDefaultTier === 'index' && !searchTierIsPolicy) return base;
+  // The typesense clause rides on every served variant, including the byte-saving early return:
+  // it is a fact about this deployment's answers, not about the tier sentence.
+  const withSource = (text: string): string =>
+    typesenseConfigured ? `${text} meta.bodySource names the body tier that answered.` : text;
+  if (fullSet && toolDefaultTier === 'index' && !searchTierIsPolicy) return withSource(base);
   const defaultSentence = 'defaults to tier "index": body-complete.';
   // Same order as the help text: under `http` the tier field is not served, so the corpus refusal
   // (which names refused field values) would describe a schema the caller never sees.
   const replacement = searchTierIsPolicy
     ? serverPolicyTierSentence(ctx)
-    : !indexSearchable
+    : !bodySearchable
       ? 'This deployment excludes articles or assets, so the tool defaults to tier "vendor" and refuses "index", "auto" and refresh.'
+      : toolDefaultTier === 'typesense'
+      ? 'defaults to tier "typesense": whole-corpus body search through Hudu\'s index, no local build.'
       : toolDefaultTier === 'auto'
       ? 'defaults to tier "auto": answers now, warms the index; "index" waits.'
       : toolDefaultTier === 'vendor'
-      ? 'defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY); "index"/refresh:true uses the body index.'
+      ? `defaults to tier "vendor" (HUDU_SEARCH_TIER_POLICY); "index"/refresh:true uses the body index.${typesenseConfigured ? ' "typesense" searches the whole corpus.' : ''}`
       : defaultSentence;
   let out = base;
   if (!fullSet) {
@@ -264,7 +294,7 @@ export function searchToolDescription(ctx: ToolContext): string {
   }
   // Fail loudly, not silently: a missed anchor would advertise a default tier this deployment refuses.
   if (!out.includes(defaultSentence)) throw new Error('hudu_search description: SDK default-tier sentence changed; update defaultSentence');
-  return out.replace(defaultSentence, replacement);
+  return withSource(out.replace(defaultSentence, replacement));
 }
 
 /**
@@ -275,6 +305,9 @@ export function searchToolDescription(ctx: ToolContext): string {
  */
 function serverPolicyTierSentence(ctx: ToolContext): string {
   const { toolDefaultTier } = ctx;
+  if (toolDefaultTier === 'typesense') {
+    return 'Tier is set server-side to "typesense": every call searches the whole corpus through Hudu\'s index.';
+  }
   if (toolDefaultTier === 'index') {
     return 'Tier is set server-side to "index": a call waits for a complete body-index answer.';
   }
@@ -286,9 +319,9 @@ function serverPolicyTierSentence(ctx: ToolContext): string {
 
 /** The `query` field description, adjusted so it does not promise a body search it cannot run. */
 export function searchQueryDescription(ctx: ToolContext): string {
-  const { indexSearchable, toolDefaultTier } = ctx;
+  const { bodySearchable, toolDefaultTier } = ctx;
   const base = 'REQUIRED for mode="search". Partial words fine; article BODY is searched. Multi-word rules: topic="query" (mode="help").';
-  if (!indexSearchable) {
+  if (!bodySearchable) {
     // Fail loudly: a missed anchor would advertise a body search this deployment cannot run.
     if (!base.includes('article BODY is searched.')) throw new Error('searchQueryDescription: base sentence changed; update the anchors');
     return base.replace(
@@ -307,10 +340,10 @@ export function searchQueryDescription(ctx: ToolContext): string {
 
 /** Whether the deployment's search set differs from the SDK's full set (or lost the body index). */
 function searchPolicyNarrowed(ctx: ToolContext): boolean {
-  const { searchableResources, indexSearchable } = ctx;
+  const { searchableResources, bodySearchable } = ctx;
   const searchableSet = new Set(searchableResources);
   const fullSet = searchableSet.size === SDK_SEARCHABLE.length && SDK_SEARCHABLE.every((r) => searchableSet.has(r));
-  return !fullSet || !indexSearchable;
+  return !fullSet || !bodySearchable;
 }
 
 /** The narrowed-resource rewrites shared by `hudu_describe_operation` and `hudu_list_operations`. */
@@ -339,7 +372,7 @@ function narrowedSearchProse(ctx: ToolContext) {
 export function applySearchDescribePolicy<
   T extends { op: string; input_schema: Readonly<Record<string, unknown>>; usage: string | null; purpose: string | null; preferred_when: string | null },
 >(ctx: ToolContext, described: T): T {
-  const { searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
+  const { searchableResources, defaultSearchScope, bodySearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   if (described.op !== SEARCH_KNOWLEDGE_OPERATION) return described;
   const narrowed = searchPolicyNarrowed(ctx);
   // The tier default also differs under `http` even when nothing is narrowed, so the discovery
@@ -360,8 +393,10 @@ export function applySearchDescribePolicy<
       // values would describe a schema this caller never sees.
       searchTierIsPolicy
         ? `the tier is this deployment's policy (HUDU_SEARCH_TIER_POLICY: ${toolDefaultTier}), not a call parameter`
-        : !indexSearchable
+        : !bodySearchable
           ? 'this deployment excludes articles or assets, so it defaults to tier "vendor" and refuses "index", "auto" and refresh'
+          : toolDefaultTier === 'typesense'
+          ? 'it defaults to tier "typesense" when called as the MCP tool: it searches Hudu\'s whole-corpus Typesense index, so no local index is built (the SDK default stays lazy)'
           : toolDefaultTier === 'auto'
           ? 'it defaults to tier "auto" when called as the MCP tool: it answers from Hudu search now and builds the body index in the background (pass tier:"index" to wait for a complete first answer; the SDK default stays lazy)'
           : 'it defaults to tier "index" when called as the MCP tool (the SDK default stays lazy)',

@@ -3,7 +3,7 @@
  * `registerTools` derives from them once.
  */
 import type { HuduClient } from 'node-hudu';
-import type { Config } from '../config.js';
+import type { Config, SearchTier } from '../config.js';
 import type { Logger } from '../logger.js';
 
 /**
@@ -25,8 +25,11 @@ export interface ToolContext extends ToolDeps {
   ops: HuduClient['operations'];
   searchableResources: string[];
   defaultSearchScope: string[];
-  indexSearchable: boolean;
-  toolDefaultTier: 'auto' | 'vendor' | 'index';
+  /** Whether every body tier may run: articles AND assets both searchable (see `registerTools`). */
+  bodySearchable: boolean;
+  /** Whether `HUDU_TYPESENSE_URL` + `HUDU_TYPESENSE_API_KEY` are set (see `registerTools`). */
+  typesenseConfigured: boolean;
+  toolDefaultTier: SearchTier;
   /**
    * Whether the search tier is this deployment's policy rather than a per-call parameter.
    *

@@ -2,24 +2,49 @@
 
 ## Unreleased
 
-**Upgrading from 0.7.0:** no configuration change for an existing deployment, and no change to its
-tool surface or boot output. node-hudu is now pinned at 0.21.0 (exact) and this server types the
-`search.typesense` block against it, which removes the boundary cast the previous release carried.
-The Typesense tier itself is documented but not yet selectable — `HUDU_SEARCH_TIER_POLICY` still
-accepts `auto | index | vendor`.
+**Upgrading from 0.7.0:** no configuration change for any existing deployment. Six new optional
+variables turn on a Typesense body tier; with both `HUDU_TYPESENSE_URL` and `HUDU_TYPESENSE_API_KEY`
+unset, the default tier, prose, the served tool schema, the doctor report, boot output and search
+results are byte-identical to 0.7.0. node-hudu is pinned at 0.21.0 (exact), which is the release
+that types `search.typesense` — the boundary cast the tier needed is gone.
 
-- Add: `HUDU_TYPESENSE_*` describe the optional Typesense body tier, and the SDK client is built with
-  the resulting typed `search.typesense` block. Callers see nothing yet: no tier selects it, and no
-  request is made when the pair is unset. A deployment that sets the pair gets one extra boot line
-  naming its collections (never the URL or the key); a deployment that does not gets byte-identical
-  boot output, asserted against a frozen fixture.
-- Add: `HUDU_TYPESENSE_VERIFY_HITS` accepts any case and treats a blank value as unset, like every
-  other knob, so a copied `.env.example` or a shell-exported `TRUE` boots.
-- Fix: `HUDU_TYPESENSE_URL` refuses a URL carrying userinfo (`https://user:pass@host`). The refusal
-  names the credential-free form and never repeats the value.
-- Change: node-hudu 0.20.0 -> 0.21.0 (exact pin), `server.json` `versionRange`, and the workspace
-  exclusion entry that keeps the pinned version out of the pnpm store's shared range until
-  2026-10-27T03:00Z.
+- Add: `HUDU_TYPESENSE_*` configure the optional Typesense body tier and the SDK client is built with
+  the resulting typed `search.typesense` block. The pair is set together or not at all: one without
+  the other fails boot naming both, the URL must be an http(s) origin (no path, query, fragment or
+  userinfo), the two collection names must differ, and the deadline is bounded at 15000 ms. The key
+  is never logged and never returned by a tool. `HUDU_TYPESENSE_VERIFY_HITS` accepts any case and
+  treats a blank as unset.
+- Add: optional **Typesense body tier**. It searches Hudu's own Typesense index, so article bodies
+  and asset custom-field text are covered for the WHOLE corpus instead of the in-memory index's
+  heap-capped slice. `HUDU_TYPESENSE_VERIFY_HITS` (default `true`) re-reads every hit through the
+  Hudu API under the caller's own credential, because Hudu's index carries neither folder
+  permissions nor deletions; `false` is documented as single-tenant, non-restricted, read-only
+  deployments only.
+- Add: `HUDU_SEARCH_TIER_POLICY` accepts `typesense`, and when the pair is configured the default
+  tier is `typesense` under **both** transports — the cold-start asymmetry `auto` exists for does
+  not apply to an index that is already built. Naming `typesense` without the pair is a startup
+  error, never a silent fallback, and so is naming it on an SDK build whose catalogue lacks the
+  probe operation. The corpus gate is renamed `bodySearchable` and now covers every body tier: when
+  `HUDU_SEARCH_RESOURCES` excludes articles or assets, the policy stays `vendor` and a request for
+  `index`, `auto` or `typesense` is refused, naming both body tiers.
+- Add: `hudu_get_api_info` reports `typesense: { configured, reachable, collections, probeMs }`
+  when the tier is configured (absent otherwise), from the SDK's one-request probe that a
+  search-only key may run. `doctor` stays zero-wire: it gains a config-shape row (`configured`,
+  `keyPresent`, `urlShapeOk`) only, and the row is absent when the tier is off.
+- Add: the tier's degradation vocabulary is one closed five-reason set, exported from the SDK and
+  compared against the server's at runtime: `typesense-unavailable`, `typesense-unauthorized`,
+  `typesense-query-error` and the two stale/unhydratable reasons. Counts are disclosures, never
+  reasons. `hudu_search` help names `meta.bodySource` (`index` | `typesense` | `none`), and the
+  compact result header states the body source.
+- Docs: README and `.env.example` document the six variables, the reach modes (LAN, SSH tunnel,
+  allow-listed egress) and the verification trade. All of it is present only where the tier can be
+  configured; the unset surface and boot output are unchanged, asserted against frozen fixtures.
+- Tests: config XOR both ways, defaults and every refusal branch, key never echoed; the block
+  reaching every SDK client and staying absent when unset; the default-tier matrix
+  (`configured`/`unset` x `stdio`/`http` x full/excluded corpus); the schema enum and the prose (only
+  when configured); `bodySource` header rendering; the api_info probe block; the doctor row without
+  key material; the capability gate failing on a mock SDK without the probe; and a documentation
+  drift test derived from the config schema rather than a hand-written list.
 
 ## 0.7.0
 

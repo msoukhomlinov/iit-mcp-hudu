@@ -10,12 +10,13 @@ import { lossyNote, takeContentLoss } from './article-loss.js';
 import type { ToolContext } from './context.js';
 import { toolDescription } from './tool-prose.js';
 import { contextErrorContent, errorContent, createResultBuilders, resolveErrorContent } from './results.js';
-import { ASSET_IDENTIFIER, CONTEXT_OUTPUT, DEFAULT_LIMIT, EXPAND, HITS_OUTPUT, IDENTIFIER, LIMIT, ONE_OUTPUT, resourceEnum } from './schemas.js';
+import { API_INFO_OUTPUT, ASSET_IDENTIFIER, CONTEXT_OUTPUT, DEFAULT_LIMIT, EXPAND, HITS_OUTPUT, IDENTIFIER, LIMIT, ONE_OUTPUT, resourceEnum } from './schemas.js';
+import { probeTypesense } from './typesense-probe.js';
 
 /** Register the eleven CORE read tools after `hudu_search`, in `CORE_TOOLS` order. */
 export function registerReadTools(server: McpServer, ctx: ToolContext): void {
   const { ok, oneResult } = createResultBuilders(ctx.huduOrigin);
-  const { hudu, config, log, ops, searchableResources } = ctx;
+  const { hudu, config, log, ops, searchableResources, typesenseConfigured } = ctx;
   server.registerTool(
     'hudu_resolve_any',
     {
@@ -66,17 +67,32 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
     'hudu_get_api_info',
     {
       title: 'Get Api Info',
-      description: toolDescription('hudu_get_api_info'),
+      description: toolDescription(
+        'hudu_get_api_info',
+        // Deployment-specific: only a configured tier has a probe to report, so the unconfigured
+        // served description stays byte-identical.
+        typesenseConfigured ? 'Also reports the Typesense body tier: {configured, reachable, collections, probeMs}.' : '',
+      ),
       inputSchema: z.object({
         identifier: IDENTIFIER.optional(),
         opts: z.object({ expand: EXPAND }).optional(),
       }),
-      outputSchema: ONE_OUTPUT,
+      outputSchema: API_INFO_OUTPUT,
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => {
       try {
-        return oneResult('api info', await hudu.apiInfo.resolve(args.identifier, args.opts));
+        const record = await hudu.apiInfo.resolve(args.identifier, args.opts);
+        // The Typesense probe is deployment configuration, not the caller's question, so it rides on
+        // this answer only — and only when the tier is configured. It never fails the read: Hudu's
+        // document is the answer, and `reachable: false` is a fact about the endpoint, not an error.
+        const typesense = await probeTypesense(hudu, config);
+        if (typesense === undefined) return oneResult('api info', record);
+        return ok(record === null ? 'No api info matched.' : 'api info resolved.', {
+          found: record !== null,
+          record: record ?? null,
+          typesense,
+        });
       } catch (err) {
         return errorContent(err);
       }

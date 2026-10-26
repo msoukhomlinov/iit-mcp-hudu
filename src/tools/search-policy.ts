@@ -171,7 +171,7 @@ export type SearchInvokePolicy = { bag: Record<string, unknown>; tierOverridden:
  * resolved to the deployment default rather than the SDK's articles+assets.
  */
 export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string, unknown>): SearchInvokePolicy {
-  const { searchableResources, defaultSearchScope, indexSearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
+  const { searchableResources, defaultSearchScope, bodySearchable, toolDefaultTier, searchTierIsPolicy } = ctx;
   const raw = input.opts;
   // Only `undefined` selects defaults. A non-object container (null, array, string, …) is left
   // untouched so the SDK's inputSchema refuses it before any request, rather than being replaced
@@ -203,10 +203,12 @@ export function applySearchPolicyToInvoke(ctx: ToolContext, input: Record<string
       tierOverridden: opts.tier !== undefined || opts.refresh !== undefined,
     };
   }
-  if (!indexSearchable) {
-    if (opts.tier === 'index' || opts.tier === 'auto' || opts.refresh === true) {
+  if (!bodySearchable) {
+    // Every body tier is corpus-wide — the in-memory walk and the Typesense query set alike — so an
+    // excluded corpus resource refuses "index", "auto" AND "typesense" here, before any request.
+    if (opts.tier === 'index' || opts.tier === 'auto' || opts.tier === 'typesense' || opts.refresh === true) {
       throw configError(
-        'hudu_read / hudu_write / hudu_delete: the body index is unavailable because HUDU_SEARCH_RESOURCES excludes articles or assets; its walk is corpus-wide. Use tier:"vendor" without refresh, or restore the corpus resources.',
+        'hudu_read / hudu_write / hudu_delete: no body tier is available because HUDU_SEARCH_RESOURCES excludes articles or assets; the body index walk and the Typesense query set are both corpus-wide. Use tier:"vendor" without refresh, or restore the corpus resources.',
       );
     }
     // The SDK's default tier is "auto", which on a cold client starts a background corpus-wide

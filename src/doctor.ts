@@ -14,7 +14,7 @@
  * doctor means any later 401 is vendor-side (rotated, revoked or role-restricted key), not a
  * mangled load.
  */
-import type { Config } from './config.js';
+import { isTypesenseOrigin, typesenseSearchBlock, type Config } from './config.js';
 import { describeCredential, type CredentialShape } from './credential.js';
 
 /** How one credential field's shape check came out. */
@@ -45,6 +45,19 @@ export interface DoctorBaseCheck {
   readonly resolvable: boolean;
 }
 
+/**
+ * The Typesense tier's config shape: three booleans, computed from the environment only.
+ *
+ * Deliberately no request (`dialed` stays 0) and no key material, not even a length or a prefix:
+ * the endpoint is a shared deployment secret rather than a user credential, and a live probe is
+ * `hudu_get_api_info`'s job — doctor's contract is that it dials nothing.
+ */
+export interface DoctorTypesenseCheck {
+  readonly configured: boolean;
+  readonly keyPresent: boolean;
+  readonly urlShapeOk: boolean;
+}
+
 /** The whole zero-wire report. `ok: false` means at least one field would be refused. */
 export interface DoctorReport {
   readonly ok: boolean;
@@ -52,6 +65,8 @@ export interface DoctorReport {
   readonly dialed: number;
   readonly credentials: readonly DoctorCredentialCheck[];
   readonly bases: readonly DoctorBaseCheck[];
+  /** Present only when the deployment configured the tier, so an unconfigured report is unchanged. */
+  readonly typesense?: DoctorTypesenseCheck;
   readonly notes: readonly string[];
 }
 
@@ -117,6 +132,19 @@ export function runDoctor(config: Config): DoctorReport {
     credentialCheck('HUDU_API_KEY', config.HUDU_API_KEY, isStdio),
   ];
   const bases = [baseCheck('HUDU_BASE_URL', config.HUDU_BASE_URL)];
+  // Present only when the deployment configured the pair: a report without the tier keeps exactly
+  // the shape operators already script against.
+  const typesenseBlock = typesenseSearchBlock(config);
+  const typesense: DoctorTypesenseCheck | undefined =
+    typesenseBlock === undefined
+      ? undefined
+      : {
+          configured: true,
+          // The pair is validated at boot, so a configured block always has a key; the field is
+          // reported anyway because "key present" is the question an operator actually asks.
+          keyPresent: typesenseBlock.apiKey.trim() !== '',
+          urlShapeOk: isTypesenseOrigin(typesenseBlock.url),
+        };
   const notes = [
     'zero vendor requests: this report is computed from the environment alone',
     'shape facts only (length, two-character prefix, anomaly names) — a credential value is never read out',
@@ -131,12 +159,16 @@ export function runDoctor(config: Config): DoctorReport {
       'a credential-bearing variable would be refused by the server: fix the load recipe before any live session (a 401 costs a real vendor auth failure, and repeated ones risk an account lock)',
     );
   }
+  if (typesense !== undefined) {
+    notes.push('typesense body tier configured: shape only (no request, no key material); hudu_get_api_info reports reachability');
+  }
   return {
     ok: !credentials.some((c) => c.blocks) && bases.every((b) => !b.present || b.resolvable),
     transport: config.MCP_TRANSPORT,
     dialed: 0,
     credentials,
     bases,
+    ...(typesense === undefined ? {} : { typesense }),
     notes,
   };
 }

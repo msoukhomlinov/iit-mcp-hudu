@@ -51,8 +51,13 @@ export type SecretReadPolicy = (typeof SECRET_READ_POLICIES)[number];
  * `vendor` never builds an index at all. Unset means the transport default: `index` under `stdio`
  * (one long-lived credential, one warmed index) and `auto` under `http` (every caller's scope
  * starts cold, and a cold walk can outlast the consumer's call timeout).
+ *
+ * `typesense` answers the body search from Hudu's own Typesense index. It has no cold start, so it
+ * is the default under BOTH transports when `HUDU_TYPESENSE_URL` / `HUDU_TYPESENSE_API_KEY` are set
+ * — the transport asymmetry exists only for the in-memory walk. Naming it without that pair fails
+ * boot: a tier that cannot run must not be reachable by configuration typo.
  */
-export const SEARCH_TIER_POLICIES = ['auto', 'index', 'vendor'] as const;
+export const SEARCH_TIER_POLICIES = ['auto', 'index', 'vendor', 'typesense'] as const;
 export type SearchTierPolicy = (typeof SEARCH_TIER_POLICIES)[number];
 
 /** A blank value is a copied `.env.example` placeholder, never a value: normalise it to unset. */
@@ -93,6 +98,26 @@ export type TypesenseSearchBlock = Omit<NonNullable<NonNullable<HuduConfig['sear
   collections: { articles: string; assets: string };
 };
 
+/**
+ * Whether `url` is an http(s) ORIGIN: no path, query or fragment.
+ *
+ * The boot check in `loadConfig`'s refinement applies these rules with a per-cause message; this
+ * predicate is the one the zero-wire doctor reports on, so the two cannot disagree about "shape ok".
+ */
+export function isTypesenseOrigin(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      (parsed.pathname === '' || parsed.pathname === '/') &&
+      parsed.search === '' &&
+      parsed.hash === ''
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Build the SDK block from an already-validated config. Never carries a value into a log sink. */
 export function typesenseSearchBlock(config: Config): TypesenseSearchBlock | undefined {
   const url = config.HUDU_TYPESENSE_URL;
@@ -125,6 +150,9 @@ export function describeTypesense(config: Config): string | undefined {
   if (block === undefined) return undefined;
   return `typesense: enabled (collections ${block.collections.articles}, ${block.collections.assets})`;
 }
+
+/** The tier a search call may use: the policy values are exactly the tiers the SDK implements. */
+export type SearchTier = SearchTierPolicy;
 
 /**
  * Parse `HUDU_WRITE_ALLOW` once, here, so every consumer reads the same list. */
@@ -496,6 +524,18 @@ const schema = z
         code: 'custom',
         path: [c.HUDU_TYPESENSE_ASSETS_COLLECTION === undefined ? 'HUDU_TYPESENSE_ARTICLES_COLLECTION' : 'HUDU_TYPESENSE_ASSETS_COLLECTION'],
         message: `articles and assets must search different collections (both resolve to "${articlesCollection}"); set HUDU_TYPESENSE_ARTICLES_COLLECTION or HUDU_TYPESENSE_ASSETS_COLLECTION`,
+      });
+    }
+
+    // A tier that cannot run must not be reachable by configuration: naming `typesense` without the
+    // endpoint and key would otherwise degrade every search at the first call instead of failing
+    // the container once, at boot.
+    if (c.HUDU_SEARCH_TIER_POLICY === 'typesense' && typesenseUrl === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['HUDU_SEARCH_TIER_POLICY'],
+        message:
+          'HUDU_SEARCH_TIER_POLICY=typesense requires HUDU_TYPESENSE_URL and HUDU_TYPESENSE_API_KEY; set both, or choose auto|index|vendor',
       });
     }
 

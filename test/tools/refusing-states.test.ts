@@ -125,7 +125,9 @@ describe('a refusing request keeps the excluded-tier error', () => {
     expect(r.isError).toBe(true);
     const body = JSON.parse(r.content[0]!.text);
     expect(body.code).toBe('CONFIG_ERROR');
-    expect(body.message).toContain('body index is unavailable');
+    expect(body.message).toContain('no body tier is available');
+    // The refusal names BOTH corpus-wide body tiers, so a caller asking for either learns why.
+    expect(body.message).toContain('Typesense');
     expect(s.urls).toEqual([]);
     await s.close();
   });
