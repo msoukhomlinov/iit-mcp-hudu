@@ -62,9 +62,15 @@ function blankToUndefined(raw: unknown): unknown {
 
 /**
  * The Typesense body-search tier's fixed defaults. Of the knobs the design names, only the
- * collection names, the deadline and the verification gate are environment-tunable; the candidate
- * count and the circuit-breaker window stay the SDK's calibrated values (DESIGN §3 WP-1), so this
- * server never sets them and cannot drift from the library.
+ * collection names, the deadline and the verification gate are environment-tunable.
+ *
+ * Two knobs are deliberately NOT here and NOT set by this server: the candidate count and the
+ * circuit-breaker window. They are the SDK's own calibrated values (DESIGN §3 WP-1) — 40 candidates
+ * and a 30 s cooldown at node-hudu 0.21.0 — and this server passes neither key, so the library's
+ * calibration applies and CANNOT be shadowed by a stale copy here. The intent is not left untested:
+ * `test/typesense-config.test.ts` reads the RESOLVED SDK config and asserts those two values, so a
+ * recalibration in a future node-hudu release fails a test and shows up in review instead of
+ * silently changing behaviour.
  */
 export const TYPESENSE_DEFAULTS = {
   /** Hudu's own collection names, so an operator who provisions a search-only key sets nothing. */
@@ -74,10 +80,6 @@ export const TYPESENSE_DEFAULTS = {
   timeoutMs: 4000,
   /** Refused above this: one search must never become the slowest thing in a tool call. */
   maxTimeoutMs: 15000,
-  /** Candidates requested per resource; matches the SDK default. */
-  candidateLimit: 40,
-  /** After a transport/auth failure the tier is parked for this long. */
-  cooldownMs: 30000,
 } as const;
 
 /**
@@ -104,9 +106,9 @@ export function typesenseSearchBlock(config: Config): TypesenseSearchBlock | und
       assets: config.HUDU_TYPESENSE_ASSETS_COLLECTION ?? TYPESENSE_DEFAULTS.assetsCollection,
     },
     timeoutMs: config.HUDU_TYPESENSE_TIMEOUT_MS ?? TYPESENSE_DEFAULTS.timeoutMs,
-    candidateLimit: TYPESENSE_DEFAULTS.candidateLimit,
+    // No `candidateLimit` and no `cooldownMs`: both are the SDK's calibration, and omission is what
+    // keeps this server from pinning a copy that silently overrides a future recalibration.
     verifyHits: config.HUDU_TYPESENSE_VERIFY_HITS ?? true,
-    cooldownMs: TYPESENSE_DEFAULTS.cooldownMs,
   };
 }
 

@@ -135,9 +135,8 @@ describe('HUDU_TYPESENSE_*', () => {
         apiKey: TYPESENSE.HUDU_TYPESENSE_API_KEY,
         collections: { articles: 'articles', assets: 'assets' },
         timeoutMs: 4000,
-        candidateLimit: 40,
         verifyHits: true,
-        cooldownMs: 30000,
+        // No candidateLimit / cooldownMs: the SDK's calibration is what applies, never a copy here.
       });
     }
   });

@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
+import { HuduClient } from 'node-hudu';
 import { ConfigError, TYPESENSE_DEFAULTS, TYPESENSE_ENV_NAMES, describeTypesense, loadConfig, typesenseSearchBlock } from '../src/config.js';
 
 const valid = {
@@ -80,15 +81,29 @@ describe('HUDU_TYPESENSE_* — the pair is all-or-nothing', () => {
 describe('HUDU_TYPESENSE_* — the on path', () => {
   it('maps the pair and applies the documented defaults', () => {
     const block = typesenseSearchBlock(loadConfig({ ...valid, ...TS }));
+    // `toEqual` is exact in both directions, so an extra key here — `candidateLimit` or
+    // `cooldownMs`, which this server does not pin — would fail this test.
     expect(block).toEqual({
       url: TS.HUDU_TYPESENSE_URL,
       apiKey: TS.HUDU_TYPESENSE_API_KEY,
       collections: { articles: TYPESENSE_DEFAULTS.articlesCollection, assets: TYPESENSE_DEFAULTS.assetsCollection },
       timeoutMs: TYPESENSE_DEFAULTS.timeoutMs,
-      candidateLimit: TYPESENSE_DEFAULTS.candidateLimit,
       verifyHits: true,
-      cooldownMs: TYPESENSE_DEFAULTS.cooldownMs,
     });
+  });
+
+  it('leaves the candidate count and the cooldown to the SDK, which resolves them today', () => {
+    const block = typesenseSearchBlock(loadConfig({ ...valid, ...TS }));
+    if (block === undefined) throw new Error('the pair is configured, so the block must exist');
+    expect(Object.keys(block)).not.toContain('candidateLimit');
+    expect(Object.keys(block)).not.toContain('cooldownMs');
+    // Omission alone would be intent without evidence, so read what the library RESOLVES (not the
+    // env, not our block): if a node-hudu release recalibrates either knob, this fails and the
+    // change is reviewed, instead of a pinned copy silently overriding it.
+    const resolved = new HuduClient({ baseUrl: valid.HUDU_BASE_URL, apiKey: valid.HUDU_API_KEY, search: { typesense: block } })
+      .config.search?.typesense;
+    expect(resolved?.candidateLimit).toBe(40);
+    expect(resolved?.cooldownMs).toBe(30_000);
   });
 
   it('honours the collection names, the deadline and the verification gate', () => {
