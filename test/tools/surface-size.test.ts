@@ -57,10 +57,10 @@ const MIN_HEADROOM = 200;
  * The bytes a CONFIGURED tier adds that the unset surface can neither pay for nor remove, and
  * NOTHING else:
  *
- *   +14 B  the `typesense` value in `hudu_search`'s tier enum
- *   +20 B  the `typesense` probe field in `hudu_get_api_info`'s output schema
- *   ----   (the tier sentences are already down to one short line each and are inside the margin)
- *   =32 B
+ * The binding number is MEASURED, not summed: 200 B margin - 168 B measured headroom = 32 B. The
+ * bytes are the `typesense` value in `hudu_search`'s tier enum (measured 12 B), the `typesense`
+ * probe field in `hudu_get_api_info`'s output schema (measured 15 B), and the ~5 B of tier sentence
+ * that remains even in its shortest honest form — 12 + 15 + 5 = 32 B, matching 200 - 168.
  *
  * Measured with that minimal prose, three configured profiles fall short of the 200 B margin:
  *

@@ -185,6 +185,22 @@ describe('probeTypesense — built and permitted', () => {
     expect(JSON.stringify(report)).not.toContain(TYPESENSE.HUDU_TYPESENSE_API_KEY);
   });
 
+  it('reports PROBE_FAILED when the call throws without a string code', async () => {
+    const report = await probeTypesense(
+      permitted(async () => {
+        throw new Error('the network layer failed without a code');
+      }),
+      config,
+    );
+    expect(report).toEqual({
+      configured: true,
+      reachable: false,
+      collections: ['articles', 'assets'],
+      probeMs: expect.any(Number),
+      error: { code: 'PROBE_FAILED', message: 'the probe failed without an error code' },
+    });
+  });
+
   it('still says "not permitted" when the policy refuses the call itself', async () => {
     const report = await probeTypesense(
       permitted(async () => {

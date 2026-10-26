@@ -30,18 +30,6 @@ const SEARCH_DEFAULT_INDEX_SENTENCE =
   'This TOOL defaults to tier "index" (build or await the body index), so a\n' +
   '                  cold, body-blind answer is not the default it hands an agent - and when it happens it says so.';
 /**
- * The SDK's `meta.degraded` block, extended with the five Typesense reasons and `meta.bodySource`.
- *
- * Applied only when the deployment configured the tier: a deployment without it must keep the SDK
- * text byte-for-byte, because no answer there can carry any of those reasons.
- *
- * TODO(with node-hudu@0.21.0): the five Typesense reasons are the agreed #126 enum
- * (`typesense-unavailable | typesense-unauthorized | typesense-query-error | typesense-hits-stale |
- * typesense-hits-unhydratable`) but 0.20.0's degraded-reason union carries none of them, so no 0.20.0
- * answer can produce one. The prose is written now because a caller on 0.21.0 must recognise each;
- * no cast is involved - the reason travels as SDK data, and this server never maps or renames it.
- */
-/**
  * The Typesense degraded reasons, in the SDK's union order (@126). ONE literal, read by the prose
  * builder below and by the test that pins it: either side diverging fails its own suite.
  *
@@ -119,6 +107,14 @@ function typesenseReasonLines(): string {
   }).join('');
 }
 
+/**
+ * The SDK's `meta.degraded` block, extended with the five Typesense reasons and `meta.bodySource`.
+ *
+ * Applied only when the deployment configured the tier: a deployment without it must keep the SDK
+ * text byte-for-byte, because no answer there can carry any of those reasons. node-hudu 0.21.0's
+ * degraded-reason union carries all five (#126), so a 0.21.0 answer can produce each; no cast is
+ * involved — the reason travels as SDK data and this server never maps or renames it.
+ */
 const SEARCH_DEGRADED_TYPESENSE_BLOCK =
   '  meta.degraded   null when article BODIES were searched. Otherwise {reason, advice}: `reason` is the\n' +
   '                  SDK\'s own string, passed through unchanged. Our own reasons:\n' +

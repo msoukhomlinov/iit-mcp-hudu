@@ -15,8 +15,10 @@
  * have, and a build can have an operation a policy omits. Answering with one probe would let a
  * policy change silently flip what the report means, and would leave a reader unable to tell which
  * question failed. Their failure codes are therefore distinct — `NOT_IMPLEMENTED` (not built) and
- * `POLICY_DENIED` (built, not permitted) — and only a call that is both built and permitted may
- * produce a real result or a transport code such as `TYPESENSE_UNAVAILABLE`.
+ * `POLICY_DENIED` (built, not permitted). A throw that carries no string code reports
+ * `PROBE_FAILED`, so an unattributable failure still names itself instead of reading as a crash.
+ * Only a call that is both built and permitted may produce a real result or a transport code such as
+ * `TYPESENSE_UNAVAILABLE`.
  *
  * WHY `in` AND NEVER `typeof`: the SDK's `operations` object is a Proxy over a FROZEN facade whose
  * own properties are only the methods the client policy permits (filtered by

@@ -5,7 +5,9 @@
 **Upgrading from 0.7.0:** no configuration change for any existing deployment. Six new optional
 variables turn on a Typesense body tier; with both `HUDU_TYPESENSE_URL` and `HUDU_TYPESENSE_API_KEY`
 unset, the default tier, prose, the served tool schema, the doctor report, boot output and search
-results are byte-identical to 0.7.0. node-hudu is pinned at 0.21.0 (exact), which is the release
+results are byte-identical to the env-wiring head (#59, 41ad81e) — not to 0.7.0, whose `hudu_read`
+description differs; the frozen-surface test proves identity to that head only. node-hudu is pinned at
+0.21.0 (exact), which is the release
 that types `search.typesense` — the boundary cast the tier needed is gone.
 
 - Add: `HUDU_TYPESENSE_*` configure the optional Typesense body tier and the SDK client is built with
@@ -16,10 +18,11 @@ that types `search.typesense` — the boundary cast the tier needed is gone.
   treats a blank as unset.
 - Add: optional **Typesense body tier**. It searches Hudu's own Typesense index, so article bodies
   and asset custom-field text are covered for the WHOLE corpus instead of the in-memory index's
-  heap-capped slice. `HUDU_TYPESENSE_VERIFY_HITS` (default `true`) re-reads every hit through the
-  Hudu API under the caller's own credential, because Hudu's index carries neither folder
-  permissions nor deletions; `false` is documented as single-tenant, non-restricted, read-only
-  deployments only.
+  heap-capped slice. `HUDU_TYPESENSE_VERIFY_HITS` (default `true`) is the credential re-read flag:
+  the SDK re-reads every hit through the Hudu API under the caller's own credential, because Hudu's
+  index carries neither folder permissions nor deletions. This repo sets the flag (a test asserts it
+  reaches the client) and has not measured the re-read. `false` is documented as single-tenant,
+  non-restricted, read-only deployments only.
 - Add: `HUDU_SEARCH_TIER_POLICY` accepts `typesense`, and when the pair is configured the default
   tier is `typesense` under **both** transports — the cold-start asymmetry `auto` exists for does
   not apply to an index that is already built. Naming `typesense` without the pair is a startup
@@ -31,7 +34,8 @@ that types `search.typesense` — the boundary cast the tier needed is gone.
   when the tier is configured (absent otherwise), from the SDK's one-request probe that a
   search-only key may run; `error {code, message}` appears only when the probe could not answer, and
   its code says which question failed — `NOT_IMPLEMENTED` (this SDK version has no probe),
-  `POLICY_DENIED` (the client's policy does not permit it) or the endpoint's own code. The tool
+  `POLICY_DENIED` (the client's policy does not permit it), `PROBE_FAILED` (the call threw without a
+  string code, so the failure cannot be attributed) or the endpoint's own code. The tool
   description names each field, and a test pins the exact emitted key set, because the output schema
   keeps that field open (`z.unknown()`) to stay inside the `tools/list` byte budget. `doctor` stays zero-wire: it gains a config-shape row
   (`configured`, `keyPresent`, `urlShapeOk`) only, and the row is absent when the tier is off.
@@ -59,9 +63,10 @@ that types `search.typesense` — the boundary cast the tier needed is gone.
   and the answer carries no body source. All of it is present only where the tier is configured, so
   the unset surface stays byte-identical. README and `.env.example` document the six variables, the
   reach modes (LAN, SSH tunnel, allow-listed egress) and the verification trade.
-- Add: the five reason strings live in ONE exported literal (`TYPESENSE_DEGRADED_REASONS`) and the
-  server compares its own copy against the SDK's at runtime, in order; counts stay disclosures, never
-  reasons.
+- Add: the five reason strings live in ONE exported literal (`TYPESENSE_DEGRADED_REASONS`), and
+  `test/tools/typesense-tier.test.ts` compares that literal against the SDK's union at test time, in
+  order. The server does not compare at runtime: it prints the reason it receives verbatim. Counts
+  stay disclosures, never reasons.
 - Tests: config XOR both ways, defaults and every refusal branch, key never echoed; the block
   reaching every SDK client and staying absent when unset; the default-tier matrix
   (`configured`/`unset` x `stdio`/`http` x full/excluded corpus); the schema enum and the prose (only
