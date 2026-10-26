@@ -154,6 +154,7 @@ export const MIN_INDEX_MAX_DOCS = 1;
 export function indexDocCaps(maxDocs: number): Record<string, number> {
   return { articles: maxDocs };
 }
+
 /** 50,000: the SDK's own default doc count, and the most one index should ever hold. */
 export const MAX_INDEX_MAX_DOCS = 50_000;
 /** ~1 KB of record + postings per indexed document, on top of the ~4x text ratio. ESTIMATE. */

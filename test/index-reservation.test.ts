@@ -56,9 +56,23 @@ describe('the per-resource caps the server sends', () => {
   it('keeps every article and gives the rest of the cap to assets', async () => {
     stubCorpus(articles(10), assets(500));
     const docs = await build(100);
-    // Without a reservation the 100-document cap keeps 0 articles: they are older than the assets.
     expect(docs.articles.indexed).toBe(10);
     expect(docs.assets.indexed).toBe(90);
+  });
+
+  it('drops every article without the reservation, which is the defect the caps fix', async () => {
+    stubCorpus(articles(10), assets(500));
+    const client = new HuduClient({
+      baseUrl: 'https://hudu.example.com',
+      apiKey: 'not-a-real-key',
+      search: { maxIndexTextBytes: 4 * MiB, maxDocs: 100 },
+    });
+    const result = (await client.operations.searchKnowledge('password reset', { tier: 'index', limit: 1 })) as {
+      meta: { index: { docs: Record<string, { indexed: number }> } };
+    };
+    // The assets are newer, so the global cap keeps 100 assets and no article at all.
+    expect(result.meta.index.docs.articles!.indexed).toBe(0);
+    expect(result.meta.index.docs.assets!.indexed).toBe(100);
   });
 
   it('caps articles at the document cap and reports what it dropped', async () => {

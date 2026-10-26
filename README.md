@@ -371,9 +371,9 @@ deployment measured that expectation FALSE — 15,588 assets and 1,820 articles 
 count fills whatever cap the pool offers. At the 21,845-document ceiling the split was 19,991 assets
 and 1,854 articles, i.e. 1,350 articles with no body index, while the asset rows (titles and custom
 fields, no long text) held 91% of the cap. Reserving the cap for articles is the fix: the same
-21,845-document cap then keeps all 3,204 articles and gives assets the remaining 18,641 slots
-(the SDK's guarantee, measured with a synthetic corpus and confirmed after deployment); `node-hudu`
-#122 has the upstream detail.
+21,845-document cap then keeps all 3,204 articles and gives assets the remaining 18,641 slots (the
+SDK's reservation arithmetic, reproduced with a synthetic corpus in `test/index-reservation.test.ts`);
+`node-hudu` #122 has the upstream detail.
 
 BEFORE THE DIVISOR CHANGE. The round-10 end-to-end run measured the real server (`dist/main.js`) under
 a 259 MiB V8 ceiling: peak heapUsed 187.96 MB with a 24.6 MB baseline, so the INDEX STRUCTURES cost
