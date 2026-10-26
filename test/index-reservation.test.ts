@@ -1,4 +1,4 @@
-/** The per-resource document caps reach the SDK and change what survives a build (node-hudu 0.20.0). */
+/** The per-resource document caps reach the SDK and change what survives a build (node-hudu 0.21.0). */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HuduClient } from 'node-hudu';
 import { indexDocCaps } from '../src/search-budget.js';
