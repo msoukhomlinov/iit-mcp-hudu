@@ -43,10 +43,11 @@ that types `search.typesense` — the boundary cast the tier needed is gone.
   Hudu's index that this credential can no longer read: retry later or widen), and
   `typesense-hits-unhydratable` (candidates unreadable for structural reasons — no company_id,
   deleted layout, no usable id — so the data is the cause, not staleness). The staleness entry also
-  carries a stated LIMITATION: Hudu's real semantics for permission-hidden articles are unverified
-  upstream (that needs a live tenant), and in this tier a 403 and a 404 both map to the same
-  silent-drop path, so a hidden article is indistinguishable from a discarded one — reported as a
-  limitation, with no sixth degraded reason invented for it. The five strings live in
+  carries a stated LIMITATION: which answer Hudu returns for a permission-hidden record is
+  unverified upstream (that needs a live tenant). What is settled is the split — a 404 is a silent
+  stale drop (the record is genuinely gone), while a 403 is a surfaced read failure, so the answer
+  reports `complete: false` and names the resource in `meta.errors` and a hidden record is not folded
+  into staleness. Reported as a limitation, with no sixth degraded reason invented for it. The five strings live in
   ONE exported literal (`TYPESENSE_DEGRADED_REASONS`, in the SDK's union order) that both the help
   builder and the test read, so the prose cannot drift from the assertion; this server holds no
   schema enum of its own for them. `degraded.reason` is passed through unchanged — a walk test feeds
