@@ -11,6 +11,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createClient } from 'node-hudu';
 import { loadConfig } from '../../src/config.js';
+import { TYPESENSE_DEGRADED_REASONS } from '../../src/tools/search-prose.js';
+import type { McpServer } from '@modelcontextprotocol/server';
+import { createLogger } from '../../src/logger.js';
+import { registerSearchTool } from '../../src/tools/search.js';
+import type { ToolContext } from '../../src/tools/context.js';
 import { probeTypesense } from '../../src/tools/typesense-probe.js';
 import { runDoctor } from '../../src/doctor.js';
 import { bodySourceNote } from '../../src/tools/results.js';
@@ -106,13 +111,48 @@ describe('hudu_search schema and prose', () => {
     await http.close();
   });
 
-  it('names meta.bodySource and both Typesense degraded reasons when configured', async () => {
+  it('names meta.bodySource and every Typesense degraded reason when configured', async () => {
     const session = await stdioSession(TYPESENSE);
-    const text = String((await session.call('hudu_search', { mode: 'help' })).content[0].text);
+    const raw = (await session.call('hudu_search', { mode: 'help' })).content[0].text;
+    const text = JSON.parse(String(raw)).text as string;
     expect(text).toContain('meta.bodySource');
-    expect(text).toContain('typesense-unavailable');
-    expect(text).toContain('typesense-unauthorized');
-    expect(text).toContain('typesense-hits-stale');
+    // ONE literal drives both the prose and this assertion, in the SDK's union order.
+    expect(TYPESENSE_DEGRADED_REASONS).toEqual([
+      'typesense-unavailable',
+      'typesense-unauthorized',
+      'typesense-query-error',
+      'typesense-hits-stale',
+      'typesense-hits-unhydratable',
+    ]);
+    // Every reason is in the help, in that order, and each carries its operator action...
+    let cursor = -1;
+    for (const reason of TYPESENSE_DEGRADED_REASONS) {
+      const at = text.indexOf(`"${reason}"`);
+      expect(at).toBeGreaterThan(cursor);
+      cursor = at;
+    }
+    for (const [action, reason] of [
+      ['transient', 'typesense-unavailable'],
+      ['credential', 'typesense-unauthorized'],
+      ['config bug', 'typesense-query-error'],
+      ['transient', 'typesense-hits-stale'],
+      ['data', 'typesense-hits-unhydratable'],
+    ] as const) {
+      expect(text).toMatch(new RegExp(`${action}:\\s+"${reason}"`));
+    }
+    // ...and no reason outside that literal is advertised.
+    expect(text.match(/typesense-[a-z-]+"/g)?.sort()).toEqual([...TYPESENSE_DEGRADED_REASONS].map((r) => `${r}"`).sort());
+    // The reason strings are the SDK's own, passed through: the help says so, so a rename is visible.
+    expect(text).toContain("`reason` is the");
+    expect(text).toContain('passed through unchanged');
+    // And this server holds NO schema enum of its own to drift: the served output schema does not
+    // enumerate a single reason, so the literal above is the only place the list can go stale.
+    const searchTool = (await session.list()).find((x) => x.name === 'hudu_search')!;
+    expect(JSON.stringify(searchTool.outputSchema)).not.toContain('typesense-');
+    expect(JSON.stringify(searchTool.outputSchema)).not.toContain('body-not-indexed');
+    // The config bug must not read as an outage, and the data problem must not read as staleness.
+    expect(text).toContain('this is not an');
+    expect(text).toContain('the data is the cause, not staleness');
     await session.close();
   });
 
@@ -122,6 +162,9 @@ describe('hudu_search schema and prose', () => {
     const text = String((await session.call('hudu_search', { mode: 'help' })).content[0].text);
     expect(text).not.toContain('typesense');
     expect(text).not.toContain('meta.bodySource');
+    for (const reason of ['unavailable', 'unauthorized', 'query-error', 'hits-stale', 'hits-unhydratable']) {
+      expect(text).not.toContain(reason);
+    }
     await session.close();
   });
 
@@ -257,6 +300,21 @@ describe('hudu_get_api_info — the Typesense probe', () => {
   });
 });
 
+describe('hudu_get_api_info — the query-error clause', () => {
+  it('says a typesense-query-error is a COLLECTION NAME problem, not an outage', async () => {
+    const session = await stdioSession(TYPESENSE);
+    const description = String((await session.list()).find((x) => x.name === 'hudu_get_api_info')!.description);
+    expect(description).toContain('typesense-query-error');
+    expect(description).toContain('COLLECTION NAME is wrong');
+    expect(description).toContain('not that Typesense is down');
+    // Unconfigured deployments never see the field, so they never see the clause either.
+    const unset = await stdioSession({});
+    expect(String((await unset.list()).find((x) => x.name === 'hudu_get_api_info')!.description)).not.toContain('typesense');
+    await unset.close();
+    await session.close();
+  });
+});
+
 describe('doctor — the config-shape row', () => {
   const base = { HUDU_BASE_URL: 'https://hudu.example.com', HUDU_API_KEY: 'k-123' };
 
@@ -279,5 +337,56 @@ describe('doctor — the config-shape row', () => {
   it('reports a loopback origin (the tunnel mode) as shape-ok', () => {
     const report = runDoctor(loadConfig({ ...base, ...TYPESENSE, HUDU_TYPESENSE_URL: 'http://127.0.0.1:8108' }));
     expect(report.typesense?.urlShapeOk).toBe(true);
+  });
+});
+
+describe('meta.degraded.reason is passed through, never mapped or renamed', () => {
+  /**
+   * The pairing between this server and the SDK breaks silently if a reason is renamed here, so the
+   * walk is asserted: whatever the SDK returns is what the caller receives, in the data and the text.
+   */
+  function searchWith(reason: string, advice = 'SDK advice, verbatim.') {
+    let handler!: (args: Record<string, unknown>, req: unknown) => Promise<{ content: { text: string }[]; structuredContent: Record<string, any> }>;
+    const server = {
+      registerTool: (_n: string, _s: unknown, h: typeof handler) => {
+        handler = h;
+      },
+    } as unknown as McpServer;
+    const result = {
+      hits: [],
+      meta: {
+        complete: false,
+        reasons: [],
+        failed: [],
+        errors: [],
+        index: { state: 'warm' },
+        scanned: 0,
+        returned: 0,
+        degraded: { reason, advice },
+      },
+    };
+    registerSearchTool(server, {
+      hudu: {},
+      huduOrigin: 'https://hudu.invalid',
+      config: { MCP_TRANSPORT: 'stdio' },
+      log: createLogger('error', () => {}),
+      ops: { searchKnowledge: async () => result },
+      searchableResources: ['articles', 'assets'],
+      defaultSearchScope: ['articles', 'assets'],
+      bodySearchable: true,
+      toolDefaultTier: 'typesense',
+      typesenseConfigured: true,
+      searchTierIsPolicy: false,
+    } as unknown as ToolContext);
+    return handler({ mode: 'search', query: 'reset' }, { mcpReq: { _meta: {}, signal: new AbortController().signal, notify: async () => {} } });
+  }
+
+  it('carries each of the five reasons, and a reason it has never seen, unchanged', async () => {
+    for (const reason of [...TYPESENSE_DEGRADED_REASONS, 'typesense-something-new']) {
+      const answered = await searchWith(reason);
+      expect(answered.structuredContent.meta.degraded.reason).toBe(reason);
+      expect(answered.structuredContent.meta.degraded.advice).toBe('SDK advice, verbatim.');
+      expect(answered.content[0].text).toContain(`DEGRADED (${reason})`);
+    }
   });
 });

@@ -30,29 +30,100 @@ const SEARCH_DEFAULT_INDEX_SENTENCE =
   'This TOOL defaults to tier "index" (build or await the body index), so a\n' +
   '                  cold, body-blind answer is not the default it hands an agent - and when it happens it says so.';
 /**
- * The SDK's `meta.degraded` block, extended with the three Typesense reasons and `meta.bodySource`.
+ * The SDK's `meta.degraded` block, extended with the five Typesense reasons and `meta.bodySource`.
  *
  * Applied only when the deployment configured the tier: a deployment without it must keep the SDK
  * text byte-for-byte, because no answer there can carry any of those reasons.
  *
- * TODO(with node-hudu@0.21.0): `typesense-hits-stale` (candidates returned, none readable) is agreed
- * but absent from 0.20.0's degraded-reason union, so no 0.20.0 answer can produce it. The prose is
- * written now because a caller on 0.21.0 must recognise it; no cast is involved (the reason travels
- * as SDK data), and the line stays correct once the SDK publishes it.
+ * TODO(with node-hudu@0.21.0): the five Typesense reasons are the agreed #126 enum
+ * (`typesense-unavailable | typesense-unauthorized | typesense-query-error | typesense-hits-stale |
+ * typesense-hits-unhydratable`) but 0.20.0's degraded-reason union carries none of them, so no 0.20.0
+ * answer can produce one. The prose is written now because a caller on 0.21.0 must recognise each;
+ * no cast is involved - the reason travels as SDK data, and this server never maps or renames it.
  */
+/**
+ * The Typesense degraded reasons, in the SDK's union order (@126). ONE literal, read by the prose
+ * builder below and by the test that pins it: either side diverging fails its own suite.
+ *
+ * This server never maps, renames or reorders a reason it receives — it prints `degraded.reason`
+ * verbatim, because a renamed reason silently breaks the pairing between the two packages.
+ */
+export const TYPESENSE_DEGRADED_REASONS = [
+  'typesense-unavailable',
+  'typesense-unauthorized',
+  'typesense-query-error',
+  'typesense-hits-stale',
+  'typesense-hits-unhydratable',
+] as const;
+
+export type TypesenseDegradedReason = (typeof TYPESENSE_DEGRADED_REASONS)[number];
+
+/**
+ * What the operator must DO about each reason, and why it happened. The `Record` over the union is
+ * the exhaustiveness check: a reason added to the constant cannot ship without its action.
+ */
+const TYPESENSE_REASON_ACTION: Record<TypesenseDegradedReason, { group: string; lines: string[] }> = {
+  'typesense-unavailable': {
+    group: 'transient',
+    lines: [
+      'refused or timed out; the answer came from the local index or the',
+      'vendor tier. Check the URL, the tunnel, egress.',
+    ],
+  },
+  'typesense-unauthorized': {
+    group: 'credential',
+    lines: ['the key was rejected; the key is the thing to fix.'],
+  },
+  'typesense-query-error': {
+    group: 'config bug',
+    lines: [
+      'the COLLECTION NAME or query is wrong (Typesense answered',
+      '400/404/422). Fix HUDU_TYPESENSE_*_COLLECTION: this is not an',
+      'outage, no cooldown runs, and URL/tunnel advice does not apply.',
+    ],
+  },
+  'typesense-hits-stale': {
+    group: 'transient',
+    lines: [
+      "Hudu's index still holds records this credential can no longer read",
+      "(discarded or deleted, awaiting Hudu's reindex): retry later or",
+      'widen the query.',
+    ],
+  },
+  'typesense-hits-unhydratable': {
+    group: 'data',
+    lines: [
+      'candidates exist but cannot be read for structural reasons (asset',
+      'with no company_id, deleted layout, no usable id): fix the record or',
+      'the layout - the data is the cause, not staleness.',
+    ],
+  },
+};
+
+/** One help-text line per reason, in the constant's order, each labelled with its operator action. */
+function typesenseReasonLines(): string {
+  return TYPESENSE_DEGRADED_REASONS.map((reason) => {
+    const { group, lines } = TYPESENSE_REASON_ACTION[reason];
+    const [first, ...rest] = lines;
+    return (
+      `                    ${`${group}:`.padEnd(13)}"${reason}"`.padEnd(30) +
+      `${first}\n` +
+      rest.map((line) => `                                              ${line}\n`).join('')
+    );
+  }).join('');
+}
+
 const SEARCH_DEGRADED_TYPESENSE_BLOCK =
-  '  meta.degraded   null when article BODIES were searched. Otherwise {reason, advice}:\n' +
-  '                  reason "body-not-indexed"   bodies exist but are not indexed (indexArticles:false, or every\n' +
-  '                                              body exceeded maxDocBytes), or the index could not be built.\n' +
-  '                  reason "vendor-only"        no body tier was used, so titles, names, custom-field values and\n' +
-  '                                              identifiers were searched and article bodies were NOT.\n' +
-  '                  reason "typesense-unavailable"  the Typesense tier is configured but refused or timed out;\n' +
-  '                                              the answer came from the local index or from the vendor tier.\n' +
-  '                  reason "typesense-unauthorized" the Typesense key was rejected; the key is the thing to fix.\n' +
-  '                  reason "typesense-hits-stale"    the tier returned candidates but this credential could no\n' +
-  '                                              longer read any of them (rows deleted or moved, awaiting Hudu\n' +
-  "                                              reindex), so the empty answer is disclosed: retry later or widen\n" +
-  '                                              the query.\n' +
+  '  meta.degraded   null when article BODIES were searched. Otherwise {reason, advice}: `reason` is the\n' +
+  '                  SDK\'s own string, passed through unchanged. Our own reasons:\n' +
+  '                    "body-not-indexed"           bodies exist but are not indexed (indexArticles:false, or every\n' +
+  '                                                body exceeded maxDocBytes), or the index could not be built.\n' +
+  '                    "vendor-only"                no body tier was used, so titles, names, custom-field values and\n' +
+  '                                                identifiers were searched and article bodies were NOT.\n' +
+  '                  The Typesense reasons, in the SDK\'s order, labelled with what YOU do about it:\n' +
+  typesenseReasonLines() +
+  '                  A configured tier that is NOT BUILT or NOT PERMITTED is not a degraded reason: it is\n' +
+  '                  reported by hudu_get_api_info (NOT_IMPLEMENTED / POLICY_DENIED).\n' +
   '  meta.bodySource "index" | "typesense" | "none": which body source produced this answer. "none" means\n' +
   '                  body text was not searched at all on this call.';
 

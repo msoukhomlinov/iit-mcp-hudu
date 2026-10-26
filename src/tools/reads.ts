@@ -72,7 +72,7 @@ export function registerReadTools(server: McpServer, ctx: ToolContext): void {
         // Deployment-specific: only a configured tier has a probe to report, so the unconfigured
         // served description stays byte-identical.
         typesenseConfigured
-          ? 'Also reports the Typesense body tier: configured (the pair is set), reachable (the probe answered, which needs the SDK build AND this client policy to permit it), collections (indexes searched), probeMs (probe latency); error {code, message} says which failed: NOT_IMPLEMENTED (this SDK version has no probe), POLICY_DENIED (this policy does not permit it), or the endpoint failure.'
+          ? 'Also reports the Typesense body tier: configured (the pair is set), reachable (the probe answered, which needs the SDK build AND this client policy to permit it), collections (indexes searched), probeMs (probe latency); error {code, message} says which failed: NOT_IMPLEMENTED (this SDK version has no probe), POLICY_DENIED (this policy does not permit it), or the endpoint failure. A search answer with degraded.reason "typesense-query-error" means the COLLECTION NAME is wrong (Typesense answered 400/404/422), not that Typesense is down.'
           : '',
       ),
       inputSchema: z.object({

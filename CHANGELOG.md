@@ -33,22 +33,30 @@ that types `search.typesense` — the boundary cast the tier needed is gone.
   its code says which question failed — `NOT_IMPLEMENTED` (this SDK version has no probe),
   `POLICY_DENIED` (the client's policy does not permit it) or the endpoint's own code. The tool
   description names each field, and a test pins the exact emitted key set, because the output schema
-  keeps that field open (`z.unknown()`) to stay inside the `tools/list` byte budget. `doctor` stays
-  zero-wire: it gains a config-shape row (`configured`, `keyPresent`, `urlShapeOk`) only, and the row
-  is absent when the tier is off.
-- Add: the tier's degradation vocabulary is one closed five-reason set, exported from the SDK and
-  compared against the server's at runtime: `typesense-unavailable` (refused or timed out),
-  `typesense-unauthorized` (key rejected), `typesense-query-error` (the index answered with an
-  error), `typesense-hits-stale` (candidates returned but none readable by this credential, so the
-  empty answer is disclosed) and `typesense-hits-unhydratable`. Counts are disclosures, never
-  reasons.
-- Docs: `hudu_search` help names `meta.bodySource` (`index` | `typesense` | `none`) and the tier's
-  degraded reasons; the compact result header states the body source. The tier sentence names the
-  corpus resolution where it states the policy: on a deployment that excludes articles or assets, a
-  configured Typesense tier is corpus-wide too, so the corpus gate resolves it to `vendor` and the
-  answer carries no body source. All of it is present only where the tier is configured, so the
-  unset surface stays byte-identical. README and `.env.example` document the six variables, the
+  keeps that field open (`z.unknown()`) to stay inside the `tools/list` byte budget. `doctor` stays zero-wire: it gains a config-shape row
+  (`configured`, `keyPresent`, `urlShapeOk`) only, and the row is absent when the tier is off.
+- Docs: `hudu_search` help names `meta.bodySource` (`index` | `typesense` | `none`) and all five
+  Typesense degraded reasons, grouped by what the operator must do — `typesense-unavailable`
+  (refused or timed out: check URL, tunnel, egress), `typesense-query-error` (the collection name or
+  query is wrong: Typesense answered 400/404/422, so the fix is `HUDU_TYPESENSE_*_COLLECTION` and
+  NOT an outage), `typesense-unauthorized` (key rejected), `typesense-hits-stale` (records still in
+  Hudu's index that this credential can no longer read: retry later or widen), and
+  `typesense-hits-unhydratable` (candidates unreadable for structural reasons — no company_id,
+  deleted layout, no usable id — so the data is the cause, not staleness). The five strings live in
+  ONE exported literal (`TYPESENSE_DEGRADED_REASONS`, in the SDK's union order) that both the help
+  builder and the test read, so the prose cannot drift from the assertion; this server holds no
+  schema enum of its own for them. `degraded.reason` is passed through unchanged — a walk test feeds
+  each of the five, and a reason the server has never seen, and asserts the response and the text
+  carry them verbatim, because a rename here would break the pairing silently. The compact result
+  header states the body source. The tier sentence
+  names the corpus resolution where it states the policy: on a deployment that excludes articles or
+  assets, a configured Typesense tier is corpus-wide too, so the corpus gate resolves it to `vendor`
+  and the answer carries no body source. All of it is present only where the tier is configured, so
+  the unset surface stays byte-identical. README and `.env.example` document the six variables, the
   reach modes (LAN, SSH tunnel, allow-listed egress) and the verification trade.
+- Add: the five reason strings live in ONE exported literal (`TYPESENSE_DEGRADED_REASONS`) and the
+  server compares its own copy against the SDK's at runtime, in order; counts stay disclosures, never
+  reasons.
 - Tests: config XOR both ways, defaults and every refusal branch, key never echoed; the block
   reaching every SDK client and staying absent when unset; the default-tier matrix
   (`configured`/`unset` x `stdio`/`http` x full/excluded corpus); the schema enum and the prose (only
