@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 **Upgrading from 0.7.0:** no configuration change for any existing deployment. Six new optional
 variables turn on a Typesense body tier; with both `HUDU_TYPESENSE_URL` and `HUDU_TYPESENSE_API_KEY`
