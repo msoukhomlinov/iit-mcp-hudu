@@ -117,3 +117,38 @@ describe('body-index text budget is pooled per process', () => {
     expect(searches.every((s) => s.maxDocs <= 50_000)).toBe(true);
   });
 });
+
+describe('HUDU_TYPESENSE_*', () => {
+  const TYPESENSE = {
+    HUDU_TYPESENSE_URL: 'https://typesense.example.com',
+    HUDU_TYPESENSE_API_KEY: 'test-key-not-real',
+  } as const;
+
+  it('reaches every SDK client as search.typesense when the pair is configured', async () => {
+    captured.length = 0;
+    const session = await connect(undefined, { ...TYPESENSE });
+    await session.close();
+    expect(captured.length).toBeGreaterThan(0);
+    for (const options of captured) {
+      expect((options.search as { typesense?: unknown }).typesense).toEqual({
+        url: TYPESENSE.HUDU_TYPESENSE_URL,
+        apiKey: TYPESENSE.HUDU_TYPESENSE_API_KEY,
+        collections: { articles: 'articles', assets: 'assets' },
+        timeoutMs: 4000,
+        candidateLimit: 40,
+        verifyHits: true,
+        cooldownMs: 30000,
+      });
+    }
+  });
+
+  it('leaves search.typesense absent when the pair is unset, so the client config is unchanged', async () => {
+    captured.length = 0;
+    const session = await connect();
+    await session.close();
+    expect(captured.length).toBeGreaterThan(0);
+    for (const options of captured) {
+      expect(options.search as Record<string, unknown>).not.toHaveProperty('typesense');
+    }
+  });
+});

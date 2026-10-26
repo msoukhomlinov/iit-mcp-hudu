@@ -286,6 +286,30 @@ the SDK does past it — answer from the stale index while rebuilding in the bac
 UNVERIFIED here: this repo sets the knob (a test asserts it reaches the client) but has not measured
 the stale-rebuild behaviour.
 
+`HUDU_TYPESENSE_*` configure the optional Typesense body tier — the same index Hudu's own UI
+searches, so body coverage does not depend on this process's heap:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HUDU_TYPESENSE_URL` | — | Origin only (`https://typesense.example.com`, or `http://127.0.0.1:8108` through an SSH tunnel). No path, query or fragment. |
+| `HUDU_TYPESENSE_API_KEY` | — | Search-only key (`documents:search` on the two collections). Never logged, never in `doctor` output. |
+| `HUDU_TYPESENSE_ARTICLES_COLLECTION` | `articles` | Articles collection name. |
+| `HUDU_TYPESENSE_ASSETS_COLLECTION` | `assets` | Assets collection name; must differ from the articles one. |
+| `HUDU_TYPESENSE_TIMEOUT_MS` | `4000` | Per-search deadline; `15000` is the maximum and a larger value fails boot. |
+| `HUDU_TYPESENSE_VERIFY_HITS` | `true` | Re-read every hit through the Hudu API under the caller's credential (see below). |
+
+`HUDU_TYPESENSE_URL` and `HUDU_TYPESENSE_API_KEY` are set together or not at all: one without the
+other fails boot, naming both. With both set the tier is on and the boot log says
+`typesense: enabled (collections articles, assets)` (or `typesense: disabled`), never the URL or the
+key. With both unset nothing changes: the in-memory index is the only body tier, the tier policy is
+exactly as documented above, and no Typesense request is ever made.
+
+`HUDU_TYPESENSE_VERIFY_HITS=true` re-reads every candidate id through the Hudu API before it is
+returned, under the credential that made the call. Hudu's index carries neither folder permissions
+nor deletions (it keeps discarded articles), so verification is what stops a hit being a record the
+caller may not see. `false` skips that re-read: faster, but a hit can be discarded or
+permission-hidden. Use `false` only on a single-tenant, non-restricted, read-only deployment.
+
 A request cancelled while a call waits on a body-index build answers instead of throwing.
 `meta.degraded.reason` stays `body-not-indexed` (the SDK's closed union), `meta.cancelled` records
 `{ during: "index-build", waited }` as a deliberate SERVER extension (the SDK's meta has no
