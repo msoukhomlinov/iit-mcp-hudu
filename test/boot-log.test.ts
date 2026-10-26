@@ -28,10 +28,14 @@ const TYPESENSE = {
   HUDU_TYPESENSE_API_KEY: 'test-key-not-real',
 };
 
-/** Replace the timestamp VALUE only; every other byte must match the fixture. */
+/**
+ * Replace the timestamp VALUE only. Exactly one trailing newline (the terminator `spawnSync` leaves
+ * on the last line) is dropped; a leading blank line, an interior blank line or any other whitespace
+ * survives into the comparison and therefore fails it.
+ */
 function normalise(stderr: string): string {
-  return `${stderr
-    .trim()
+  const terminated = stderr.endsWith('\n') ? stderr.slice(0, -1) : stderr;
+  return `${terminated
     .split('\n')
     .map((line) => line.replace(/"ts":"[^"]*"/, '"ts":"<ts>"'))
     .join('\n')}\n`;
