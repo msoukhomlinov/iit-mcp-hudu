@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { ConfigError, TYPESENSE_DEFAULTS, describeTypesense, loadConfig, typesenseSearchBlock } from '../src/config.js';
+import { ConfigError, TYPESENSE_DEFAULTS, TYPESENSE_ENV_NAMES, describeTypesense, loadConfig, typesenseSearchBlock } from '../src/config.js';
 
 const valid = {
   HUDU_BASE_URL: 'https://hudu.example.com',
@@ -31,16 +31,18 @@ function bootError(env: Record<string, string>): string {
 }
 
 describe('HUDU_TYPESENSE_* — the off path', () => {
-  it('is unconfigured when the pair is unset: no SDK block, and the boot line says disabled', () => {
+  it('is unconfigured when the pair is unset: no SDK block, and NO boot line at all', () => {
     const config = loadConfig(valid);
     expect(typesenseSearchBlock(config)).toBeUndefined();
-    expect(describeTypesense(config)).toBe('typesense: disabled');
+    // A disabled feature is invisible: emitting "typesense: disabled" on every stock boot would
+    // change the output of deployments that never heard of this feature.
+    expect(describeTypesense(config)).toBeUndefined();
   });
 
   it('treats blank values as unset, so a copied .env.example keeps the tier off', () => {
     const config = loadConfig({ ...valid, HUDU_TYPESENSE_URL: '', HUDU_TYPESENSE_API_KEY: '   ' });
     expect(typesenseSearchBlock(config)).toBeUndefined();
-    expect(describeTypesense(config)).toBe('typesense: disabled');
+    expect(describeTypesense(config)).toBeUndefined();
   });
 
   it('accepts the collection, deadline and gate knobs without the pair, and still stays off', () => {
@@ -112,6 +114,24 @@ describe('HUDU_TYPESENSE_* — the on path', () => {
     expect(line).not.toContain('typesense.example.com');
   });
 
+  it('accepts HUDU_TYPESENSE_VERIFY_HITS spelled in any case and treats a blank as unset', () => {
+    // A shell that exports TRUE, and a copied .env.example that leaves the value empty, must both
+    // behave like the knob's documented default rather than fail boot.
+    expect(typesenseSearchBlock(loadConfig({ ...valid, ...TS, HUDU_TYPESENSE_VERIFY_HITS: 'TRUE' }))?.verifyHits).toBe(true);
+    expect(typesenseSearchBlock(loadConfig({ ...valid, ...TS, HUDU_TYPESENSE_VERIFY_HITS: 'False' }))?.verifyHits).toBe(false);
+    expect(typesenseSearchBlock(loadConfig({ ...valid, ...TS, HUDU_TYPESENSE_VERIFY_HITS: '   ' }))?.verifyHits).toBe(true);
+    expect(typesenseSearchBlock(loadConfig({ ...valid, ...TS, HUDU_TYPESENSE_VERIFY_HITS: '' }))?.verifyHits).toBe(true);
+  });
+
+  it('refuses a URL carrying userinfo, and never echoes the credential in the refusal', () => {
+    const secret = 'super-secret-userinfo-password';
+    const message = bootError({ ...TS, HUDU_TYPESENSE_URL: `https://operator:${secret}@typesense.example.com` });
+    expect(message).toContain('must not carry credentials');
+    expect(message).not.toContain(secret);
+    expect(message).not.toContain('operator:');
+    expect(message).toContain('HUDU_TYPESENSE_API_KEY');
+  });
+
   it('accepts a loopback origin, which is how stdio reaches the index through a tunnel', () => {
     const block = typesenseSearchBlock(loadConfig({ ...valid, ...TS, HUDU_TYPESENSE_URL: 'http://127.0.0.1:8108' }));
     expect(block?.url).toBe('http://127.0.0.1:8108');
@@ -150,16 +170,23 @@ describe('HUDU_TYPESENSE_* — documentation drift', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const example = readFileSync(`${root}.env.example`, 'utf8');
   const readme = readFileSync(`${root}README.md`, 'utf8');
-  const names = [
-    'HUDU_TYPESENSE_URL',
-    'HUDU_TYPESENSE_API_KEY',
-    'HUDU_TYPESENSE_ARTICLES_COLLECTION',
-    'HUDU_TYPESENSE_ASSETS_COLLECTION',
-    'HUDU_TYPESENSE_TIMEOUT_MS',
-    'HUDU_TYPESENSE_VERIFY_HITS',
-  ];
+  // Derived from the SCHEMA, not retyped here: a knob added to code and left out of the docs fails
+  // this test. A hand-written list would let the test assert its own copy and stay green.
+  const names = TYPESENSE_ENV_NAMES;
 
-  it('documents every variable in .env.example and in the README', () => {
+  it('the schema carries the six documented knobs', () => {
+    expect([...names].sort()).toEqual([
+      'HUDU_TYPESENSE_API_KEY',
+      'HUDU_TYPESENSE_ARTICLES_COLLECTION',
+      'HUDU_TYPESENSE_ASSETS_COLLECTION',
+      'HUDU_TYPESENSE_TIMEOUT_MS',
+      'HUDU_TYPESENSE_URL',
+      'HUDU_TYPESENSE_VERIFY_HITS',
+    ]);
+  });
+
+  it('documents every variable the schema accepts, in .env.example and in the README', () => {
+    expect(names.length).toBeGreaterThan(0);
     for (const name of names) {
       expect(example, `.env.example is missing ${name}`).toContain(name);
       expect(readme, `README.md is missing ${name}`).toContain(name);

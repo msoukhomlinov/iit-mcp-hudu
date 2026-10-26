@@ -292,17 +292,22 @@ searches, so body coverage does not depend on this process's heap:
 | Variable | Default | Meaning |
 |---|---|---|
 | `HUDU_TYPESENSE_URL` | — | Origin only (`https://typesense.example.com`, or `http://127.0.0.1:8108` through an SSH tunnel). No path, query or fragment. |
-| `HUDU_TYPESENSE_API_KEY` | — | Search-only key (`documents:search` on the two collections). Never logged, never in `doctor` output. |
+| `HUDU_TYPESENSE_API_KEY` | — | Search-only key (`documents:search` on the two collections). Never logged, never returned by a tool. |
 | `HUDU_TYPESENSE_ARTICLES_COLLECTION` | `articles` | Articles collection name. |
 | `HUDU_TYPESENSE_ASSETS_COLLECTION` | `assets` | Assets collection name; must differ from the articles one. |
 | `HUDU_TYPESENSE_TIMEOUT_MS` | `4000` | Per-search deadline; `15000` is the maximum and a larger value fails boot. |
 | `HUDU_TYPESENSE_VERIFY_HITS` | `true` | Re-read every hit through the Hudu API under the caller's credential (see below). |
 
 `HUDU_TYPESENSE_URL` and `HUDU_TYPESENSE_API_KEY` are set together or not at all: one without the
-other fails boot, naming both. With both set the tier is on and the boot log says
-`typesense: enabled (collections articles, assets)` (or `typesense: disabled`), never the URL or the
-key. With both unset nothing changes: the in-memory index is the only body tier, the tier policy is
-exactly as documented above, and no Typesense request is ever made.
+other fails boot, naming both. With both set the server builds its SDK client with this block and
+the boot log gains one line, `typesense: enabled (collections articles, assets)` — the collections
+only, never the URL or the key. With both unset nothing changes, boot output included: no Typesense
+request is ever made.
+
+Setting the pair is the whole of the setup currently available: no `HUDU_SEARCH_TIER_POLICY` value
+selects the Typesense tier yet, so `hudu_search` still answers from the in-memory body index and the
+vendor index exactly as documented above. The tier becomes selectable when the policy lands; until
+then the block only proves the pinned SDK accepts and validates it.
 
 `HUDU_TYPESENSE_VERIFY_HITS=true` re-reads every candidate id through the Hudu API before it is
 returned, under the credential that made the call. Hudu's index carries neither folder permissions

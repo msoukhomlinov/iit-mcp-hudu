@@ -16,7 +16,7 @@ const DESCRIPTIONS: Record<string, string> = {
   hudu_search:
     "Search Hudu; help\nmode=\"search\": ranked fuzzy search over article TITLE and BODY, asset names, fields, identifiers. defaults to tier \"index\": body-complete.\nEmpty: read meta.degraded; unhonoured field is CONFIG_ERROR",
   hudu_read:
-    "Execute READ operations only, by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. Results mask credentials and custom fields. Article bodies: single-article reads are Markdown, other rows stored HTML; a lossy read sets markdown_lossy.",
+    "Execute READ operations only, by registry key (hudu_list_operations, hudu_describe_operation). input is closed: unknown fields are CONFIG_ERROR naming valid ones. Results mask credentials, custom fields. Article bodies: single-article reads are Markdown, list rows HTML; lossy reads set markdown_lossy.",
   hudu_write:
     "Execute a WRITE operation by registry key (hudu_list_operations; contract: hudu_describe_operation). input is closed: an unknown field is a CONFIG_ERROR naming the valid ones. dry_run:true previews without writing; confirm is the SDK confirmation string, not human consent. Article bodies: writes are Markdown; re-read with articles.get before editing. Hudu reshapes API-written HTML on the next UI save.",
   hudu_delete:

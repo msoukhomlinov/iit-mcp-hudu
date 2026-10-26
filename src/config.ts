@@ -7,6 +7,7 @@
  *
  */
 import * as z from 'zod';
+import type { HuduConfig } from 'node-hudu';
 import { getCapability } from 'node-hudu/capabilities';
 import { SEARCH_RESOURCES } from 'node-hudu/mcp';
 import { CREDENTIAL_LOAD_HINT, detectCredentialShape } from './credential.js';
@@ -86,15 +87,9 @@ export const TYPESENSE_DEFAULTS = {
  * derived view of it (defaults applied, blanks normalised). Both variables must be set for the
  * block to exist — `loadConfig` refuses a half-configured pair before this is ever called.
  */
-export interface TypesenseSearchBlock {
-  url: string;
-  apiKey: string;
+export type TypesenseSearchBlock = Omit<NonNullable<NonNullable<HuduConfig['search']>['typesense']>, 'collections'> & {
   collections: { articles: string; assets: string };
-  timeoutMs: number;
-  candidateLimit: number;
-  verifyHits: boolean;
-  cooldownMs: number;
-}
+};
 
 /** Build the SDK block from an already-validated config. Never carries a value into a log sink. */
 export function typesenseSearchBlock(config: Config): TypesenseSearchBlock | undefined {
@@ -116,13 +111,16 @@ export function typesenseSearchBlock(config: Config): TypesenseSearchBlock | und
 }
 
 /**
- * The one boot-time line describing the tier: shape only, never the URL or the key, and only the
- * collection names the operator can already read in the environment. Exported so a test can assert
- * the line without booting a server.
+ * The one boot-time line describing the tier — `undefined` when it is off.
+ *
+ * Shape only: never the URL or the key, only the collection names the operator can already read in
+ * the environment. A disabled feature is INVISIBLE in boot output, because the byte-identical
+ * promise for unset deployments covers the log as well as the tool surface. Exported so a test can
+ * assert the line without booting a server.
  */
-export function describeTypesense(config: Config): string {
+export function describeTypesense(config: Config): string | undefined {
   const block = typesenseSearchBlock(config);
-  if (block === undefined) return 'typesense: disabled';
+  if (block === undefined) return undefined;
   return `typesense: enabled (collections ${block.collections.articles}, ${block.collections.assets})`;
 }
 
@@ -309,10 +307,15 @@ const schema = z
      * an unverified claim about a record this credential may not be allowed to see. `false` is
      * faster and is documented as acceptable only for single-tenant, non-restricted deployments.
      */
-    HUDU_TYPESENSE_VERIFY_HITS: z
-      .enum(['true', 'false'])
-      .optional()
-      .transform((value) => (value === undefined ? undefined : value === 'true')),
+    HUDU_TYPESENSE_VERIFY_HITS: z.preprocess(
+      // Same treatment as every other new knob: a blank placeholder is unset, and the value is
+      // matched case-insensitively so `TRUE` (a shell convention) is not a boot failure.
+      (raw) => {
+        const value = blankToUndefined(raw);
+        return typeof value === 'string' ? value.trim().toLowerCase() : value;
+      },
+      z.enum(['true', 'false']).optional().transform((value) => (value === undefined ? undefined : value === 'true')),
+    ),
     /**
      * The single switch for mutation. `deny` (the default) registers no `hudu_write` / `hudu_delete`
      * tool at all; `allow_list` and `all` register them and gate every call. Read effects are never
@@ -465,6 +468,15 @@ const schema = z
           path: ['HUDU_TYPESENSE_URL'],
           message: 'HUDU_TYPESENSE_URL must be an http:// or https:// origin, e.g. https://typesense.example.com',
         });
+      } else if (parsed.username !== '' || parsed.password !== '') {
+        // Credentials in the URL would be sent to the vendor on every probe and would land in a log
+        // the moment anything printed the endpoint. Refused, and the message never repeats the value
+        // (it is a credential, and this is the one place it could leak by accident).
+        ctx.addIssue({
+          code: 'custom',
+          path: ['HUDU_TYPESENSE_URL'],
+          message: 'HUDU_TYPESENSE_URL must not carry credentials: put the key in HUDU_TYPESENSE_API_KEY, and never in the URL',
+        });
       } else if ((parsed.pathname !== '' && parsed.pathname !== '/') || parsed.search !== '' || parsed.hash !== '') {
         ctx.addIssue({
           code: 'custom',
@@ -526,6 +538,17 @@ const schema = z
       }
     }
   });
+
+/**
+ * Every `HUDU_TYPESENSE_*` knob the schema accepts, derived from the schema rather than retyped.
+ *
+ * The documentation-drift test reads THIS list: a knob added to the schema and forgotten in
+ * `.env.example` / the README then fails the test, which a hand-written list in the test could not
+ * catch — the test would have been asserting its own copy.
+ */
+export const TYPESENSE_ENV_NAMES: readonly string[] = Object.keys(schema.shape).filter((name) =>
+  name.startsWith('HUDU_TYPESENSE_'),
+);
 
 /**
  * Apply the same check to `HUDU_API_KEY` here as to the per-request key under `http`.

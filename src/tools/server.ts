@@ -415,23 +415,8 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
   // The process-wide body-index text pool, and the doc cap derived from that same pool (search-budget.ts).
   const poolTextBytes = indexTextBudgetBytes(heapLimitBytes);
   const poolMaxDocs = scopedIndexMaxDocs(poolTextBytes);
-  /**
-   * The Typesense body-search block, or `undefined` when the tier is off.
-   *
-   * TODO(drop when node-hudu@0.21.0 lands): 0.20.0's `SearchConfig` has no `typesense`, so this one
-   * value crosses the type boundary below. It is an explicit boundary cast and nothing else — no
-   * shim module, no second config path — and it disappears with the version bump.
-   */
+  /** The Typesense body-search block, or `undefined` when the tier is off. */
   const typesenseSearch = typesenseSearchBlock(config);
-  // The body index's text budget follows the process's own heap ceiling, so a small container
-  // reports index state "partial" instead of dying at the V8 heap limit (#51). This value is the
-  // PROCESS-wide pool: the scoped clients below each take a share of it, since each materialises
-  // its own index. The parent keeps the pool because under `stdio` it is the serving client and
-  // depth is the point of serving that way; with writes enabled there is one parent per mode
-  // (`read`, `write`, `delete`), so a raw `operations.searchKnowledge` invoked through the write or
-  // delete parent could build a second full-pool index (the `hudu_search` path uses the read
-  // parent only).
-  // HUDU_SEARCH_INDEX_TTL, when set, is the body index's TTL (the SDK default is 10 minutes).
   // The body index's text budget follows the process's own heap ceiling, so a small container
   // reports index state "partial" instead of dying at the V8 heap limit (#51). This value is the
   // PROCESS-wide pool: the scoped clients below each take a share of it, since each materialises
@@ -461,15 +446,12 @@ export function createMcpServerFactory(requested: Config, log: Logger): McpServe
 
   /**
    * The SDK `search` options: the body-index defaults above, plus the Typesense block when the
-   * deployment configured one.
-   *
-   * TODO(drop when node-hudu@0.21.0 lands): the cast exists only because 0.20.0 does not type
-   * `search.typesense`. It is applied to the finished object, so every existing field above still
-   * gets its excess-property check against `SearchConfig` through `searchDefaults`.
+   * deployment configured one. Typed by the SDK itself — `search.typesense` is a real field on
+   * `HuduConfig['search']`, so no boundary cast stands between the config and the client.
    */
-  const sdkSearch = (typesenseSearch === undefined
+  const sdkSearch: HuduConfig['search'] = typesenseSearch === undefined
     ? searchDefaults
-    : { ...searchDefaults, typesense: typesenseSearch }) as unknown as HuduConfig['search'];
+    : { ...searchDefaults, typesense: typesenseSearch };
 
   const options: HuduConfig = {
     baseUrl: config.MCP_TRANSPORT === 'http' ? HTTP_PLACEHOLDER_ORIGIN : config.HUDU_BASE_URL!,
