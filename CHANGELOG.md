@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.9.1
+
+**Upgrading from 0.9.0:** no configuration change. This release sharpens the argument prose a calling
+model reads without asking for help, and refuses arguments `hudu_search` does not implement.
+
+- Change: `hudu_search`'s `company_id` description now states the filter's real semantics — a
+  **numeric** id only (a company name cannot be filtered: the Typesense tier sends the number into
+  `filter_by` and the vendor path compares the number), and omission means all companies **plus
+  global articles**, which is the wide answer rather than a narrow one. `resources` now says what the
+  list means ("only these resource types") and that fewer collections is less work. Funded by trimming
+  redundant prose in `mode` / `updated_since` / `min_score` / `query`, so the served `tools/list`
+  surface is **byte-identical in size** to 0.9.0; the frozen hashes were re-recorded and say why.
+- Fix: the loose `http` argument object accepted and **silently ignored** any argument the tool does
+  not implement. Measured on 0.9.0: `asset_layout_id` (advertised by `mode:"resources"` as an assets
+  filter) returned unfiltered results with no signal — a dropped filter answers a different question
+  than the one asked. Unknown fields are now refused with a named error, and the looseness is kept
+  only for the policy-owned `tier` / `refresh`, where `meta.policyOverride` already discloses the
+  override. `stdio` stays strict.
+- Documentation: the Typesense tier's 8-finding adversarial audit is closed. Seven were fixed in
+  `node-hudu` 0.22.0 (pre-scoring cap in Typesense's ranking order, non-numeric ids miscounted as a
+  page cap, a 401 from one collection masking a healthy sibling, the probe reading only `articles`,
+  the `hydrated` count's meaning, `verifyHits:false` disclosing nothing, and per-hit provenance now
+  carried by the required `source` field); Q8 was clean. Q7 (silent partial LRU body eviction under
+  `maxIndexTextBytes`) remains an unverified live-environment question and is not claimed as fixed.
+
 ## 0.9.0
 
 **Upgrading from 0.8.0:** no configuration change. The pinned `node-hudu` moves from 0.21.0 to 0.22.0,

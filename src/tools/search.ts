@@ -285,10 +285,12 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
   // instead of being rejected before the policy path can answer. Under `stdio` every field is
   // served, so the object stays STRICT: an unknown argument is refused, never silently ignored.
   const inputFields = {
+        // The tool title already names the three modes; "help documents fields" is redundant there
+        // and costs 23 B of the measured surface. The help mode's own output documents fields.
         mode: z
           .enum(['search', 'help', 'resources'])
           .default('search')
-          .describe('search|help|resources; help documents fields'),
+          .describe('search|help|resources'),
         query: z
           .string()
           .min(1)
@@ -306,13 +308,22 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
           .describe('help only; "all" adds syntax'),
         limit: z.number().int().min(1).max(25).optional().describe('1-25, default 8; larger is CONFIG_ERROR'),
         snippetChars: z.number().int().min(0).max(400).optional().describe('0 = no snippet.'),
-        company_id: z.number().int().positive().optional().describe('One company'),
-        updated_since: z.string().optional().describe('ISO timestamp; newer only'),
+        // A name cannot be filtered: the tier sends company_id into Typesense's filter_by and the
+        // vendor path compares the number. Say so where the model reads it, and say what omission
+        // means, because "no company" is the wide answer, not a narrow one. Funded by trimming
+        // min_score/query prose so the served surface stays byte-identical (see the size gate).
+        company_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('Numeric company id; omit = all companies + global articles.'),
+        updated_since: z.string().optional().describe('ISO ts; newer only'),
         min_score: z
           .number()
           .optional()
           .describe(
-            '0-100; 0 hits may be floor/filter; meta.scanned/meta.returned; company_id/updated_since; drops uncounted.',
+            '0-100; floor may empty hits; meta.scanned/meta.returned; company_id/updated_since; uncounted.',
           ),
         exact_only: z.boolean().optional().describe('No fuzzy match.'),
         // Under `http` neither field is served: the tier decides whether a call may wait for a
@@ -375,6 +386,28 @@ export function registerSearchTool(server: McpServer, ctx: ToolContext): void {
       }
       // A field the mode cannot honour is a CONFIG_ERROR naming the fields it does honour.
       const bag = args as Record<string, unknown>;
+      // An argument this tool does not implement is REFUSED, never silently ignored. Under `http`
+      // the input object is loose ONLY so the policy-owned `tier`/`refresh` reach the handler and
+      // are reported as overridden (`meta.policyOverride`); every OTHER unknown key is a caller bug,
+      // and dropping it would answer a different question than the one asked. Measured on 0.9.0:
+      // `asset_layout_id` (advertised by `mode:"resources"` as an assets filter, but not implemented
+      // here) was accepted and ignored, returning unfiltered results with no signal. The invoke path
+      // already validates its bag against the SDK's inputSchema, so this aligns the two paths.
+      const knownFields = new Set([
+        ...Object.keys(inputFields),
+        ...(searchTierIsPolicy ? ['tier', 'refresh'] : []),
+      ]);
+      const unknownFields = Object.keys(bag).filter((k) => bag[k] !== undefined && !knownFields.has(k));
+      if (unknownFields.length) {
+        return errorContent(
+          configError(
+            // Kept under the 200-char model-facing error cap (`MAX_ERROR_MESSAGE_CHARS`): a longer
+            // message is truncated mid-sentence, which is worse than a shorter one that survives
+            // intact. The essential disclosure comes first, the pointer last.
+            `hudu_search: unknown argument(s) ${unknownFields.join(', ')} — a dropped filter answers a different question, so unknown fields are never silently ignored. Call mode:"help" for fields.`,
+          ),
+        );
+      }
       const provided = Object.keys(bag).filter((k) => k !== 'mode' && bag[k] !== undefined);
       const unhonoured = provided.filter((k) => spec.rejects.includes(k));
       if (unhonoured.length) {

@@ -24,10 +24,15 @@ vi.mock('node:child_process', () => ({ spawnSync: () => ({}) }));
  * the env-wiring PR head (`4e9bf0b`) with no Typesense variable set.
  */
 const FROZEN: Record<string, { sha: string; bytes: number }> = {
-  'stdio-all': { sha: '7e9e21c89c75c872', bytes: 27469 },
-  'stdio-deny': { sha: '55c100d3768e4355', bytes: 22741 },
-  'http-all': { sha: 'ec0299e560e6946d', bytes: 27362 },
-  'http-deny': { sha: '849e938f10b75644', bytes: 22634 },
+  // Re-recorded when the argument prose changed to name the narrowing semantics (numeric
+  // company_id, omit = all companies + global articles). BYTES ARE UNCHANGED from the previous
+  // capture — the wording was funded by trimming min_score/query prose in the same tool — so this
+  // is a hash-only change: the served surface is the same size, and no deployment that never set
+  // HUDU_TYPESENSE_* sees a bigger surface than before.
+  'stdio-all': { sha: '75466d30e4afca59', bytes: 27469 },
+  'stdio-deny': { sha: 'ff9fc8a5ae470fb3', bytes: 22741 },
+  'http-all': { sha: 'abb26e217ca461a0', bytes: 27362 },
+  'http-deny': { sha: '0422e631e794b56e', bytes: 22634 },
 };
 
 async function served(transport: 'stdio' | 'http', policy: 'all' | 'deny') {

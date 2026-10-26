@@ -415,7 +415,7 @@ function serverPolicyTierSentence(ctx: ToolContext): string {
 /** The `query` field description, adjusted so it does not promise a body search it cannot run. */
 export function searchQueryDescription(ctx: ToolContext): string {
   const { bodySearchable, toolDefaultTier } = ctx;
-  const base = 'REQUIRED for mode="search". Partial words fine; article BODY is searched. Multi-word rules: topic="query" (mode="help").';
+  const base = 'REQUIRED for mode="search". Partial words fine; article BODY is searched. Multi-word: topic="query" (mode="help").';
   if (!bodySearchable) {
     // Fail loudly: a missed anchor would advertise a body search this deployment cannot run.
     if (!base.includes('article BODY is searched.')) throw new Error('searchQueryDescription: base sentence changed; update the anchors');

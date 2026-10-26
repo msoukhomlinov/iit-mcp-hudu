@@ -193,4 +193,39 @@ describe('hudu_search schema and the search tier', () => {
     expect(stdioTool.inputSchema.properties).toHaveProperty('tier');
     await stdio.close();
   });
+
+  it('refuses an unknown argument in the loose http object instead of ignoring it', async () => {
+    // The http object is loose ONLY so the policy-owned tier/refresh reach the handler and are
+    // reported as overridden. Every other unknown key is a caller bug: measured on 0.9.0,
+    // `asset_layout_id` (advertised by mode:"resources" as an assets filter, not implemented here)
+    // was accepted and ignored, returning unfiltered results with no signal. A dropped filter
+    // answers a different question than the one asked, so the handler refuses it by name.
+    const session = await connectForRequest('key-a', () => Response.json([]));
+    const result = await session.call('hudu_search', {
+      mode: 'search',
+      query: 'reset',
+      asset_layout_id: 5,
+    });
+    expect(result.isError).toBe(true);
+    const text = String(result.content[0]!.text);
+    expect(text).toContain('unknown argument(s) asset_layout_id');
+    expect(text).toContain('never silently ignored');
+    // The message must SURVIVE the 200-char model-facing error cap (`MAX_ERROR_MESSAGE_CHARS`):
+    // a truncated sentence ends mid-word and reads as a bug. The pointer is the last thing written,
+    // so its presence proves nothing was cut off. The text channel is the JSON envelope, so the
+    // quotes are escaped there — assert on the parsed message.
+    expect((JSON.parse(text) as { message: string }).message).toContain('Call mode:"help" for fields.');
+    await session.close();
+  });
+
+  it('still accepts the policy-owned tier/refresh and reports the override', async () => {
+    // The looseness that remains must keep working: refusing unknown keys must not turn into
+    // refusing the two fields the http schema deliberately omits.
+    const session = await connectForRequest('key-a', () => Response.json([]));
+    const result = await session.call('hudu_search', { mode: 'search', query: 'reset', tier: 'index', limit: 1, snippetChars: 0 });
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent.meta.policyOverride).toEqual({ stripped: ['tier'], appliedTier: 'auto' });
+    await new Promise((r) => setTimeout(r, 100));
+    await session.close();
+  });
 });
