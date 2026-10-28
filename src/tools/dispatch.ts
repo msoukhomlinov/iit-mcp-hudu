@@ -85,7 +85,9 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
           // through only when present matters: an explicit `dryRun: undefined` is not the same input
           // to the governor as an absent one.
           // Article bodies cross this boundary as Markdown (node-hudu 0.14 dialect): far fewer tokens than
-          // HTML for the model, converted by the SDK, with its round-trip loss guard on every write.
+          // HTML for the model. The SDK converts a Markdown body and runs its round-trip loss guard on the
+          // Markdown path of an articles.update; a body that opens with block HTML is stored as sent,
+          // unconverted and unguarded (the SDK leaves format unset for it).
           const opts: { dryRun?: boolean; confirm?: string; contentFormat: 'markdown' } = { contentFormat: 'markdown' };
           if (typeof dry_run === 'boolean') opts.dryRun = dry_run;
           if (typeof confirm === 'string') opts.confirm = confirm;
