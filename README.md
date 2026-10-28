@@ -450,7 +450,7 @@ caller-named origins — a security property, not a deployment preference.
 asks for Markdown, so single-article reads (`articles.get`, and `articles.resolve` / `articles.getContext` only with `opts.expand: true`) are returned as Markdown, and an article write body that does not open with block-level HTML is accepted as Markdown and converted to HTML before the write. A committed article write returns a summary, not the stored record: `id`, `name`, `slug`, `updated_at`, `url`, and, for a body
 write (`articles.create` / `articles.update` with `data.content`), `content_match`, `sent_bytes` and `stored_bytes`. `content_match` is
 `true` when the stored body is exactly what the SDK sent — the body verbatim when it opens with block HTML or the caller set
-`opts.format: 'html'`, otherwise `markdownToHtml` of the Markdown at the pinned node-hudu 0.23.0 — so Hudu's rewrite of inline image
+`opts.format: 'html'`, otherwise `markdownToHtml` of the Markdown at the pinned node-hudu 0.24.0 — so Hudu's rewrite of inline image
 `src` to `/public_photo/<slug>` is the expected reason to be `false`; `element_deltas` (`table`, `pre`, `a`, `img`) then names the
 stored-minus-sent opening-tag counts. `articles.patchSection` carries a weaker `content_match` — a presence check that the converted
 section sits inside the stored body — because the write response holds only the post-patch record (the SDK fetches, patches and

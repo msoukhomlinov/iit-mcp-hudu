@@ -10,7 +10,7 @@
  * sent, and byte counts.
  *
  * For create/update `content_match` is EXACT: it compares the stored body to the body the SDK
- * would have sent at the pinned node-hudu 0.23.0 — verbatim when the body opens with block HTML
+ * would have sent at the pinned node-hudu 0.24.0 — verbatim when the body opens with block HTML
  * or the caller set `opts.format: 'html'` (in both cases the SDK's withContentFormat leaves the
  * format unset or keeps it as given, so the body is stored as sent), otherwise `markdownToHtml`
  * of the Markdown (the SDK's markdown path converts with the same pinned converter before the
@@ -28,7 +28,7 @@
 import { markdownToHtml } from 'node-hudu/content';
 
 /**
- * Mirrors node-hudu 0.23.0 (dist/chunk-4QFSLNP7.js, withContentFormat): a body opening with one
+ * Mirrors node-hudu 0.24.0 (dist/chunk-4QFSLNP7.js, withContentFormat): a body opening with one
  * of these tags is stored as sent and the SDK leaves the content format unset for it.
  */
 const BLOCK_HTML = /^\s*(?:<(?:p|div|h[1-6]|table|ul|ol|pre|blockquote|hr)\b|<details[^>]*mce-accordion)/i;
