@@ -118,6 +118,8 @@ export function summarizeArticleWrite(operation: string, result: unknown, bag: u
     return summary;
   }
   const opts = isObject(b.opts) ? b.opts : {};
+  // markdownToHtml throws only on empty input (excluded above), and the SDK has already converted
+  // this same string with this same pinned converter to run the write, so this cannot fail.
   const sentHtml = opts.format === 'html' || BLOCK_HTML.test(content) ? content : markdownToHtml(content);
   summary.content_match = stored === sentHtml;
   summary.sent_bytes = Buffer.byteLength(sentHtml, 'utf8');

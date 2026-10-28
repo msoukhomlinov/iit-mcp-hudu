@@ -150,6 +150,57 @@ describe('a committed article write answers with the summary', () => {
     }
   });
 
+  it('a Markdown articles.create: summary, content_match true, no content key anywhere', async () => {
+    const sent = '# New Guide\n\nFirst *body*';
+    const sentHtml = markdownToHtml(sent);
+    const session = await connect();
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (_url: unknown, init?: RequestInit) => {
+      calls.push(init?.method ?? 'GET');
+      return Response.json({
+        article: {
+          id: 30,
+          slug: 'new-guide',
+          name: 'New Guide',
+          draft: false,
+          content: sentHtml,
+          url: 'https://hudu.invalid/articles/new-guide',
+          object_type: 'article',
+          folder_id: 1,
+          enable_sharing: false,
+          share_url: '',
+          company_id: 1,
+          created_at: '2026-02-01T00:00:00Z',
+          updated_at: '2026-02-01T00:00:00Z',
+          public_photos: [],
+        },
+      });
+    });
+    try {
+      const result = await session.call('hudu_write', {
+        operation: 'articles.create',
+        input: { data: { name: 'New Guide', slug: 'new-guide', content: sent } },
+        dry_run: false,
+      });
+      expect(result.isError).toBeUndefined();
+      expect(JSON.parse(result.content[0].text).text).toBe('articles.create completed.');
+      noContentKey(result.structuredContent);
+      expect(result.structuredContent.result).toEqual({
+        id: 30,
+        name: 'New Guide',
+        slug: 'new-guide',
+        updated_at: '2026-02-01T00:00:00Z',
+        url: 'https://hudu.invalid/articles/new-guide',
+        content_match: true,
+        sent_bytes: Buffer.byteLength(sentHtml, 'utf8'),
+        stored_bytes: Buffer.byteLength(sentHtml, 'utf8'),
+      });
+      expect(calls).toEqual(['POST']);
+    } finally {
+      await session.close();
+    }
+  });
+
   it('articles.patchSection: content_match as a presence check, no sent_bytes, no element_deltas', async () => {
     const sectionHtml = markdownToHtml('New');
     const stored = `<h2>Setup</h2>${sectionHtml}`;
@@ -214,6 +265,20 @@ describe('a committed article write answers with the summary', () => {
     }
   });
 
+  it('an unexpected result shape (no string content) passes through unchanged', async () => {
+    const session = await connect();
+    vi.stubGlobal('fetch', async () => Response.json({ article: { id: 22, name: 'Setup' } }));
+    try {
+      const result = await session.call('hudu_write', { operation: 'articles.update', input: { id: 22, data: { name: 'Renamed' } }, dry_run: false });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.result).toEqual({ id: 22, name: 'Setup' });
+      expect(result.structuredContent.result.content_match).toBeUndefined();
+      expect(result.structuredContent.result.stored_bytes).toBeUndefined();
+    } finally {
+      await session.close();
+    }
+  });
+
   it('a dry run returns the simulated result unchanged, no summary fields', async () => {
     const session = await connect();
     const calls = articleStub(article('<h2>Setup</h2><p>Old</p>'), article('<h2>Setup</h2><p>Old</p>'));
@@ -222,9 +287,20 @@ describe('a committed article write answers with the summary', () => {
       expect(result.isError).toBeUndefined();
       expect(JSON.parse(result.content[0].text).text).toBe('Dry run: nothing was written (articles.update).');
       expect(result.structuredContent.simulated).toBe(true);
-      expect(result.structuredContent.result.simulated).toBe(true);
-      expect(result.structuredContent.result.operation).toBe('articles.update');
-      expect(result.structuredContent.result.content_match).toBeUndefined();
+      // The full unchanged dry-run shape (the SDK's DryRunResult key set, no summary fields):
+      const r = result.structuredContent.result;
+      expect(r).toMatchObject({
+        operation: 'articles.update',
+        wouldApply: true,
+        target: { resource: 'articles', ids: [22] },
+        request: { method: 'PUT', path: '/articles/22' },
+        impact: { affected: 1, scope: 'single', reversible: true },
+        simulated: true,
+        warnings: ['server-computed fields are not guaranteed by dry-run'],
+      });
+      expect(Array.isArray(r.checks)).toBe(true);
+      expect(Object.keys(r).sort()).toEqual(['checks', 'impact', 'operation', 'request', 'simulated', 'target', 'warnings', 'wouldApply']);
+      expect(Object.keys(result.structuredContent).sort()).toEqual(['operation', 'result', 'simulated']);
       expect(calls.map((c) => c.method)).not.toContain('PUT');
     } finally {
       await session.close();
