@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.11.0
+
+**Upgrading from 0.10.0:** no configuration change. This release adopts node-hudu 0.24.0, whose
+plain-path (non-Markdown) `articles.update` dry runs now verify `expectedUpdatedAt`.
+
+- **Behaviour change:** a plain-path (block-HTML-body) `articles.update` dry run carrying
+  `opts.expectedUpdatedAt` now issues the guard's single GET and adds a `precondition` check to
+  the dry-run report — `updated_at matches|differs (expected X, found Y)` — returning
+  `wouldApply: false` on a stale revision instead of the 0.23.0 zero-request `wouldApply: true`
+  preview (node-hudu#43, node-hudu PR #129). The live commit still throws `STALE_OBJECT`, the
+  Markdown path still throws `StaleObjectError` in a dry run, and a dry run without
+  `expectedUpdatedAt` stays zero-request.
+- Dependency: `node-hudu` 0.23.0 -> 0.24.0. `BUILT_AGAINST_PLAN_HASH` is unchanged: the node-hudu
+  0.24.0 capability-catalog hash is byte-identical to 0.23.0's (served text frozen in that
+  release), which the pin bump re-verified.
+- Test: `test/tools/dry-run-precondition.test.ts` — a stale plain-path dry run fetches the record
+  and reports `wouldApply: false` with the precondition detail and the current record's
+  `target.name` / `target.updated_at`; a matching revision reports `wouldApply: true`; a dry run
+  without `expectedUpdatedAt` stays zero-request. Fails against the 0.23.0 install.
+
 ## 0.10.0
 
 **Upgrading from 0.9.1:** no configuration change. This release adopts node-hudu 0.23.0 and

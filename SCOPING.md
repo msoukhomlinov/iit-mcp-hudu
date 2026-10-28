@@ -21,7 +21,7 @@
 ## SDK consumption
 
 - The SDK is consumed from npm, never from a checkout.
-- SDK pin exception: `node-hudu` is pinned exactly (0.20.0). `BUILT_AGAINST_PLAN_HASH` in `src/tools.ts` and `test/tools/meta.test.ts` pin the SDK's catalogue, so an SDK upgrade must be a deliberate, reviewed change rather than a range drift.
+- SDK pin exception: `node-hudu` is pinned exactly (0.24.0). `BUILT_AGAINST_PLAN_HASH` in `src/tools.ts` and `test/tools/meta.test.ts` pin the SDK's catalogue, so an SDK upgrade must be a deliberate, reviewed change rather than a range drift.
 
 ## Exceptions
 

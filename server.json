@@ -1,6 +1,6 @@
 {
   "name": "iit-mcp-hudu",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "MCP server for Hudu IT documentation, powered by the node-hudu SDK",
   "mcpProtocolBaseline": "2025-11-25",
   "transports": {
@@ -26,7 +26,7 @@
   "capabilitiesManifest": "capabilities.json",
   "sdk": {
     "package": "node-hudu",
-    "versionRange": "0.23.0"
+    "versionRange": "0.24.0"
   },
   "vendorExtensions": false
 }
