@@ -19,6 +19,29 @@ plain-path (non-Markdown) `articles.update` dry runs now verify `expectedUpdated
   and reports `wouldApply: false` with the precondition detail and the current record's
   `target.name` / `target.updated_at`; a matching revision reports `wouldApply: true`; a dry run
   without `expectedUpdatedAt` stays zero-request. Fails against the 0.23.0 install.
+- **Behaviour change:** a committed `hudu_write` on `articles.create`, `articles.update` or
+  `articles.patchSection` now returns a summary — `{ id, name, slug, updated_at, url,
+  content_match, sent_bytes, stored_bytes }`, plus `element_deltas` (table/pre/a/img,
+  stored-minus-sent) when `content_match` is false — instead of the full stored record with
+  its body (issue #63: 13 real-session writes had echoed 324,044 chars of stored HTML, 71% of
+  every character the server returned). `content_match` compares the stored body with the body
+  the pinned node-hudu sent: verbatim for a block-HTML body or an explicit
+  `opts.format: 'html'`, otherwise the pinned `markdownToHtml` of the Markdown — a Hudu image
+  `src` rewrite to `/public_photo/<slug>` is the expected false. `articles.patchSection`
+  carries the documented weaker presence check (the server does not hold the pre-patch body),
+  and a field-only `articles.update` carries no `content_match` / `sent_bytes`. Dry runs and
+  every other operation (including `pin` / `unpin` / `archive`) are unchanged. The stored body
+  stays available via `articles.get` with `opts.format: "html"` or `hudu_fetch_many`.
+- Test: `test/tools/write-summary.test.ts` — 11 cases: the Markdown and both verbatim paths
+  for create and update, the element-delta mismatch, `patchSection` presence true/false, a
+  field-only update, the full dry-run shape, `folders.create` unchanged, and the
+  unexpected-shape passthrough. `BUDGET_WRITE` moved 28,350 -> 28,507 for the new `hudu_write`
+  sentence (the measured delta, 200 B margin kept) and the frozen unset surface was
+  re-recorded (write profiles only; the deny profiles are byte-identical).
+- Fix: the served `hudu_write` prose and the README now name both article-body paths — a body
+  opening with block HTML, or an explicit `opts.format: 'html'`, is stored as sent and
+  unguarded; otherwise Markdown, converted, guarded on `articles.update` (issue #64: the loss
+  guard and the dry-run staleness check run on the Markdown `articles.update` path only).
 
 ## 0.10.0
 
