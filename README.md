@@ -31,7 +31,7 @@ four old names. Rows are compact summaries by default (id, name, key scalar fiel
 25-row assets page under 20,000 characters instead of ~88,000; pass `expand: true` for the full
 records (`hudu_read` `articles.list` rows are always full). Article rows carry no body unless expanded. Paging is unchanged (`asset_layouts` still takes no `page_size`).
 
-These tools run on node-hudu 0.20.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
+These tools run on node-hudu 0.24.0; the `SDK behaviour (0.12.0)` section below covers the behaviours that shape them: redirect refusal, the closed input contract, the error envelope, and the client opt-ins. Numeric ids must be positive integers on every tool; anything else is refused before a request is made.
 
 `hudu_fetch_many` (node-hudu 0.12.0) fetches up to 20 single records across mixed resources in
 one call: each item is exactly `{ resource, id, fields? }` — one of the 22 bare-id resources, a
@@ -450,7 +450,7 @@ caller-named origins — a security property, not a deployment preference.
 asks for Markdown, so single-article reads (`articles.get`, and `articles.resolve` / `articles.getContext` only with `opts.expand: true`) are returned as Markdown, and an article write body that does not open with block-level HTML is accepted as Markdown and converted to HTML before the write. A committed article write returns a summary, not the stored record: `id`, `name`, `slug`, `updated_at`, `url`, and, for a body
 write (`articles.create` / `articles.update` with `data.content`), `content_match`, `sent_bytes` and `stored_bytes`. `content_match` is
 `true` when the stored body is exactly what the SDK sent — the body verbatim when it opens with block HTML or the caller set
-`opts.format: 'html'`, otherwise `markdownToHtml` of the Markdown at the pinned node-hudu 0.23.0 — so Hudu's rewrite of inline image
+`opts.format: 'html'`, otherwise `markdownToHtml` of the Markdown at the pinned node-hudu 0.24.0 — so Hudu's rewrite of inline image
 `src` to `/public_photo/<slug>` is the expected reason to be `false`; `element_deltas` (`table`, `pre`, `a`, `img`) then names the
 stored-minus-sent opening-tag counts. `articles.patchSection` carries a weaker `content_match` — a presence check that the converted
 section sits inside the stored body — because the write response holds only the post-patch record (the SDK fetches, patches and
@@ -571,7 +571,7 @@ pnpm run dev
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint` and `test` on every push and pull request.
 
-`node-hudu` is pinned to `0.20.0`. The catalog hash test detects metadata drift; upgrades require
+`node-hudu` is pinned to `0.24.0`. The catalog hash test detects metadata drift; upgrades require
 review of the client authority, operation enums and redaction regressions. Docker uses `pnpm install --frozen-lockfile`.
 
 ## Deployment
