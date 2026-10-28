@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.11.0
 
 **Upgrading from 0.10.0:** no configuration change. This release adopts node-hudu 0.24.0, whose
