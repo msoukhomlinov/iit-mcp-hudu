@@ -53,8 +53,13 @@ afterEach(() => vi.unstubAllGlobals());
  * pass, which added the explicit format 'html' edge, scoped the guard to update and moved the
  * re-read sentence to the README: -6 B); the binding stdio+vendor+configured headroom moves
  * 249 -> 219, still above the 200 B margin.
+ * #63: the hudu_write summary sentence (a committed article write returns a summary, no body)
+ * costs the write profile +157 B (156 B sentence plus the separating space); deliberate
+ * exception again — the prose is a contract statement, so the ceiling follows the measurement
+ * (28,350 -> 28,507) and the binding stdio+vendor+configured headroom stays at 219, still
+ * above the 200 B margin.
  */
-const BUDGET_WRITE = 28_350;
+const BUDGET_WRITE = 28_507;
 /** Raised 23,000 -> 23,250 for #62 (same sentence; the read-only profile serves hudu_read only: +181 B). */
 const BUDGET_READ_ONLY = 23_250;
 /** `hudu_search` is the largest single tool and must fit under every tier-policy setting. */

@@ -9,6 +9,7 @@ import { redactCompanyContextCredentials } from './company-context-policy.js';
 import type { ToolContext } from './context.js';
 import { toolDescription } from './tool-prose.js';
 import { lossyNote, takeContentLoss } from './article-loss.js';
+import { summarizeArticleWrite } from './article-write-summary.js';
 import { contextErrorContent, errorContent, createResultBuilders, resolveErrorContent, searchErrorContent, unauthorizedContent, upfrontRefusal } from './results.js';
 import { INVOKE_OUTPUT } from './schemas.js';
 import { SEARCH_DEFAULT_LIMIT, awaitWithProgress, cancelledSearchContent, progressTokenOf, signalOf } from './search.js';
@@ -180,6 +181,14 @@ export function registerDispatchTools(server: McpServer, ctx: ToolContext): void
             result = { ...report, errors: sanitizeSearchFailures(report.errors), failed: sanitizeSearchFailures(report.failed) };
           }
           const simulated = result !== null && typeof result === 'object' && (result as { simulated?: unknown }).simulated === true;
+          // A committed article write (create/update/patchSection) answers with a summary
+          // instead of the full stored record — the body stays one call away through
+          // articles.get (issue #63). Dry runs (simulated) and every other operation keep the
+          // full record: that is the deliberate scope.
+          if (mode === 'write' && !simulated) {
+            const s = summarizeArticleWrite(operation, result, bag);
+            if (s !== undefined) result = s;
+          }
           // A Markdown article read that lost content says so; a lossless read is byte-identical to before.
           const overrideNote = tierOverridden ? ` The ${stripped.join('/')} field(s) this call carried were overridden by the server search tier policy.` : '';
           return ok((simulated ? `Dry run: nothing was written (${operation}).` : `${operation} completed.`) + overrideNote + (lossy.length ? lossyNote(lossy, operation) : ''), {

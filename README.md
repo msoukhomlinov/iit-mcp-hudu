@@ -447,7 +447,17 @@ caller-named origins — a security property, not a deployment preference.
 ## Article bodies are Markdown, with an HTML passthrough (node-hudu 0.14+)
 
 `hudu_read` and `hudu_write` pass `contentFormat: 'markdown'` to the SDK, and `hudu_get_article_context`
-asks for Markdown, so single-article reads (`articles.get`, and `articles.resolve` / `articles.getContext` only with `opts.expand: true`) are returned as Markdown, and an article write body that does not open with block-level HTML is accepted as Markdown and converted to HTML before the write. A committed write returns the record the API stored: an article body comes back as stored HTML, not as the Markdown sent. Hudu callouts (`> [!INFO]`), accordions, task
+asks for Markdown, so single-article reads (`articles.get`, and `articles.resolve` / `articles.getContext` only with `opts.expand: true`) are returned as Markdown, and an article write body that does not open with block-level HTML is accepted as Markdown and converted to HTML before the write. A committed article write returns a summary, not the stored record: `id`, `name`, `slug`, `updated_at`, `url`, and, for a body
+write (`articles.create` / `articles.update` with `data.content`), `content_match`, `sent_bytes` and `stored_bytes`. `content_match` is
+`true` when the stored body is exactly what the SDK sent — the body verbatim when it opens with block HTML or the caller set
+`opts.format: 'html'`, otherwise `markdownToHtml` of the Markdown at the pinned node-hudu 0.23.0 — so Hudu's rewrite of inline image
+`src` to `/public_photo/<slug>` is the expected reason to be `false`; `element_deltas` (`table`, `pre`, `a`, `img`) then names the
+stored-minus-sent opening-tag counts. `articles.patchSection` carries a weaker `content_match` — a presence check that the converted
+section sits inside the stored body — because the write response holds only the post-patch record (the SDK fetches, patches and
+converts internally and its opts are closed, so a strict comparison would need an extra GET this tool does not make); it has no
+`sent_bytes` and no `element_deltas`. A field-only `articles.update` (no `data.content`) carries neither `content_match` nor
+`sent_bytes`, only `stored_bytes`. The full stored body comes back from `articles.get` with `opts.format: 'html'`, or `hudu_fetch_many`
+for the same. Hudu callouts (`> [!INFO]`), accordions, task
 lists and Mermaid fences round-trip as the dialect documents. Observed live (Hudu 2.48.1), a ```` ```mermaid ```` fence is stored as `<pre class="language-mermaid"><code class="language-mermaid">...</code></pre>` (entity-escaped, indentation preserved) and reads back as the identical fence, including through `articles.patchSection`. The read path matches the `<pre>` by class and takes its text, so it accepts both that form and the bare `<pre class="language-mermaid">` form. That is also what the Hudu editor itself stores (checked on 2026-10-25 against a diagram saved in the UI editor): the same `<pre class="language-mermaid"><code class="language-mermaid">` element pair, plus a `data-id` attribute on the `pre` (and on other blocks such as `<p>`). A Markdown round trip drops those editor `data-id` attributes and keeps the diagram text unchanged; it does not use the `code-block-mermaid-source` class. Rows from `hudu_fetch_many`, `hudu_read` `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
 those operations take no format. Rules a caller needs:
 
