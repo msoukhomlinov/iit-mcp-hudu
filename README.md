@@ -444,19 +444,24 @@ The read-through cache (SDK `recommended` preset), the 429 cooldown gate and the
 `blockPrivateHosts` deliberately gets no override: it is the literal-IP SSRF floor for
 caller-named origins — a security property, not a deployment preference.
 
-## Article bodies are Markdown (node-hudu 0.14+)
+## Article bodies are Markdown, with an HTML passthrough (node-hudu 0.14+)
 
 `hudu_read` and `hudu_write` pass `contentFormat: 'markdown'` to the SDK, and `hudu_get_article_context`
-asks for Markdown, so single-article bodies (`articles.get`, `create`, `update`, and
-`articles.resolve` / `articles.getContext` only with `opts.expand: true`) are returned and accepted as Markdown. Hudu callouts (`> [!INFO]`), accordions, task
+asks for Markdown, so single-article reads (`articles.get`, and `articles.resolve` / `articles.getContext` only with `opts.expand: true`) are returned as Markdown, and an article write body that does not open with block-level HTML is accepted as Markdown and converted to HTML before the write. A committed write returns the record the API stored: an article body comes back as stored HTML, not as the Markdown sent. Hudu callouts (`> [!INFO]`), accordions, task
 lists and Mermaid fences round-trip as the dialect documents. Observed live (Hudu 2.48.1), a ```` ```mermaid ```` fence is stored as `<pre class="language-mermaid"><code class="language-mermaid">...</code></pre>` (entity-escaped, indentation preserved) and reads back as the identical fence, including through `articles.patchSection`. The read path matches the `<pre>` by class and takes its text, so it accepts both that form and the bare `<pre class="language-mermaid">` form. That is also what the Hudu editor itself stores (checked on 2026-10-25 against a diagram saved in the UI editor): the same `<pre class="language-mermaid"><code class="language-mermaid">` element pair, plus a `data-id` attribute on the `pre` (and on other blocks such as `<p>`). A Markdown round trip drops those editor `data-id` attributes and keeps the diagram text unchanged; it does not use the `code-block-mermaid-source` class. Rows from `hudu_fetch_many`, `hudu_read` `articles.list`, `articles.search` and `articles.findBySlug` still carry stored HTML:
 those operations take no format. Rules a caller needs:
 
 - A write's `data.content` is parsed as Markdown unless it opens with block-level HTML (`<p>`, `<div>`,
-  `<h1>`-`<h6>`, `<table>`, lists, `<pre>`, `<blockquote>`, `<hr>`, Hudu's `mce-accordion`), in which case
-  it is sent as HTML. Re-read an article through `articles.get` before editing it.
-- A Markdown write is refused when the stored article holds something the dialect cannot express
-  (for example a `<video>`); send HTML to keep it. The SDK's loss guard runs on every write.
+  `<h1>`-`<h6>`, `<table>`, lists, `<pre>`, `<blockquote>`, `<hr>`, Hudu's `mce-accordion`) or the caller
+  sets `opts.format: 'html'` explicitly; in either case it is sent as HTML and stored as sent (the API keeps the
+  body verbatim, apart from rewriting inline image `src` to `/public_photo/<slug>`). Re-read an article
+  through `articles.get` before editing it.
+- A Markdown `articles.update` is refused when the stored article holds something the dialect cannot
+  express (for example a `<video>`); send HTML to keep it. The loss guard runs on the Markdown path of
+  `articles.update` only — reached directly or through `articles.patchSection` — not on `articles.create`
+  (nothing stored to compare) and not on a body that opens with block HTML (stored as sent, unconverted,
+  unguarded). The dry-run `expectedUpdatedAt` staleness check is the same Markdown path only: a dry-run
+  HTML update with a stale `expectedUpdatedAt` neither fetches the record nor throws.
 - Prefer Markdown (or editor-native HTML): Hudu reshapes API-written HTML on the next UI save (h5/h6 flattened, `small`/`abbr`/`q`/`section`/`aside` unwrapped, `thead` removed, an unknown callout type becomes info).
 - `articles.getSection` / `articles.patchSection` read or edit one section as Markdown, with dry-run.
   `articles.getSection` carries the same `markdown_lossy` / `markdown_lossy_codes` signal as `articles.get`;

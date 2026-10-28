@@ -49,6 +49,10 @@ afterEach(() => vi.unstubAllGlobals());
  * to go green": the prose is node-hudu's own served sentence, mirrored here on purpose, so the
  * ceiling follows the measurement (new maximum 28,103, on the configured stdio+vendor profile)
  * while keeping the 200 B margin on every write profile.
+ * #64: the two-body-path sentence on hudu_write replaced the old one (net +36 B after the review
+ * pass, which added the explicit format 'html' edge, scoped the guard to update and moved the
+ * re-read sentence to the README: -6 B); the binding stdio+vendor+configured headroom moves
+ * 249 -> 219, still above the 200 B margin.
  */
 const BUDGET_WRITE = 28_350;
 /** Raised 23,000 -> 23,250 for #62 (same sentence; the read-only profile serves hudu_read only: +181 B). */

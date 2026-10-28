@@ -29,9 +29,12 @@ const FROZEN: Record<string, { sha: string; bytes: number }> = {
   // write profiles and +181 B to the read-only profiles. The unset surface IS meant to change
   // (the sentence is served on every profile); every deployment's surface grows by exactly the
   // sentence, so no conditional tier clause leaked into the unset path.
-  'stdio-all': { sha: '660f3fce392aef98', bytes: 28012 },
+  // Re-recorded for #64, then again after its review pass: the hudu_write description names both
+  // article-body paths plus the explicit format 'html' edge, and the re-read sentence moved to the
+  // README (net -6 B on the write profiles; the read-only profiles are untouched).
+  'stdio-all': { sha: '5de6d43744a4a317', bytes: 28042 },
   'stdio-deny': { sha: '1c177d15cace4d8c', bytes: 22922 },
-  'http-all': { sha: 'c3c4510e0974be84', bytes: 27905 },
+  'http-all': { sha: '2f8338d6229804f2', bytes: 27935 },
   'http-deny': { sha: 'b67ad71a74eed8cf', bytes: 22815 },
 };
 
