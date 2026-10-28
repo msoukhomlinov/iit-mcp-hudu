@@ -27,6 +27,7 @@ COPY --chmod=0644 package.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 USER node
+ENV PORT=8787
 EXPOSE 8787
 
 # Liveness only. It must NOT call Hudu: a Hudu outage would otherwise cycle the container,
