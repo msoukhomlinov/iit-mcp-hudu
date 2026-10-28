@@ -32,9 +32,12 @@ const FROZEN: Record<string, { sha: string; bytes: number }> = {
   // Re-recorded for #64, then again after its review pass: the hudu_write description names both
   // article-body paths plus the explicit format 'html' edge, and the re-read sentence moved to the
   // README (net -6 B on the write profiles; the read-only profiles are untouched).
-  'stdio-all': { sha: '5de6d43744a4a317', bytes: 28042 },
+  // Re-recorded for #63: the hudu_write description gained the summary sentence — +157 B on the
+  // write profiles (the sentence plus the separating space); the deny profiles are byte-identical,
+  // as the sentence is served on the write tools only.
+  'stdio-all': { sha: 'd78eb5690ef18cbd', bytes: 28199 },
   'stdio-deny': { sha: '1c177d15cace4d8c', bytes: 22922 },
-  'http-all': { sha: '2f8338d6229804f2', bytes: 27935 },
+  'http-all': { sha: '56f3fb937af35185', bytes: 28092 },
   'http-deny': { sha: 'b67ad71a74eed8cf', bytes: 22815 },
 };
 
