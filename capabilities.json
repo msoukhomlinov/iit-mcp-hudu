@@ -1,5 +1,5 @@
 {
-  "version": "0.5.1",
+  "version": "0.11.0",
   "domain": "hudu",
   "capabilities": [
     {
@@ -208,7 +208,7 @@
       "hudu_write",
       "hudu_delete"
     ],
-    "registry": "node-hudu capability registry (237 operations at 0.21.0)",
+    "registry": "node-hudu capability registry (237 operations at 0.24.0)",
     "note": "Writes are dry-run unless dry_run:false; destructive operations also need confirm equal to the operation key."
   },
   "schemas": {}
