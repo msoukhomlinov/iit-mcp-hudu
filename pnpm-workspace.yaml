@@ -1,11 +1,11 @@
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  # node-hudu 0.24.0 published 2026-10-28T10:32Z, so it is only 24 h old at 2026-10-29T10:32Z: the
-  # expiry must sit PAST that instant, not at midnight UTC, or the 1-day release-age gate refuses the
-  # install again for the last three hours. Delete this entry after 2026-10-29T11:00Z.
-  # (0.21.0/0.22.0/0.23.0 entries retired: 0.23.0 left the dependency graph in 0.11.0.)
-  - node-hudu@0.24.0
+  # node-hudu 0.24.3 published 2026-11-08T23:26Z, so it clears the 1-day release-age gate only at
+  # 2026-11-09T23:26Z. Delete this entry after 2026-11-10T00:00Z.
+  # (0.24.0 entry retired: it expired 2026-10-29T11:00Z and 0.24.0 left the graph in 0.11.1.)
+  - node-hudu@0.24.3
 overrides:
+  minimatch: ">=11.0.1"
   source-map-js: 1.2.2
   vite: ">=8.3.3 <9"
