@@ -40,7 +40,7 @@ describe('served tool surface is server-owned', () => {
       expect(tool.title, `${tool.name}: title must not fall back to the tool name`).not.toBe(tool.name);
       expect(servedTitles[tool.name], `${tool.name}: title must be captured in test/fixtures/served-titles.json`).toBeDefined();
       expect(tool.title, `${tool.name}: title must match the captured served title (regenerate the fixture from a real stdio tools/list after an intentional rename)`).toBe(servedTitles[tool.name]);
-      let expected: string | null = null;
+      let expected: string | null;
       try {
         expected = toolDescription(tool.name);
       } catch {

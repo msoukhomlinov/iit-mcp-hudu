@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+## 0.11.1
+
+**Upgrading from 0.11.0:** no configuration change. This release adopts node-hudu 0.24.3 and
+refreshes dependencies; tool surface and behaviour are unchanged apart from Markdown-conversion
+fixes inherited from the SDK's `marked` / `turndown` bumps.
+
+- Dependency: `node-hudu` 0.24.0 -> 0.24.3 (issue #68; 0.24.1/0.24.2 were never published).
+  `BUILT_AGAINST_PLAN_HASH` is unchanged (catalogue byte-identical, 237 operations). The SDK moves
+  `marked` to ^18.1.3 (cubic-backtracking fix on unicode whitespace in link destinations, plus
+  CommonMark fixes) and `turndown` to ^7.2.5, so `markdownToHtml` / `htmlToMarkdown` output can
+  differ at the margins; the round-trip and write-summary tests pass unchanged. Its
+  `withContentFormat` is byte-identical (now in `dist/chunk-6QWSPKSX.js`), so the
+  `content_match` mirror needed only its comment updated.
+- Dependency: `@modelcontextprotocol/server` 2.3.1 -> 2.4.0 (no tool uses `x-mcp-header` or a
+  `$ref`-rooted `outputSchema`, so its behaviour changes do not apply).
+- Dev: eslint / `@eslint/js` 10, globals 17, `@types/node` 24 (matches the `node >=24` engine),
+  rimraf 6.1.4 (glob 14, fixes GHSA-3g3m-2fjr-6pw4), tsx 4.23.15, typescript-eslint 8.72.1,
+  vitest 5.1.0. A `minimatch >=11.0.1` override clears GHSA-g3hv-75wg-m249 (dev-only, via
+  typescript-eslint); `pnpm audit` is now clean. One test fix for eslint 10's
+  `no-useless-assignment`.
+- Docs: README notes the node-hudu#62 vendor caveat — `GET /groups` ignores company scoping, so a
+  company-scoped key sees every group and callers must filter.
+- Container: the runtime image now sets `ENV PORT=8787`, making the default that `EXPOSE 8787`
+  documents explicit and overridable at the image level. The server already fell back to 8787,
+  and compose deployments that set their own `PORT` still win.
+- Manifest: `capabilities.json` `version` corrected (drift since 0.6.x) and now kept with
+  `package.json` / `server.json`. `capabilities.json` does not ship in the npm package.
+- Docs: restored the empty `## Unreleased` section that the 0.11.0 fold dropped.
+
 ## 0.11.0
 
 **Upgrading from 0.10.0:** no configuration change. This release adopts node-hudu 0.24.0, whose
