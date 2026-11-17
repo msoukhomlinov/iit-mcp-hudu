@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:32bc724a2f383ba9ae398ae779a1d902ee092959844c3d6a10f0e02b3613b17f",
+  "claims": [
+    {
+      "id": "claim_1d0bff3773244a4987057e0867d3d244",
+      "statement": "loadConfig validates the environment with a zod schema and throws a ConfigError listing every problem at once, naming variables but never values; stale removed variables fail boot.",
+      "evidence": [
+        {
+          "resource": "repo://src/config.ts#L656-L683",
+          "version": "repo-lines-v1:sha256:f2612555af70123e0910d76d299a38b6399bd4ce1eafe85c69ad8251175a0bd7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxN2YwMzY3M2EyMDRhYzQ4ZWMwYzVmMjMzYWY4ODMwYTQ3NmE2NDM0MTI0MDFmNThiMjc5OTlkOTg4YzU3YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YzBjOWUyMTFiNGVlZDg3YTkyYjhlMWFlMGMwOTJlNmE2ZGZmYjRkZTY0OGExNzlmZTJiMDA5NmRjY2I3MDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5db3e126d702430fa8144308603ca7c3",
+      "statement": "Defaults: MCP_TRANSPORT stdio, HUDU_WRITE_POLICY deny, HUDU_SECRET_READS deny, PORT 8787 (1-65535), LOG_LEVEL info, HUDU_ALLOW_ANY_BASE_HOST false.",
+      "evidence": [
+        {
+          "resource": "repo://src/config.ts#L276-L278",
+          "version": "repo-lines-v1:sha256:cb8e232fba6b4c12aabfad9626a7ee2e88b5fb54c943aceae841f44740941869:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2QxZTFlMjYwYmRhNzcyZmFhOTgxNTVkMzgwOGYwOTVjOGJkMmE3ZTlhNTM2Y2I3N2I5YTQ3YzcxNDQ2MTY3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWM0MGMwYzBiY2RjMzU1ZmU0MTYzMTA3MTEwOWEwNmIzODI5ZGYyYzdlMmZkNDhhODBmYmJhNzJkNGViOGM3ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDRjODAxMzIyZDE1ZDA5NzA2YWRjNGJkYzQwMTEzNzljNGZjNzU5NTk5M2ExMjIxMDRhOGJkMjljZjE5MmUxZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzllODE4MzFjYWI2OGM0MWRhOGZmOTUxOTA3ZTU3YzU5YTU0NzY1NDhhY2YwOTAyNDlmNjMzZDMyY2NhNGVkOCJ9"
+        },
+        {
+          "resource": "repo://src/config.ts#L365-L389",
+          "version": "repo-lines-v1:sha256:2e4480a544474dcfefea8abbcfcc3069d5b711b8007924cbac4f99f803c42a37:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhYWVjNzE4Mzg2ZmUyNmU4NjUwNzE0YWU5NDk2MGM3YmY4YTQ2NDRlNjExY2M0NjI2NmFlMmRhMWIyYTY3YzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1ZGFmOWFiOTliNjY4MTliNWJmMWVjNjQ3N2E1OGQxYmQ2NWVhNTgwMmIxMmNiNzdkYWJkYzlmN2FkZThjZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1ZTFkZGNjZGU3ZGVkOGU5MGFkYTEyNjZiMjBlYzFiNzIzYzkyNDRiM2RlZGJlYmRiYjFjYjgwNjZlYjVlYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyMWQxZWFkYmJjNWI4ODBiOWViMDM1NTkzYTE5YjhkNmYzODkzZmY4N2ZlY2VjN2M4NTUyMTYxN2VmYzBhMTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_34fd64ac07064ab1a0e4c2ec7003c434",
+      "statement": "Typesense timeout defaults to 4000 ms with a 15000 ms maximum, collections default to articles and assets, and HUDU_TYPESENSE_VERIFY_HITS defaults to true.",
+      "evidence": [
+        {
+          "resource": "repo://src/config.ts#L334-L362",
+          "version": "repo-lines-v1:sha256:6d494b8b926ce19f3572a146046199c57c45bb73c1599ea357c9c217ba38aae5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzYWQ2NDEyN2NjODc5MTI2YzZhODdhODc0YzdkNjA4YjljZjYxNDliNDhlNmY2ZDIwMGExMDNjMmRjNTNmOWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0Y2U4NTUzMmZiNGUxZDRlYWRjMDQ5ZThmYjk5NjlhMTA4OWM3MjM4OGFkZDUwNDBlNjJhYmUyZDI5MzZlYjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4NzkxMTQ2MGZjMzU0MWUyODk3Mjg4ZTBlODcyN2FhZmRiNDQzZWE5MzMxMDhlYThkMTRjNDA2OTU3MjQ0ODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkZDRmMGI1MjBlYjZjMmRmNWM2ZGFlNWI3NDYwZjA3YWI2MDJlNDg3ZWVmNzQ0NTJkZjc3YmU3NjUzZmQ0NDYifQ"
+        },
+        {
+          "resource": "repo://src/config.ts#L72-L96",
+          "version": "repo-lines-v1:sha256:19fb6b93955897284e8592e74f6773dcff72a1727ec5a392ec1bbe1edd146899:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ODYyZGE4MTMxZmRmZTI4Yzg5NTM2ZDcxM2Y1N2E2YmIyZDc2ZTkzMGZiZTIwODUxMWFlNGYxMWViMmMzYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlYTBlMWUwZTU1NmUzYzA0ZTgwZWVhMDc5NjZhZTYyNWI5MzQ4ZDM1ZTUwZjhhNjQ1NDI5MGY5NGFmMzEwMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0MWI0MDRhYjkzZTY0NTQxODI2MmY4ZmU0NzhiZDY5Y2I4MzljYjBkNDdkNDdiZmIwMTQxZTY4ZTI1NzIxNzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2YTZhNWI1NjkyMGYwZmI5YTQwZmZmNDdmODFiZDQxZWE3MjYwYjQzMjdlODEzODdlNWQ3ODg2OGEzNzYzZjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_22edcb4267e74d74931ff796df852048",
+      "statement": "Boot refuses stdio without HUDU_API_KEY and HUDU_BASE_URL, and http without any of HUDU_ALLOWED_BASE_HOSTS, HUDU_BASE_URL or HUDU_ALLOW_ANY_BASE_HOST=true.",
+      "evidence": [
+        {
+          "resource": "repo://src/config.ts#L392-L434",
+          "version": "repo-lines-v1:sha256:189af0194f21f5b6945ea93307975808b3e7f252f66b0155f37d5578714becfe:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzODdjYWQyNTIxYTgwMjc2YTMwNmE1MTE5ZjFjZjUyOGE5ZDIzOTcyYTllZjJiYmJhNGMyZjExODhmNzgwMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxZmYwMzk0MzA3Y2IyNjI4MmU2NTViMjQ5YTJiODU5MmZkZmI3Y2RjN2MwNmQ5YTNhNDYwNWYwOTRkODhhNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyZDk5NDVkMjNjZTUyMjU5OTY3OTJmZjNjNDk4YmQ5ODBjNjE3YTZlMGU5ZGE2MWMxMDYwOTJmNzViNjExM2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViODA4NTdiMWRhNmNlODk0NTZlZTNmMjAwMDdiNzQxYTM2ZGQ1M2RmNDQ0ZWYyMWI0M2QxZmQwYzdlZWMxZTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_df4743f4bd9645b09981154f48e769be",
+      "statement": "Typesense configuration is refused unless URL and key are set together, the SDK build supports operations.probeBodySearch, the URL is a credential-free origin, and the two collections differ; tier policy typesense requires the URL.",
+      "evidence": [
+        {
+          "resource": "repo://src/config.ts#L483-L562",
+          "version": "repo-lines-v1:sha256:4a4730270badd74e33e43895c457741fb4fe838a9de565673459f22d2f02e881:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzODk1NmU0ZDEzZGU5Zjc5NWExNjVhOTQ1MzgzYjMwMjYzNTY5MmE4MzE4YWYwYjE2ZGY2MDE1ZGExN2UzOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzZDUwYzRkOTM1YmQwMGMyMGRkMmFhYzFjYjgzMDQ5MTk3MWZhMGU1Nzc1MDU2MWViYjNlM2M4OGVjOTNiNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzMTU0YjVmYmNhYmUyNjEzMDdhMTY5YjUwMmU0YjVlYzY4YzlmNWVmNmQwYjhjZGRjNTEzNjZkZmYyMDg5YzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_08d36d4c6f1c46918e3a1332338793c7",
+      "statement": "Under allow_list, HUDU_WRITE_ALLOW must be non-empty and every key must be a known write operation, otherwise boot fails; HUDU_READ_ONLY=true forces deny and an empty allow list.",
+      "evidence": [
+        {
+          "resource": "repo://src/config.ts#L564-L604",
+          "version": "repo-lines-v1:sha256:e1bdb3e39640ba4ca27491c2fe84cc352bba45d2168118570ed83cb7fb16b387:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxYTlkYzFjYzhjNmRhODJkNzJmMjRiYzQ5N2QzNWRhZTcyZWM4YTQ3ODQ3NThjNDMzZmM0ZjFlYjgxNTZjMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNjNiZjJlNzlmMDBjMDliZmUwNGExMzVkZmRjNmY4NTk1ZjUyODU2MmIzMWFlNDIzY2ZkN2MxNGI2MDlhNWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwZDkwYTFlZDU2Mjg5NzlhMDdmNDVmM2VkN2M1Y2JkZmI5NWM4MGRiMjRlZWYyZjMzMmI0N2Y1YmE0ODIwMGUifQ"
+        },
+        {
+          "resource": "repo://src/config.ts#L671-L678",
+          "version": "repo-lines-v1:sha256:dc526d800bf9d7315440589541a42e5cd4b8ed87e4d81a87215c6fc1d6a17b5a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTYwNTcyYjAyNzgwYjFjN2Y0ZDU2ZWFmN2YzMGY0YTk0MjQxMGVjMzhkOTk4NzhhMGNjZDM5NmY0OTg5Njg0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdmMzQxMWVlMjAwMGRhYWIzY2UxNDc0NTEyYWZlMGIwMzZlODkwNWU1YmIzNDQxZjE5ODI5OGNhNzEwMDZlMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1eceb5d0f5ee410c9dd71b08a2450bad",
+      "statement": "The doctor report is computed from config alone with dialed 0, reports credential shape facts and base origin only, and its CLI form exits non-zero when not ok.",
+      "evidence": [
+        {
+          "resource": "repo://src/doctor.ts#L61-L174",
+          "version": "repo-lines-v1:sha256:618e6d5759cb75d07bcf14e846763ea74c170fe4bd29321d39b271e4eb9c1776:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlYTc4ZGYxNWY1NWYwMjU1ZjkxZTRiOWNjOWFlYjA3OWYzMmIzNGI1NTlmMDQxNzI0ZGQwY2QzZmExNzY4OThiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5ZDA1NjlhMDE3MDJiMDg2MTczNzUzMDI1Nzg2ZWEyZWM4ODNlNjUwNGUwYjA2MjBkMzE0OGZkYTRlNzBhMWFhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://src/main.ts#L26-L40",
+          "version": "repo-lines-v1:sha256:7add999e2443cd017fd547e133fc5deedfa9121c7efd7c9671c952ad37e678e2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyM2NiNGMxM2Q2Nzc1OWQ1NGY3NjcxZDQ0MDM0OTcyZDA5MDNhMzlkMDhhZmFlNzNiYjk4MWViOWFiMGRjZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1Nzg2ZDRjMWJmYzhkNWIwMjkxNzkyYTc1ZWUyNDI4YzI0MTljOTEyYzg3YWFiNjFhY2NjMWI4NzA0Zjk2NzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0NTdiNzZjYzczZTM4NjY4ZjVmYzczYTY5ZWIxNzIyZmM0OTg5NzkwMDVjMWQwMmMxNTY4MDgyOGNjNWU1ZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1ZGYxZmFhZDk4MzMzM2VhYzM4YTQwYjIzZmEzMjEwY2NmMzcwZDcyMzgzODY3ODQ3MTRiMDhiNGZmOTkyYWYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-17T00:09:40.208Z"
+  }
+}

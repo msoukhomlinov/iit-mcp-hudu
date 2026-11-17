@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:7fb48f2347b42542b9fcc16d3921164f531aadd540d7013e9c45d3b409ecfe5b",
+  "claims": [
+    {
+      "id": "claim_268fc68ad6fa464da43bdc05f9f6f05a",
+      "statement": "The package exposes the iit-mcp-hudu binary at dist/main.js and defines build (tsc), dev (tsx src/main.ts), start, test (vitest run), lint and typecheck scripts.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L18-L43",
+          "version": "repo-lines-v1:sha256:a3ef84aa44eee69d214f11ed43fb148a5d1246ca4a8c172ee1c036c40f4b2d9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YzE0NzU3YjhlMWU5ZDZhN2RlZTk5MDJlOTA0MDdhZDhjZjY3M2IzZThkNzYzZTI3OTUwZDE5ZDA2NzhkNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkZmM5ODEyN2NlMTk5NGZjMzAyODYxYWIxZDJjNDMyZGJkNTFlOTc3Mzk4Nzk1ZjQ5OTYxYjVlMDViNzhiMDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYTMzOTkwN2ZiZWQwZTNjMmIwOGZiOGI4YTQ1YWI2MTJlZjQwZjkwMDQ1MTljYWI5YTg2ZDdjZGYwMmY3MDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4566ec1b0e324efdb451e154562b1125",
+      "statement": "HUDU_WRITE_POLICY and HUDU_SECRET_READS both default to deny, so writes and credential reads are off unless configured.",
+      "evidence": [
+        {
+          "resource": "repo://src/config.ts#L365-L387",
+          "version": "repo-lines-v1:sha256:9f4bf8ec042a1ee42b8df0f47d219f1be83133b7b6a107aab0cdb1b71c9bc5e4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhYWVjNzE4Mzg2ZmUyNmU4NjUwNzE0YWU5NDk2MGM3YmY4YTQ2NDRlNjExY2M0NjI2NmFlMmRhMWIyYTY3YzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NWRhMWQwOTk3ZDVmYWU2OWNmMTFmNzliZDJmMmNlZDNhNTJlNWQxZjFhNDI0ZmU2ZDJmMDhmNDg1YjQ5ZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1ZTFkZGNjZGU3ZGVkOGU5MGFkYTEyNjZiMjBlYzFiNzIzYzkyNDRiM2RlZGJlYmRiYjFjYjgwNjZlYjVlYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlMWNlZTQ5MWQ3Y2U1MzI2ZGVhYzdhMTdhZDg2OTFmZmJhOTRiYzFlYzMzMDczYjE0NTkzZDQyZmJhYjNiMmEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-17T00:09:40.208Z"
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c32e10f76514047a0e76d63667827f9ac5bc1af3000e7d91970786cf5d7d35c8",
+  "claims": [
+    {
+      "id": "claim_889236b8d07641c8b32199b67b65b334",
+      "statement": "The HTTP fetch handler routes /healthz and /doctor before the MCP handler, unauthenticated and without contacting Hudu; all other requests go to the MCP handler, and keyless requests are let through so tool calls fail closed.",
+      "evidence": [
+        {
+          "resource": "repo://src/http.ts#L33-L78",
+          "version": "repo-lines-v1:sha256:c0b733c65ed48c4263bcaba38f9e792e4f33c64a119fe911032c1d3bdcf6b934:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OGEwMWJjYjE3NTcwMWI2NmU4NTU4NjU3MTA5NzliM2I0MjA2MzcwYzFjNWZiNjUzNjY1NWFmZmYwZGFiYWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxMmM4ZDAyZGVhZTFlYjBkNDFhZGZlZGNkMjIwMzBkZjM3ZTgzNTdmODZmYTU5NmE5ZTg3ODQ3ZjAzZmZjNWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiYzY5NTViMTE5YjRiMmU4YTFhZWRlYjEzODVhYWY0NDQxZDNjZTkzY2QzODYxNTkxMmVjMGU2MzZiYTAxMWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5b07463edd5c484480c72c6b33b3d0bc",
+      "statement": "toWebRequest drops credential headers presented more than once so a duplicated credential is treated as absent.",
+      "evidence": [
+        {
+          "resource": "repo://src/http.ts#L81-L105",
+          "version": "repo-lines-v1:sha256:fe7141a9e5f4906fc76d04a72e771018e7c7aa558cd9f073dff498090b126c21:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMGUzODcwZjEzYzhmMDYwODU5MjI4NGU4ODJkNmUzNzRjYzZlYWJhM2VlYThmZGI5ZGQ5ZGUzODNmZmM4ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0NDdjNDEzZDhjZWY2YTEzMDEyNGYzYTk0OTQ2MzY0YzEyZjI2ZGVlNjU2Yzk2Nzg5NDRlYmFlMTBkZDJkN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0NGJiYjZiMjYyODMyODlkZjU3NzVlZTZjMGI5ZmFlMjYzOWM5NDA4MGQzYjY4MzkwZWYyMTBkOWQ2Y2M0ZjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b5f6dd392a7f43f6961549c48ff87ce7",
+      "statement": "HTTP lifecycle handlers exit 1 on uncaught exceptions/unhandled rejections, and on SIGTERM/SIGINT shut down once with a 2000 ms grace before force-closing connections and exiting 0.",
+      "evidence": [
+        {
+          "resource": "repo://src/lifecycle.ts#L24-L79",
+          "version": "repo-lines-v1:sha256:56f50d31699249ba999ca5f3bdf4d0e01a8cb5f6213aa196962d4a637bab682f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViN2I2YzNmMzRjYTIzZjJmNGE5YzhmZWNmOWI4MjhmZDgzN2UwZWVlODM5OGM4YWI2OTczY2UwOWU1Y2Q3N2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2Mjc3MDk3ZjQ5NjQ1NDFhNzM1ZjU3MTYyZTJlNzc0ZDY3MmZjNDNmMDdhMTVkODU4ODEyMmZhOGVhZGZmMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0MWIzMDI2YmQ1MTc0YTRjMmE1NzY5NDBjMTc1ZmQ5NzNlOWJkNGNjZWYyZTJiODg3OTYxNzFlZDBkODA0ZmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4731e961985f4aa888fbd51bd0eb20f2",
+      "statement": "ScopedClientCache keys clients by a SHA-256 of base URL and API key and evicts least-recently-used entries beyond MAX_SCOPED_CLIENTS, which equals SCOPED_INDEX_BUDGET_DIVISOR (2).",
+      "evidence": [
+        {
+          "resource": "repo://src/search-budget.ts#L48-L48",
+          "version": "repo-lines-v1:sha256:be7c865abe6dfeb64a3bf3cf814eae0a7127975358cc2bed26b929a6eaf667d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU3Yzg2NWFiZTZkZmViNjRhM2JmM2NmODE0ZWFlMGE3MTI3OTc1MzU4Y2MyYmVkMjZiOTI5YTZlYWY2NjdkOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU3Yzg2NWFiZTZkZmViNjRhM2JmM2NmODE0ZWFlMGE3MTI3OTc1MzU4Y2MyYmVkMjZiOTI5YTZlYWY2NjdkOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWNkOTkzNjRiY2JiYzRmNzEwODY2ZGI2Yzc2M2NkZDU0ODNkYmZlNjYxYjZmYmVmOTAyYjI0NzM5ZjExMGUwNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjdlY2M3NGNjYjc3MzNlNDkwNmU5YzdmOThiZTZmZjFjNWE1ODBlMzcyOGM2NThiMWUyYzRlNTIyNjM3MWE5MyJ9"
+        },
+        {
+          "resource": "repo://src/tools/server.ts#L158-L190",
+          "version": "repo-lines-v1:sha256:58307712824f53c20c9be3b3c294a76874bd81d50858bafb158d1fe23c7fc074:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzYzI5OGEyY2E5MzU0N2UyNGNjM2NhNGUxNWJkNjllN2UzMjY3ZjIwNDBmMjVlMjYzY2QzYzk2M2UwYmI2ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyN2Y5YTkwZDkyN2M4MWQyZDkwODJhZmZlOGJhMzcxYWY4ZjMwNmUyNzE2NDhjODI2N2MzNmY4NzY1NTQ3ZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3MjdlNDhlYjgyNzNiNzEwODUyZWIwMWUxMmE2ZTYxNzQ3Yjg4ZDAzOWMwNTIwYjY5Yjk1MzI1YzQ0YTk4MTkifQ"
+        },
+        {
+          "resource": "repo://src/tools/server.ts#L37-L37",
+          "version": "repo-lines-v1:sha256:7c1a4e376e03e2233965af81f4289072d64c28670d22467d458d9d33c93f72ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2MxYTRlMzc2ZTAzZTIyMzM5NjVhZjgxZjQyODkwNzJkNjRjMjg2NzBkMjI0NjdkNDU4ZDlkMzNjOTNmNzJlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2MxYTRlMzc2ZTAzZTIyMzM5NjVhZjgxZjQyODkwNzJkNjRjMjg2NzBkMjI0NjdkNDU4ZDlkMzNjOTNmNzJlZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDY5ZDM1MmNhYjFhMDE1OWU2NmYwYmU3M2JlOTYyNjMyNWUxOWUwNzgyMTdlMzhmOWM4ZThiODQ5NTg0MTA0OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzg4NDQ3YWMxMjMwNWRjODhkYzNiZDVjMmViYWY3NGJiM2Y4YmI4YjFjNzZmMzUyZWNmNjYyMzg0OGMxZmM5MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4abfc579db5447abbe3e75d7c0b36fe3",
+      "statement": "The server factory builds one read mode entry plus write and delete entries unless HUDU_WRITE_POLICY is deny, and per serving unit (stdio connection or HTTP request) builds a fresh McpServer and calls registerTools.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/server.ts#L562-L588",
+          "version": "repo-lines-v1:sha256:d0afe4f289f0e5db46ab167470919fbcbd551920f7512afb51d1008a62233189:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViMmEwNmU2YWMzODM3OGQ2YzEwYmU3ZTMyM2MxZTUyNDkwYTQzN2IyMmQ1ODI0YmRhMTIxMjVhMGU2YzdiZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliOTZlOWZhMjJhNjhjMTc4MTI2MjhkOTQ3MDE5NTRjZWZhMDlmOGVjZjhlMDhmMDJiMjhkYzIyMjFiYWU3NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_45f0babc885041c6adbf88270d15c61c",
+      "statement": "Clients use profile 'agent', recommended cache, a 30000 ms timeout and cooldown; scoped clients set blockPrivateHosts true, and under http the base URL is a reserved .invalid placeholder.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/server.ts#L413-L413",
+          "version": "repo-lines-v1:sha256:25c49a9bf346832d639e0fb7aad1457034a2746b2220a2e6eb2dec0066f711bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVjNDlhOWJmMzQ2ODMyZDYzOWUwZmI3YWFkMTQ1NzAzNGEyNzQ2YjIyMjBhMmU2ZWIyZGVjMDA2NmY3MTFiZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVjNDlhOWJmMzQ2ODMyZDYzOWUwZmI3YWFkMTQ1NzAzNGEyNzQ2YjIyMjBhMmU2ZWIyZGVjMDA2NmY3MTFiZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGM1MjVjY2U5OTJmN2U2MGFkZTZmZWMyMGFmZGYyOTZiNWIwZWQ2ZTk2Zjc1NTNkNDZlY2I2YmRjOTk5ZTk1ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWQ4ODFiNDA4MDJjN2Y4YTM2YTMwNzdhZGIwNGVhN2U0ZmM1MzQ5OTVkZThkZjc0ZWJhMTU5MzE5MDU3MTAyMyJ9"
+        },
+        {
+          "resource": "repo://src/tools/server.ts#L456-L499",
+          "version": "repo-lines-v1:sha256:0720dc4f06f990856d39dda8eb5821b8b0fd7496a65fe90c64fd3b89e68a180b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExNjQxNzljNmE2NTZhMmRjNzEyNDJmZDM4ZTZlMDYzMjEzZmNlMDNhYWQzMzg4YzI5ZTllNTBiNDlmNzBiMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjMDUyZGZkNmRjMjU5MzIyZjI1MGQ5NTA4ZWZkN2FkMWI4M2FmOGM4OWNjNzVmMjYwNmFhZTM3YmM5OWUwZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhZDYyMDY0YzY2MmVkMWRjYTkxNjU2NDJmZDk3ZGRkMTYyNDRmMjNmN2E3YTY4Y2E4MmU3M2E4MTJjOTdiZWIifQ"
+        },
+        {
+          "resource": "repo://src/tools/server.ts#L532-L558",
+          "version": "repo-lines-v1:sha256:336696e7f15b1c3f94b3efb4184dec0a9ac7b3436a06b91eee3e2806323b2a47:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiZTgyNjdmZTYwZjZmMjc0ZTQ1ODY5ZmRhYzNjNDc5ZDk3NzE4MWEzMGZkYzBjMjc3MzViN2YyMmJlNTExNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxODQ5MmYwYWVmZDM0Nzg5MjhjYzQ2OGFkNGY4MjdlZGI2MTZjMjAzNDE4OTgzZjdiNGVmMTk2MWY4N2E2OGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4M2E3MTQ5NTllMzJkNjQ5ZWY1Mzg5ZjU2NjA3N2RhODQ4OWYyMWQ0YzllMTJiZjk4MzMyMWU3NDc2ZDcwMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliOTZlOWZhMjJhNjhjMTc4MTI2MjhkOTQ3MDE5NTRjZWZhMDlmOGVjZjhlMDhmMDJiMjhkYzIyMjFiYWU3NGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7b5fa697ef4c460d800538237e53d605",
+      "statement": "main() handles --version/--help and the doctor subcommand before loading config, exits 1 on ConfigError, and chooses stdio or http transport from config.",
+      "evidence": [
+        {
+          "resource": "repo://src/main.ts#L65-L135",
+          "version": "repo-lines-v1:sha256:1390e3c7c3a190add300eff283c148f0e3cde472052b36b457296cf0cbe30d37:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNWUzYmZhMjNkNDdkODExOTVjMTIxMGIyZDFhNDBmNGEyMmU0MDY2NTc5YTczZmYwYzNmMmZhYTZjMjExZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyN2VlYTcyMmIxMTQ5MjM0MDg1MGM5M2VhZmVlMzQ5ZDc3N2MxYTE0MGU3N2FiZmFhOTQzMDU1MzE3ZDg0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkYjlmMjQ5ZjgzZTY5MTE4MGE3MmI5NTkxNjNmMmZkYWU4YjA0YzFjMTBjZThjMDViM2Q3MjA3YjI1ZjcwOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c99467ac79564853a3a646ccbffb2fb7",
+      "statement": "registerTools registers meta, search, read, list and fetch-many tool groups from a context that decides the default search tier (policy under http, caller parameter under stdio).",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/register.ts#L22-L91",
+          "version": "repo-lines-v1:sha256:2b970c1c5a3cb38ec1f1f2ae8a6d73cde68368b09f01051009e1f272460681a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxNTVkN2ZkY2UxMzFiYTU0OGQ0ZWQ0YTQyZDhiYjA4MjVlYmY4NGQ3MzRmM2RmMzQyM2UzNTFiM2RmNDFkYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwM2Y2YTIzYmJkYTQwNmE1ODdiNTM1ZTM3NWQ1OGJjZjM3MDVhZmE5YWRlZDQzMDVkODRlY2YyMzIzYmYwZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-17T00:09:40.208Z"
+  }
+}

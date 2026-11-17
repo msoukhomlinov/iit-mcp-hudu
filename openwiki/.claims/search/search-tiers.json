@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3bfacea98d665caea8830c9364f59bba97de9887b63470f0aecfee282527c668",
+  "claims": [
+    {
+      "id": "claim_57a2bbf63775494dadd79287a31d65c9",
+      "statement": "The default search tier is vendor when articles or assets are excluded from searchable resources; otherwise HUDU_SEARCH_TIER_POLICY if set; otherwise typesense when configured, else auto under http and index under stdio.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/register.ts#L22-L91",
+          "version": "repo-lines-v1:sha256:2b970c1c5a3cb38ec1f1f2ae8a6d73cde68368b09f01051009e1f272460681a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxNTVkN2ZkY2UxMzFiYTU0OGQ0ZWQ0YTQyZDhiYjA4MjVlYmY4NGQ3MzRmM2RmMzQyM2UzNTFiM2RmNDFkYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwM2Y2YTIzYmJkYTQwNmE1ODdiNTM1ZTM3NWQ1OGJjZjM3MDVhZmE5YWRlZDQzMDVkODRlY2YyMzIzYmYwZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c7ad44559c674291adc86d8ff84b1474",
+      "statement": "Under http the search tier and refresh are server policy: the served schema omits them, the input is loose, and a caller-supplied value is overridden and reported in meta.policyOverride; under stdio both are served and the object is strict.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/search-policy.ts#L173-L236",
+          "version": "repo-lines-v1:sha256:c0943c502b7643f855503ccf8702f95fe66896d159d604df116d1e25c1158387:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNGMwYzMyMWM0MjgwMWUzNzA5NzkyM2ZmNWM2MjEwNGE4Nzk1MGJhMjQwM2M3NDVmYmY2Y2U4YjNiYWJiYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4MDMwZGFkN2RiY2U1NzExMzQ5YmZhMjM5YTI1YTZmNDAxNmQzYzUxMDMyYWI1N2M5OWY2YWNlYjQxZDk0MzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmZTg5YzBhMDYzZTM0MzFhM2MyN2JjYjQyODBkYzZiMzRlNGRkNzM3NmFmNDZmZmViNDhjYTJhYWJmZWRiNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmMDllYWNlNDJiOWI3ZDU2OTE4NDE0N2EzMTJjZGIyNDQ4NzczYmQwMmZmNWUwMDA4ZWRjMjI4NjFjZWE5MzEifQ"
+        },
+        {
+          "resource": "repo://src/tools/search.ts#L280-L345",
+          "version": "repo-lines-v1:sha256:22a8ad93769756d8feaa8e57d5dca0a6328f4817fdba05681405af888af4b976:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNGZlZWE4NWViMmRlODYyODkzYzc0MzJlYTU5Yjc5NmFjZWExMDg3ZGI1MjlmZDA3YzgxMWQwZjYxMzM5MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYzhmZDc5NWMyOGI4NGViN2JlYThkMDI1OGQ5Mzk5MmYwOWJkZTNmMDBkYTA5ZDk4MTA2ODEyYTlhOWZjYjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5MmViNmNhOGNmODAzNTMxZDE0YTQ2MDgwNTViZWE3YjVjNWM4Zjk4YzNjZWQyOTgzZDQzNjM1YTM3MTQ2YzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzOWU4NzQ5MWFjODNlMTI0ZjZjMDJjNzBhNjE4Zjg3YjkzYzUxOGUzNjQ1NjViNWQzZTQwOGEwZjBmMjdhZWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2b5c9157017d465284a57c3bb37cd955",
+      "statement": "When body tiers are excluded by HUDU_SEARCH_RESOURCES, an explicit index, auto, typesense or refresh true is refused on the invoke path and an omitted tier becomes vendor.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/search-policy.ts#L173-L236",
+          "version": "repo-lines-v1:sha256:c0943c502b7643f855503ccf8702f95fe66896d159d604df116d1e25c1158387:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNGMwYzMyMWM0MjgwMWUzNzA5NzkyM2ZmNWM2MjEwNGE4Nzk1MGJhMjQwM2M3NDVmYmY2Y2U4YjNiYWJiYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4MDMwZGFkN2RiY2U1NzExMzQ5YmZhMjM5YTI1YTZmNDAxNmQzYzUxMDMyYWI1N2M5OWY2YWNlYjQxZDk0MzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmZTg5YzBhMDYzZTM0MzFhM2MyN2JjYjQyODBkYzZiMzRlNGRkNzM3NmFmNDZmZmViNDhjYTJhYWJmZWRiNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmMDllYWNlNDJiOWI3ZDU2OTE4NDE0N2EzMTJjZGIyNDQ4NzczYmQwMmZmNWUwMDA4ZWRjMjI4NjFjZWE5MzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_53bf13e33eb6415a8374b9eee7bc165b",
+      "statement": "Waiting searches report progress with a first tick at 2 s and then every 7 s, and the default result limit is 8.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/search.ts#L16-L27",
+          "version": "repo-lines-v1:sha256:da89a80e05a6dee92b03955a48f81eac2995fb1721e3e62cffc092aa31f3bbc9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyMjcxYTUyM2U5ZmNiMWM1NTJlZDNhMjQ0OTlmZTZkYTcxZDhiYjU2NTYxNTUwNmYxOGE4NjBjZWE1YTZkYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMzRmOTc2ODZiNWZiM2MyOTVhYjdjZTI4YTAxZDdlZTEzYjQxYWY2ODgwNGQ2NTY4YjFiZmIyZmQ3YTI0ZTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmNTFhMWE3OWU4NDM1MDNlZTY3ZTFjNWVhMDNiNzkxMWE0MzNkOGQ5OThkZTUyZjZiODBhYWY5NWRjMGY3MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YWVmMzljMWUyOWExODQxNWMxOWZlOWM5NjY2MmY2ZmM0NDM5ODg2NWU5NjA4ZmRhMzNhZGU2MGU0Mjk2NGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9a03ef1573194d939d84deb4d2602949",
+      "statement": "The process-wide index text pool is one sixteenth of the V8 heap clamped to 8-64 MiB, divided per scoped client by (2 + 1) times the number of per-mode caches, with a document cap of one per KiB up to 50,000.",
+      "evidence": [
+        {
+          "resource": "repo://src/search-budget.ts#L1-L212",
+          "version": "repo-lines-v1:sha256:a4aab4f67d8be093c7ded69b87a8ee7b692aa2a142aafff2d984e1f1e4b44387:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlYWYyMmNmMDczMjU5MmMyNDcxNDFjYmU2MWVmYTExMDEyNjEyZjVhMzEyMmI5YWY5YmJhZjUyZjU3MjRkMTk0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_7a2f2c942e254ab884684d52a30f7b4e",
+      "statement": "The index reserves the whole document cap for articles so assets take only the remainder, and a capped index reports partial state.",
+      "evidence": [
+        {
+          "resource": "repo://src/search-budget.ts#L120-L140",
+          "version": "repo-lines-v1:sha256:7bbebd497c1a23e49d45d771b568509a8e398d2f8543cd1f46cffafdd4819c71:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwZjJjOWQxNDg0NmNmNmQzZDIxZGQzNWIwMGQ0MDkzY2Y5MDAzYjk5MGY3ODJiYmQ1YmQ4MTBlNDhhNDJhNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MTM5MDkxNjliY2ZkNmQyYWE4NWI1ODBhNTczNjVhYTI3MGQ3NDM5YjNhNzRjM2Y4NTFhZTliNjUxZWFiNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmOGVlZTkyZWNjYjlmYThkOWRlZWJjYzc4NDEyZDY0ZTQ1YjRlNzM2ZGYxYzBmYjFlYjZlYTA5NThhNzIxZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0ZDE0NjVjZWJhMWNjYTY2ZTZkNjliNzAyMzNjM2NjYmRlYTFkOTg1NGVlNjY4NTlmYmYyODE4NDc0OTU1ZWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fec5168afef548d685ac3a060f963c13",
+      "statement": "probeTypesense distinguishes NOT_IMPLEMENTED (SDK build lacks the operation) from POLICY_DENIED (client policy omits it, tested with the in operator) and reports PROBE_FAILED for an uncoded throw; unconfigured deployments make no request.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/typesense-probe.ts#L74-L126",
+          "version": "repo-lines-v1:sha256:b783ccdf2a58b89b30796ac28a61a8046ba444093e36c1ba54f9a8a1c3447427:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyM2NiNGMxM2Q2Nzc1OWQ1NGY3NjcxZDQ0MDM0OTcyZDA5MDNhMzlkMDhhZmFlNzNiYjk4MWViOWFiMGRjZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhNjJmNTRjYzBiZjA2NzE2OWNhNTE0NTNlYjc3NjdkODFiNzU5MjEzYjU1NTdjMTlmYjdhM2I0N2U0MGYyZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-17T00:09:40.208Z"
+  }
+}

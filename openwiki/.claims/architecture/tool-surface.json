@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:6d04db334670f98315d8e1b628eee0ba230a8effb57d221b41c3aba63d9ede6d",
+  "claims": [
+    {
+      "id": "claim_f0e4f99e33094cefb2c47506b1da36dd",
+      "statement": "The hudu_read/write/delete dispatchers assert write policy, secret-read policy and the never-reachable set before any request, then delegate validation, dry-run forcing and confirm handling to the SDK's dispatchOperation with contentFormat markdown.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/dispatch.ts#L18-L130",
+          "version": "repo-lines-v1:sha256:0cd88651cba554d3d4aac6376b4f527812fac225de63c4b50c395ccad1130670:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlNDI4NzRlYmVkYzkxOWRhYTQ2Yzc2ZWZmMGU1ZDA4Nzk3ZWRlYzM1NzFlMGYxZWZlNmRjNDYxOTAzYWNkMWIzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4YjEyMzcxNzhiYzZmYjA1NGQxMzYyOWRmMDQ5YTlkMmYwYTFlYzgzYTgwYjUyZjZlMTBkYTY0M2U4OGI1MTllIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlMThlZDkzZDRlNWY3NWIzZGJjNWRjMWY3MjI5ODUzNTkwZjNhZTY1M2ZjNGQyM2Q5ODAzZTgwNjNhMGRhNzc4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxMzUxODcxNWJmMWM4MTUwZGNkZTNkODE4MDIzOWNjMzY4YjE4Yjc2NzczZjI2MWVmZmUxNjlmYjg0MzIyOTFkIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_026c7b1946674013b57e16c7d7414f06",
+      "statement": "After a real write or delete attempt (dry_run false and the SDK call reached), the dispatcher clears the read client's cache in a finally block, because each effect mode has its own client and cache.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/dispatch.ts#L196-L223",
+          "version": "repo-lines-v1:sha256:14f37b98d66d98113007f6548cdb4d78a8923172ac508288c9a45b657e66186b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4YWNiZDc1MGYxZjNkMDJlNmE4ZDc1OTllZjE3YWFkZDgwNzQyNjVkY2UyNDRiNTk2ZTZhMTE0Mzg2OGE3YWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4NWEyZThiZDVmODIwYzBiOGYyNTJhMzI3ZGQ2ODFjOWQxOTEwOTFiZmQwNzNlNzBjMGJhOGE0MjdmYjY5N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f20d09fcded4ffbb199fc4ce9d45e43",
+      "statement": "Committed (non-simulated) article writes answer with a summary rather than the full stored record, and Markdown article reads that lost content are flagged with markdown_lossy fields while the SDK content_loss is stripped.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/article-loss.ts#L1-L61",
+          "version": "repo-lines-v1:sha256:1ad9ab38c4fe55bcee83c37dae7b2017727e927e944d1db9c9c1054f10961379:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiODAwMGQxMzA4NWYyZDRjMmY4Yzg5MzQ3ZDUwNzI4ZTY4YWM0YzJmY2Q1OWQyZWQ3YmZhM2U5M2QyMDliOTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://src/tools/dispatch.ts#L175-L202",
+          "version": "repo-lines-v1:sha256:f77bb5f94143c620508403be7d37d028cf5d80ddc50ef2bbfc1ab5e37954e21c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5NzYxOWYxMmQxZWRjYzY5MTNiOTZlNTc5ODM1ODM0NGFhZTM1NTU4YTAwMTBmYTk3ZTU0MjdkYTJlODJiZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5Njc0MGM1MTJlN2Y3ZDZlODRjNzY1NGY0YTNiNTFmZjM4YjQ2MmQ4YTMzNGI0YjNhY2EzYjY3YjdmN2E0MDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmODE1YmVlYTNmMmEwNGZmMzQ0MTBmNjAxMWM3OWY1NzBkMWEwMWI4ZGMxOTU2YTY2ZTU0ZWViYTU4NWVkMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3YzYyZDI5MDFjYWI5OTkzYjQ1OWI3NjY3NDBlMWQ2MjBhNzE4OWRkMjFjNDE1MTkzNWFhMjk4NjgyNzg0MjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_68707aa6d0b14e5b8348dc8696925a0a",
+      "statement": "hudu_list is a strict-object tool over companies, articles, assets and asset_layouts that refuses unknown filters, never clamps an oversize page_size, accepts no page_size for asset_layouts, and compacts rows unless expand is set.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/lists.ts#L283-L342",
+          "version": "repo-lines-v1:sha256:ccbea98ec1686171b8ebe1d4ac1ceb4f537ca1cd9ceb32b4417c5f1315eba317:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTRmOTIyMTEyMzNlMjExOGQ5OGJmMmNlMWFiY2IzMTI1YmQ1MTAwM2UzOGIxMjRjOGQ2YTcxZDZiZWI1MzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZTM3MjVkYTAwMmI0NmVkOGI0ZGU4ODAwM2FkOTcxMGRjYWYxOGQ1N2M0NzAxZGMzYmVmZjBiMmM1Y2IxM2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_216e53b51ab04899a0d59b208c6e8918",
+      "statement": "Calls to the retired hudu_list_companies/articles/assets/asset_layouts tool names are answered with an error naming hudu_list; the old names are never listed.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/lists.ts#L51-L59",
+          "version": "repo-lines-v1:sha256:bb7a6e7bcd6e013bdf1867aa1b9b5ffbaec3e5e76825a9b6c3050a28c7271824:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmRlODNjYjk0M2U5YTFkNWZlYmVmZmI5MjVjZmY0ZWZjODE0MTg4MmIzZmQzOTBiOTZjMTc1OTExNWVhZGJhZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTc0ZWU4YThkMWFhODQ1MzkxYmM2NzllYjcwY2U3ZjQ2YTNjZDZmYjJkMTZmY2NhNjdmYTE3OGY0ZjhjMWUwZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzg0OWJmZWVjYjY0OTQ5Zjg5N2QyNDJmYTZiNDVjNTI1OGYxMTlmNjJiOWE3ZGNmYTA2NjBkZGRiMTg0ODZlOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGFmYTYwMjcyMTNkNjRiZWM0Mzk1ODZiOTljNTBhYWI1YTZlNzQ3MDFlZGFiYjg4MWU4MzY2NDk5NDA4Y2M4ZCJ9"
+        },
+        {
+          "resource": "repo://src/tools/renamed.ts#L1-L26",
+          "version": "repo-lines-v1:sha256:ef60ff6a0201ce4d2c7a8cdbbd471071c4bcc57321d7b9b404aa5077fd2b1fc6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1ac01f635a6f4bbabcdd1b8d2319a377",
+      "statement": "hudu_fetch_many accepts 1-20 strict items {resource,id,fields?} over a closed 22-resource enum, applies the fetch-many secret-read policy before any request, and reports per-item failures in an {ok, failed, results} envelope.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/fetch-many.ts#L44-L107",
+          "version": "repo-lines-v1:sha256:ef96312ef1402fe18c4003feec2f8e3befa0e25aa94daf01ddccd1b7902517d3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlOTRlNWRlYWJjOTg0MzRkNzAxYWQ5ODA5ZjU4ODg3NGRiM2VmMzNiYmU3M2M4NTUzOWEwZWNkZTFiOTA1M2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4OGYzNWU1NTIzZGJkYmVjMDgwMDg4MmMxYTE3N2FjODYyZmEwZmQ0YjE5YWRhN2U3NmYwNDA0ZmVmOWQzZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_adfe31989afc472bbcb126cf0fb78e7c",
+      "statement": "Tool schemas are slimmed by stripping $schema and safe-integer minimum/maximum from the JSON schema converter without altering validation.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/slim.ts#L1-L41",
+          "version": "repo-lines-v1:sha256:9fcc14572800b593dd8950ca4eaba73412b5c03c9fd44446b932d984fbcf7645:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0c1354a51e9148cfac3fb6c6dc6fe63c",
+      "statement": "hudu_list_operations and hudu_describe_operation report policy-refused operations as not callable and name a dedicated exposed tool where one exists, with exact-key lookup only.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/meta.ts#L21-L107",
+          "version": "repo-lines-v1:sha256:9464e7f20b1380ddc7a859feb08604b1a63803b45ab1d1bf385a6910b702adbe:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2YzI4NzZhZWQ4M2I4NDk2MmNmNzA1MjY3MmRjYzI5MWMxZDJkOTJlODlkNzhmYWI3MTE1NjViZjk3N2VlMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhZjUzNmM1ZmUzMjlhMDk2ZWIyYjdlYjQ1MTUzYTYxMDUwOGI3OTE3YjU0OTZhYzJkMjU2NDg0MTlkNGNlZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_07ceb07299654fd598c6092e12c95249",
+      "statement": "Success results rewrite a fixed set of root-relative URL fields to absolute URLs on the request's Hudu origin, leaving unsafe values unchanged.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/result-urls.ts#L1-L41",
+          "version": "repo-lines-v1:sha256:09e000787a664c02d6e75eeb09d11fa98ef75fc00d005d9b5a6196cdce5f1296:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiNDQ0YjExNmVmNGY2MjAwMjI1YjNkNThmNGVkMDY4NDhhODZmOWY2MDBkOGI5ZmUzYzQzZTQ3OTJkNjkxN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-17T00:09:40.208Z"
+  }
+}

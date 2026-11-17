@@ -1,0 +1,11 @@
+# Intent and process documents: plans, specs, brainstorms, ideas, archives. Code is the source of truth.
+docs/superpowers/
+.superpowers/
+docs/plans/
+docs/specs/
+docs/brainstorm*/
+docs/ideas/
+docs/archive/
+docs/archived/
+*-archive.md
+docs/0.3.0-container-gate.md

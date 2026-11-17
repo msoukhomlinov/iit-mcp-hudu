@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:029811e279963f81e219e7dbad274254ef63079b002f65a3fbb764301af6164c",
+  "claims": [
+    {
+      "id": "claim_cb32ab5fef0d46f79f9b28b2bb6f3c57",
+      "statement": "Under HUDU_WRITE_POLICY=deny only operations explicitly classified as read are allowed; under allow_list a write/destructive operation is allowed only if listed in HUDU_WRITE_ALLOW; under all it is allowed; reads are never gated otherwise.",
+      "evidence": [
+        {
+          "resource": "repo://src/policy.ts#L88-L97",
+          "version": "repo-lines-v1:sha256:a1c0ba78424958d140441312e94c3d6cca7f77381695e6850809ecfba03cbe31:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2Y2Q5YjMyMjFiMzA3ZWY3Yzg1M2FhZjlhZTJiNmFiZGFjMjVmZDg4M2NlNjU3NDdiOGQ4YjJmZmRkMmE5MWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiYjI3ZTA5OGY5YTFjNzYyZjljY2IxOWRhM2JlNDNjMGZkZmNlMTc1NGU2ZWNjZWNiYjZlZjdlMjdjZmUzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkMjk4ZDk5NjQ5N2VlNTQwNmE2YmUzMTY4ZDk5OWE5YmE2ZGFmYzc1NGFkNzU0NTVkOWRjODJjZTNmZWFlODcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_35ef26daa6b14fc390890da032056843",
+      "statement": "HUDU_READ_ONLY=true is a hard override: applyReadOnly rewrites the config to policy deny with an empty allow list.",
+      "evidence": [
+        {
+          "resource": "repo://src/config.ts#L672-L678",
+          "version": "repo-lines-v1:sha256:91c80daf7139f5da28765cd266691dfb2dbea87d1442c15e124fee3bd93bc0a5:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTAxYjY1MDQyZmYzNmZiMzhmYWVkMWY1OWYyNzEyM2UwMGNhOWFkMzhkMDU2NzBhNmZiZWFlNjQ5NDNiMzBlZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzc5MjllOTFlMGY5OWMzZTgyNWRlNjliNDM1ZmI2NDg0ZDFiMGExZGYyZjQ2NTYxYWJmMWEyOWYwNDE4OGI4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdmMzQxMWVlMjAwMGRhYWIzY2UxNDc0NTEyYWZlMGIwMzZlODkwNWU1YmIzNDQxZjE5ODI5OGNhNzEwMDZlMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c5ad36e29cd447b098e1eda90c425fc6",
+      "statement": "hudu_write and hudu_delete are registered never under deny, always under all, and under allow_list only when the list holds an operation of the matching effect.",
+      "evidence": [
+        {
+          "resource": "repo://src/policy.ts#L64-L69",
+          "version": "repo-lines-v1:sha256:67426b46160ce812bb1b6aaf0919373abf825b8e0ffacd916b6f4fcea219ca65:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzI5MDMzNWE2MTMwODM0YjliYTU4OTQ0NDY5NmIwMDg0MGYyZGY1OWUxNDRiNzMyMWEyNmEwMTc0YmVkZjhmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmNlNTAxNmYyYjI2N2ZjZWJmOWQ0YmQ2Y2JhN2I5YTY2OTNjNDcxMWMyODFjYjExZTNkMTRlMmY3ZWZkZDRjOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmMyZTRiNDBiYjVkODI0N2RkNzYwYzI4ZWIwN2VkOWMzZTQwZmI0OTE1YjllY2FkYjMzNmMwYTZmYmEzZjg0YSJ9"
+        },
+        {
+          "resource": "repo://src/tools/dispatch.ts#L21-L24",
+          "version": "repo-lines-v1:sha256:5faa26c8eeeed5e5be522be173bddf5e528613f8c414082d8ff0de3b38be7b0e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U1NTk3MGZhMDcwNmIzNjM3MDhlYjYzNjA3ZWJiOTAwYzU0NzEyMTJhZDIyZmQ1YjE2YmNmNDA2NjQ1MmE0OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDU3NjUzNDI0MTQxMThjZDRmMGI4NTdmNTNmZjM0YmQ2YjA1NTJiNmY3OTY1ZTg3YmMxZmU2M2VjZmNjMjU4ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGRiMmZmZDYyYWM1NWQ5OGJkOGUyMjM0NzVjOGMzNjE5NmM5MTk2ODkyOTZjNzQzYzdiY2MzYjNkYTdlZjAxMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzI3MjQ5NGM0ZDE5MjUyZWI1MjZkOTA2MmRjMWM5ZmI1ODAxMTAxNWFhNjZjZDE0M2U2ZWMyYzU4YzYyNjZiZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_af09489edcb44b4ab6592ce659bfa946",
+      "statement": "Any operation key starting with asset_passwords. or password_folders. is a secret operation and is refused before any Hudu request unless HUDU_SECRET_READS=allow, independent of the write policy.",
+      "evidence": [
+        {
+          "resource": "repo://src/policy.ts#L106-L110",
+          "version": "repo-lines-v1:sha256:be74624f65273772cf932c5b2b74b753391389e47b46c1a6d8cad0eb27968baa:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTQ5ZmVjOGFjMGY2YWQ0MThjN2MzYmJhYjU0ZDIzMjk3MDdjMDA4NDI1YTQ2MzZlYzhiZDIwYzA1MDY3MGFmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjE4Mzg5NGZlZGMyZWZjNzkyYjI2YTY4MmU3NWRlMzFmMTRmMDExNjE4OTQ1MmZmNGYzOGEzMzczOGRhYWQ5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTdhYzk5YzNkNWU3YmIxYzQ5YzRkMDI4ZWQ4NjM0NWRjN2VlZDc3YmE2NWQwYzhhZGI2MjI3MWFkYjI1Y2FlYSJ9"
+        },
+        {
+          "resource": "repo://src/policy.ts#L136-L144",
+          "version": "repo-lines-v1:sha256:4b26c15d23904aa9f0e7deeddf40290d3dccc1a53c1ccd6174ae4ad456d92f9e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ3M2QzYmUxZjA5YzMzNjFhM2NjMzM3Mjk1MTQ4MTJlOGEyZWFlZjQzZTEwMTM4MTcxYTYyMTY5MTVlNzZmOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2ZhYTFiNzNiNjRiNGM0MGU0YjNiOWMwNTE5YTU5ODVkODc0YzkzYTEzZmZjZmIzNjllNDQ4Y2Q3NTlkMmQ2NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmU2ZDk4ODQ0MDQ4NmQ5NTRkOTRiZjQ3MGQyZGMxYmFhZWI0NzViNDk5MTE4NDcxNDBiMTRlODE5Y2JmMDg0MSJ9"
+        },
+        {
+          "resource": "repo://src/policy.ts#L37-L48",
+          "version": "repo-lines-v1:sha256:dbfa5867ba51589a586c2f1ba178bae621a32d98319faa26248f5668b9a1350f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4MjY3MmQ0ZjM3MzdlYzBjMDUzYTJiN2MxMzViMTRhZjk4NzY2MGVlOTgyODYzZWU2YWJkODg5YzExNzdiNWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4ZWYzNjc4NGJkNDUwNmM3MjVkNWE4ZGYzZDZiYTkzZGE0YTgzNTViMmFiYjVhNWQ0ZWQ4ZjVjNTgwMTBlZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiODY2MGQ3Mzk0ZDc0Mjc5YTg3NzRjNTJlZmE1NjVhMDJmYzIxZGY4ZjY4OGE5NDcxNTVlNmU3NTViODg4OWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cfd882fd4751497aaef14340e6e3b656",
+      "statement": "asset_passwords.createShare is never reachable on this server because every scoped SDK client is built with reveal:false.",
+      "evidence": [
+        {
+          "resource": "repo://src/policy.ts#L55-L57",
+          "version": "repo-lines-v1:sha256:6d163b4f82ef03babd11ca11a430741573765550dab2837358655d64fc1bcb9f:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzMwMjIwN2UwMjEzZTA5YTE3ZTZhY2YyOTM4NTBiNTQyMDllMmI4MDQ5ZTU0M2NmNzhlOTI5ZmJiNDUyY2RmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWExZDFhNjMzOTAyMjljNzk4MzQ3ZTgzYTA0MDU0NDFjOTQwMDAzNTI4NGFkMTY4YzFiZjZjZGYxZDcwYTM3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDIxOWEwMWRmYzE1NjljNmNhNDdhYzNmNjRhYWU5MWEzZGJkYTcyMGFlOWExZDUxYjg1ZGUwNzcwOGQzYzMzOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGFhMmYzZGVhZTE1YjM2OWQ5OGNkOGQyNzY5YTBiN2MyYjhiNTdhMzlmMzk4MzI5ZTRjNDFhOGFjYmE0MmM0YyJ9"
+        },
+        {
+          "resource": "repo://src/tools/server.ts#L506-L514",
+          "version": "repo-lines-v1:sha256:6960eb0acc5a22d5d745d42f9aa1e2216d27bb01ee02b8bdb331b455811e6660:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNiMWZjMWI2NTc0NmFhZmU5YWIxN2I3YTdjMjZkY2NiNmMwOGMyMjcxZjk5YjQ1YTNlN2Y4MTE3YWI4ZjI3NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmQ5YWZhNGEwMGYzMzdmNDVhNjc2ODJlMjg5OThiMjA2MjZiMzUxYzI2N2I3ZjUyMmU2YTRlZDEyZmEwNmNkYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTcyOTNlMTIyZWI4MTljZTMwMTQ3MjNiM2I3NmQwODJmNjYzNjJiYjNjMDBmMDYwNmRiY2Q3ZTk0ZmZhMGRkOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjIzOTJkMjU4NzExN2NiZjZiMmZmMWRhNmQ4OWM0ZjUxYTM3MmQyOWVhMjQyYmZkNDBmNjllY2U1YzQ2Mzc4YSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2c257aea26bf45ba99bd074241655a2e",
+      "statement": "Policy refusals throw PolicyDeniedError with retryable false, issue no Hudu request, and are logged without the input bag.",
+      "evidence": [
+        {
+          "resource": "repo://src/policy.ts#L166-L180",
+          "version": "repo-lines-v1:sha256:24e2ba8a393085df538832a2fdea773d81cf86100c058a115abfc30bb766dc96:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2ZTgxYjcyZmRmMjIxMjNlODM4N2YyNzMyNGE2MTk0NWI3MjhjNmZmN2Y3YWY2YzI4NDg4YmU1MWM4OGY0MGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhOGJlY2Y0MWU2N2NmYTA5MjU1MDNiZmM1Zjc0ZDZiNThmOTQ2N2JlYmFkNzRiM2E2ZTRiMWU0OTE0M2M3YmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5OGM4YmQzZDUwZGYyN2EzMTE5Y2MyNzI2ZDc5NzI3YTdkNzdjODVkMjU2NWM0YTFkNjE1N2E5OWJiNDdhNzQifQ"
+        },
+        {
+          "resource": "repo://src/tools/dispatch.ts#L50-L58",
+          "version": "repo-lines-v1:sha256:605eecdc433644c92341016f105ac745c9a71f4a64c51dfe63d8b76ae698640f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg3OGEwN2Y1ZTcwYWEyNTU1NmVhMDBhZWRmZWE0ZGY5ZWY5OWVlODZkMjc0Mjc1ZTAzYjdlOTdiNGZjYWQ0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFlYWVhNjY5ZGQ1MTRlMjc0MzQ3NzNkMDI2MzliZmYyMzZlYWY4MWUzMGNmYjVkZTQ4ODkxYTgwMTE3MjJiMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjZhYWE0NTBhMGVlMjlkMmZmNTU4ZDFkOTZmZWQyOWRmYWYyYWE0OWY1YzA1NjFiMjZiZmU2ZTZhNmRlMzhiNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjUxNTAzMTQ0NmUxOWZlNjk1YmY0YTdiOTJhN2IwZmVkNDFjMGMyZjljMzBiYjM2ODgyMjk0MjEyYjgyNmEyMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7f5bad958aea4a34b24d321da831570f",
+      "statement": "applyCatalogPolicy and applyDescribePolicy mark policy-refused operations unreachable with a reason and adjust global reachable/unreachable totals.",
+      "evidence": [
+        {
+          "resource": "repo://src/policy.ts#L188-L230",
+          "version": "repo-lines-v1:sha256:9aa68d54d461895810977f5f917688c8592ab58f1cee1126adbbf1ae83001aa2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkNTkwMmI0MWQwMmRmMzI0NDkxZTI2YTAxM2U4MTVkYTVjOWI2ZWExZjI5NzYxYWZjMDllMTZjNDc1NDA1YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0NzEyOTgxMjhlODA3YTc4NjExYjVhMThjMjIxNDQ2ZDBlMDgzYTU4NjY1ODU0NTc2MGNjZmJjYmUyZWFhN2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiZmRlYzU0ZTFhYzQ5ODc0NzRiMjVkMjY3OTNmYzdiYTYzOGM2YTcwYTU0OWQ2MGRjMzVmMzQ5NzRmYTViM2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f598caf9d1941ab9c94802ff6b0b19e",
+      "statement": "Under deny, redactCompanyContextCredentials projects every assetPasswords row in companies.getContext results to a safe-field summary.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/company-context-policy.ts#L32-L60",
+          "version": "repo-lines-v1:sha256:9d0f7203a973b3a0e1b491ba55c4d0f1cfc377b93189a48461da925271ebf3d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkMWU1ZGQxMGRiYzhjYmFkMDI2NTFkNGY1ZTBiYWU3NWRmYTgzMWEzNjFlZDI2ZWUzZmRhMjE1Zjg4NDNmNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6db2cac0ca0c4bc397c0ed9a50712e1e",
+      "statement": "After a real write/delete attempt (dry_run false and dispatched), the read client's cache is cleared in finally; dry runs do not clear it.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/dispatch.ts#L206-L219",
+          "version": "repo-lines-v1:sha256:fc0fd6482defb3d459b402c1382869541512f15ac7054df12e95d7b3b1fea010:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZmNiYmRlNTQ5MjNkOWUxZjk1OTZmZGNiNTkxZjg5MWU0ZjczODhjNmU4NDNmMjFmMTdjZTFiMTBhMDUwMDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3YzYyZDI5MDFjYWI5OTkzYjQ1OWI3NjY3NDBlMWQ2MjBhNzE4OWRkMjFjNDE1MTkzNWFhMjk4NjgyNzg0MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkM2QzYjY5MGQ0ZGNkMjMyMDRhOTQxN2EwZGE5ZWRkYzU1MjUxNGM2NjFhMGNkMzczMDZjNTJkMjIxYzMyZWYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-17T00:09:40.208Z"
+  }
+}
