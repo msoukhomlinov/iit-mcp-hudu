@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:4bd41476024b123a7f3958494cb7d7e33029e3261771ac96b27b3e39e2ad1356",
+  "claims": [
+    {
+      "id": "claim_7e8bbfc319d9491a9a1dbfc75c60707f",
+      "statement": "The credential headers x-hudu-api-key and x-hudu-base-url are fixed names, single-valued, and a duplicated header is treated as absent.",
+      "evidence": [
+        {
+          "resource": "repo://src/auth.ts#L31-L87",
+          "version": "repo-lines-v1:sha256:264c33f38101c1af8d95e7a75070887fd866a453d24c20ea5f10aafa3a157a20:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzNzUyMjgwZWEzNzk0MTlkYjFiYWM3MzU4MzY2OTAyM2ExY2Q3OWZmYzVjNjJkMjlhZjk3OWQ4YzQ4ZWM0ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4ZWQwMzc2Y2JhMjAzM2U1M2QzYTg1NzIwYzM4MDk4ZmMxODM5MGYzZTg5Y2Y4ZGJhMTY3MTkwYjNiZThkNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_285678d00246459486b78612c4453818",
+      "statement": "Under http, resolveHuduClient lets the request's key and base win over defaults, requires a caller-named origin to pass HUDU_ALLOWED_BASE_HOSTS (or bring-your-own-origin mode when no default base exists), and presents the server-held key only to the default origin.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/server.ts#L231-L307",
+          "version": "repo-lines-v1:sha256:600de8d5bc34e7a21d0c81be937daa675cc3e8620b91431e206ff8d7fa16b29e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1NTYzYzEyNjIyMjcyMzkwOGEzYzJmYjIxZmM4N2QyNDc4NTU4ZjJjN2NhMjA2MTExYzFkMDAzMTY1ZTU1ZjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4Y2M5OGNiN2Y0ZjUxODg0NTUyMGYxYWI2YjMzMmJkOGUyYWU4NWQzNmVmNDQyMTBlZDQ4NDQzY2Y1ZDA3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5NjI3NzczZWY1ZWNhNThhMjdhZWM1YTM0Nzc2OTJkOTZhZTIyYjhhYmYzMjgyYjUzNTY5OGM1NzE3OTUwNjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_487541fe5088493b955972b190e461e6",
+      "statement": "A malformed key, a missing origin or an invalid origin resolves to a fail-closed placeholder client that never dials, and malformed keys are logged by anomaly names and length only.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/server.ts#L308-L356",
+          "version": "repo-lines-v1:sha256:b9f491c08ed84f04fe6eeb237e9a67877fa291d472a4742504071ecdad6d75c2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwMjU2MGVkZmFlOWYxMTQzMjEwZmE4NDgyMjliNDdhYThhN2Y4ODNhODg4NjU0ZjIxNGNlYWQwZGI5NzQzYTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyNGE1NDMxOTVkODA3M2U2Y2U0NDBjZmMxMTBmYjJkYWFjY2RlMjVlMTJmN2ExNGRhYmU5Y2ZiZDFkZjQ3Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlMTI0ZTJiNDZlNGRlMTQ2YWNlMGU3ODEyYzk5ODJkOWFiZTE3NWNmYWI2MDA2MmJmYmE4MDgwMDJiYWZjOGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9e6e997258ed41dbaa1629e4b056ccad",
+      "statement": "baseHostAllowed matches exact hostnames or *. suffix entries (subdomains only), refuses unparsable URLs, and permits everything when the list is undefined.",
+      "evidence": [
+        {
+          "resource": "repo://src/base-hosts.ts#L19-L30",
+          "version": "repo-lines-v1:sha256:6096d5885ae0919a6adea55f2aab44ac5969c7402c05fbc750f8412679ea5388:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkMDg3NWE4Njg1YjQyMzUyODBkMjY0NjQwMDg1ZjU1NDA2NmQ1YThjMDU2MGIwMmVhNWI3ZTkwNTVmOTc4ZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5Y2NmODRlNDYwN2ZhNmZjZDdmOTMwY2U1ZDg4MjVlMzUxOTA3MjNkMTQ2MzljZWM3MWYxODVkM2Q5NzViYjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxOTUyNzU0NjdjNDE5YTY5NTlmM2FhNjA2N2NhMDY5MTBiYTEzMTE4MDA1ZDIzZjZmNjE3ZWY2N2Y3MWYyNGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f8cdc1c14f1f489fa2735e3ca57733bc",
+      "statement": "Scoped clients set blockPrivateHosts as a literal-IP floor that applies even in bring-your-own-origin mode, while the operator's own base URL is not floored.",
+      "evidence": [
+        {
+          "resource": "repo://src/tools/server.ts#L546-L558",
+          "version": "repo-lines-v1:sha256:333c87051051d20ced957adc8f8280f33ff5e6d556fc5ed7789edb059bcad1c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlM2JhMzgxNzE0MjUxYzZiNDJhMDFhMjY0YjQwZGQ3ZDlmYjIwYTMyMTZkNDI2NTNkZTJiZjczZmNmZTk3YzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxODQ5MmYwYWVmZDM0Nzg5MjhjYzQ2OGFkNGY4MjdlZGI2MTZjMjAzNDE4OTgzZjdiNGVmMTk2MWY4N2E2OGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1ZmIyNTk3YmU3N2ZmZWFkOGQ3MmZlZjk3MDM3N2QzNTM1M2M3YzJlZmVlZTI1NDFjYmNiYzIwMjhmODZjOTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliOTZlOWZhMjJhNjhjMTc4MTI2MjhkOTQ3MDE5NTRjZWZhMDlmOGVjZjhlMDhmMDJiMjhkYzIyMjFiYWU3NGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_265cca7e7c8242c29eb3d49453f75867",
+      "statement": "Eight credential shape anomalies are all fatal and are reported by name, length and two-character prefix, never by value.",
+      "evidence": [
+        {
+          "resource": "repo://src/credential.ts#L29-L114",
+          "version": "repo-lines-v1:sha256:473637a2294dba586b070dac0a78195e4c0bc10a66e19d51a8040f171ab2d042:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3MWNjNmVlODk2NDY2YjVlODRjODgxZjBjNWMyMTExZjdmZWIzODBmNTlmYTVlYmExODVmYjNkODRlNDc4M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwMjg0NGRkOWQ4MDY4OTFlMmZhMmNkZTRkNmFlODA4MjQ0MTQ3ZjgwMDU0YjU3N2Y4YzdmMWM4ZjYwNGI1ODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwY2E5MGE5ZWIzMmVhMzBhOWUxYzUzNDA5MGFjN2FkNDY1NTA3MGM3YjVkY2RkMTc1MTNhODE2OTQ4NzNjZjYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-17T00:09:40.208Z"
+  }
+}

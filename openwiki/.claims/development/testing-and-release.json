@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:95b249b1bff1aecf49ee10a17479128e1e39cbdc3188696832352b1bc9bc04c4",
+  "claims": [
+    {
+      "id": "claim_f6cffb914a9544dcafcd2075677bd3d6",
+      "statement": "The CI verify job runs build, typecheck, lint, test and a production dependency audit on Node 24.x; the container job then builds the image and smoke-tests it for no package manager, an error naming HUDU_API_KEY when unconfigured, /healthz, and refusal of a disallowed base host.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L11-L57",
+          "version": "repo-lines-v1:sha256:1435b60c0260e7fe2336d885177f894d8eec0bb0c454595f50e69db0e67679f3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDgwMTU0ZWQ0MmZjNWM3NzliMTMzMTU3OGI1OGI4OWM4MDFlYWNlNzRmMjRjZDQ4ZWI0YTIzNTc5NDBhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0NDc1ZmQ0ZTcyOTRlMjMyY2M0N2VkYzAwMmIzMDVhMzk3MGI3ZmQ1ODE3MTlhZGZhNzg3NDkxMGJlYjlhNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmMWQ3MGQ3MmJhZDIzMWQ0M2M1NzVhY2VmNjk0NjU4MGU0MzljODc5Nzk0ZWQyZWExZjRhNDAzNDAyNDUxNzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e5b615b3810e4efd80c669192b026165",
+      "statement": "The Dockerfile uses three node:24-alpine stages, strips package managers from the runtime stage, runs as the node user with PORT 8787, a healthcheck on /healthz that does not call Hudu, and an exec-form start command.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L1-L39",
+          "version": "repo-lines-v1:sha256:97e062af86b089bba0f89e399f10f54e229f348d057057a689ebc0b557aa35bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlYzJjNWVjODEyNTkzZDRjNDRhZjhhMTQ2YTUxM2VhZGJjNDRmMjEzNzYyNjZiOTdhZjAxNTQxYzU2MjU5ODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MGQ0NjlmNTdhM2JhZDgwYTZhNzVkN2U1M2FmMWZhOTk1ZjI1YWU5ODFmOWE4ZDdkMzRhZDUxNTAxMjIyZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bc1ef22285514ccb87a3e08b6eb527a8",
+      "statement": "Vitest runs test/**/*.test.ts with globals and v8 coverage over src excluding main.ts.",
+      "evidence": [
+        {
+          "resource": "repo://vitest.config.ts#L1-L14",
+          "version": "repo-lines-v1:sha256:a1275cc2a1ef425e086271f579293b24a82446f53c9ffa2465a00d6fe2cc9258:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0YTE5MjExYzNhMDNiOTg3OTQ3ZjI0YjY5YmRjYzQ2OWY0Nzk0ODI5YTVmNWE0YTE4OGVhMmUxODE2NTRiOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d72014a88c85477da1e535cad520501f",
+      "statement": "The test harness drives a real MCP session via serveStdio with a fake transport and stubs Hudu at globalThis.fetch.",
+      "evidence": [
+        {
+          "resource": "repo://test/helpers/mcp-session.ts#L1-L40",
+          "version": "repo-lines-v1:sha256:9b86bd0e86f2a432ded04fbc4966166d9fa034a1923f6f58eda358a3d6beebb9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmZTczZWExOTM5MDMzMGMyM2M4ZTU0MWQ1M2FiY2JlNTM3M2E4YTBhMGI2MzlhZmY2OTJhMTNlZDJhNDU0MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0N2IwYTcxYzgzMDliZDYxY2VkMDQ5YTYxYWVjZThmMmM3MmRjYmQ3MDQ0N2QyMDkzMmQxN2M1MjY4MTk1ZWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b82f9883b5544d04b8520dd0a06500fa",
+      "statement": "package.json defines the build, test, lint and prepublish scripts, requires Node >=24 and pins node-hudu 0.24.3, matching the version range in server.json.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L24-L55",
+          "version": "repo-lines-v1:sha256:ea0eaceec38624123825c3944df5a518f96a213009091915f25bec823a5dec49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YzZlOGMzNTk0MDRhZDU1NDJlODhlOGM3NjhjMWM5OWEwMzg5Mjg3ZDlhNDdkNDYwZWQyMjA1ZjY1NjA2YTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5M2MzMjVhMjU1YjYxMjgyOTk3NGNiOGE5MjNjOWYwYTJmYmZkOWUwOGZjNzg5ZTRiOWNmNTY1Nzg2MTI3NTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0M2E0ZGUyMTYxN2EwNzgyMTI2YzNmMDlmYThlNWEwNmMyOTAzNmUyYTAwMGM5OGRhNzYwMTM0MWM1Mzk3ZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4YTUyMGUxYWJlMDEzMDg2N2JiMTQyMzRiODc1NWYwM2QyMjdmZDhlMjdmOWNmZDc5Y2M1ZDVhNTljMDU0Y2MifQ"
+        },
+        {
+          "resource": "repo://server.json#L1-L32",
+          "version": "repo-lines-v1:sha256:7e7f43d38ad8ac30d01e251e1ffe375a6dd23ed9a082d9371d113c3659c2405c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-17T00:09:40.208Z"
+  }
+}
