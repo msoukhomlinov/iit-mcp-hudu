@@ -67,7 +67,7 @@ All refusals throw `PolicyDeniedError` (SDK `POLICY_DENIED` vocabulary) with `re
 
 Gate order in the `hudu_read`/`hudu_write`/`hudu_delete` handler (`src/tools/dispatch.ts`): write policy, secret-read policy, never-reachable, then search-policy input rewriting, then the SDK `dispatchOperation`. A refusal issues no Hudu request, so the SDK audit hook never sees it; each refusal is logged with `log.warn` carrying the operation key (and effect/policy) but never the input bag, since it can contain a credential or name the record being read.
 
-After a real write or delete attempt (`dry_run === false` and control reached the SDK), the read client's cache is cleared in `finally`; dry runs do not clear it.
+The read-client cache clear that follows a real write or delete attempt is described in the [tool surface](../architecture/tool-surface.md#dispatcher-flow).
 
 ## Policy-aware catalog
 

@@ -27,7 +27,7 @@ Configuration is environment-only. `loadConfig` (`src/config.ts`) parses `proces
 | `MCP_TRANSPORT` | `stdio` \| `http`; default `stdio` | Selects the transport. |
 | `PORT` | integer 1-65535, default `8787` | HTTP listener. |
 | `LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error`, default `info` | |
-| `HUDU_BASE_URL` | absolute URL, optional | Required under `stdio`. Under `http` it is the default origin and restricts callers to that one origin. |
+| `HUDU_BASE_URL` | absolute URL, optional | Required under `stdio`. Under `http` it is the default origin; when `HUDU_ALLOWED_BASE_HOSTS` is unset it restricts callers to that one origin. |
 | `HUDU_API_KEY` | non-empty, optional | Required under `stdio`. Under `http` it is the default key for a request that brings none. Shape-checked at boot under both transports. |
 | `HUDU_ALLOWED_BASE_HOSTS` | comma list, optional | Lowercased, de-duplicated. See below. |
 | `HUDU_ALLOW_ANY_BASE_HOST` | `true` \| `false`, default `false` | Opt-in for bring-your-own-origin under `http`. |
