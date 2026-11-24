@@ -28,7 +28,7 @@ generated: { by: "openwiki/0.9.0", at: "2026-11-17T00:09:40.208Z" }
 
 - `vendor`: Hudu's own search; body-blind, never builds an index.
 - `index`: an in-memory body index of articles and assets, walked from the corpus; a call may wait for the walk.
-- `auto`: answers from the vendor tier immediately and warms the index in the background.
+- `auto`: never waits for the index walk (the vendor tier answers while the index builds) and warms the index in the background.
 - `typesense`: queries Hudu's Typesense index; no corpus walk, so no cold start. It is only offered when the Typesense pair is configured.
 
 Every body tier is corpus-wide over **articles and assets**, with no scope parameter.

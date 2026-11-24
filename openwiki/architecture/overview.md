@@ -72,7 +72,7 @@ A request without a Hudu key is deliberately let through so `initialize` and `to
 `createMcpServerFactory(config, log)` returns a function called per serving unit: **one stdio connection, or one HTTP request**. Shared across units (built once at factory creation):
 
 - Hudu client "mode entries": a `read` entry always, plus `write` and `delete` entries unless `HUDU_WRITE_POLICY` is `deny`. Each entry holds a parent client, three fail-closed placeholder clients (no base URL, invalid base URL, base not allowed), a lazily built map of malformed-credential clients, and a `ScopedClientCache`.
-- `ScopedClientCache` keys clients by SHA-256 of `baseUrl\0apiKey`, with least-recently-used eviction at `MAX_SCOPED_CLIENTS` (equal to `SCOPED_INDEX_BUDGET_DIVISOR`, 2) per mode cache. Scoped clients set `blockPrivateHosts: true`; the operator's own base is not floored.
+- `ScopedClientCache` keys clients by SHA-256 of `baseUrl\0apiKey`, with least-recently-used eviction at `MAX_SCOPED_CLIENTS` (equal to `SCOPED_INDEX_BUDGET_DIVISOR`, whose value is on [search tiers](../search/search-tiers.md)) per mode cache. The private-host floor on scoped clients is described in [auth and base hosts](../security/auth-and-base-hosts.md).
 
 Common client options: `profile: 'agent'`, `cache: 'recommended'`, `timeoutMs: 30000`, cooldown enabled, and an `onAudit` hook that logs each Hudu request with query values reduced to shapes. Under HTTP the base URL is a reserved `.invalid` placeholder; under stdio it is `HUDU_BASE_URL`. The parent client holds the API key under stdio and a credential-less strategy under HTTP.
 
