@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Dev: eslint 10.15.0, typescript-eslint 8.73.0, vitest 5.1.1. Expired `node-hudu@0.24.3`
+  `minimumReleaseAgeExclude` entry removed from `pnpm-workspace.yaml`.
+
 ## 0.11.1
 
 **Upgrading from 0.11.0:** no configuration change. This release adopts node-hudu 0.24.3 and

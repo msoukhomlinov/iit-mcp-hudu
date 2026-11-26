@@ -1,10 +1,5 @@
 allowBuilds:
   esbuild: true
-minimumReleaseAgeExclude:
-  # node-hudu 0.24.3 published 2026-11-08T23:26Z, so it clears the 1-day release-age gate only at
-  # 2026-11-09T23:26Z. Delete this entry after 2026-11-10T00:00Z.
-  # (0.24.0 entry retired: it expired 2026-10-29T11:00Z and 0.24.0 left the graph in 0.11.1.)
-  - node-hudu@0.24.3
 overrides:
   minimatch: ">=11.0.1"
   source-map-js: 1.2.2
