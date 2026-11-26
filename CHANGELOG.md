@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Docs: added the `openwiki/` repository wiki (architecture, tool surface, configuration, search
+  tiers, auth and base hosts, write policy, testing and release) with `.openwikiignore` (#70).
+  Repository-only, not in the npm package; no code, dependency or behaviour change.
+
 - Dev: eslint 10.15.0, typescript-eslint 8.73.0, vitest 5.1.1. Expired `node-hudu@0.24.3`
   `minimumReleaseAgeExclude` entry removed from `pnpm-workspace.yaml`.
 
